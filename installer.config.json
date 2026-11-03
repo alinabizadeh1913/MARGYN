@@ -1,0 +1,35 @@
+{
+  "appName": "LORIQEN",
+  "appDisplayName": "LORIQEN Study Command Center",
+  "appPublisher": "LORIQEN",
+  "appVersion": "4.2.0",
+  "exeName": "LORIQEN.exe",
+  "appDescription": "Your Study Command Center. Where Study Becomes Strategy, Triumph Is Born.",
+  "appIdentifier": "com.loriqen.app",
+  "theme": "aurora",
+  "primaryColor": "#7DD3FC",
+  "accentColor": "#38BDF8",
+  "successColor": "#34D399",
+  "texts": {
+    "welcomeTitle": "Welcome to LORIQEN",
+    "welcomeSubtitle": "Your Study Command Center. Where Study Becomes Strategy, Triumph Is Born.",
+    "installButton": "Install LORIQEN",
+    "licenseAgreement": "LORIQEN License Agreement & Privacy Policy",
+    "progressFrames": [
+      { "limit": 15, "text": "Preparing your workspace..." },
+      { "limit": 40, "text": "Installing core modules..." },
+      { "limit": 70, "text": "Configuring study environment..." },
+      { "limit": 90, "text": "Optimizing your experience..." },
+      { "limit": 100, "text": "Finalizing setup..." }
+    ],
+    "successTitle": "Installation Complete",
+    "successSubtitle": "LORIQEN is ready to help you study smarter, not harder.",
+    "features": [
+      { "label": "Focus Timer", "color": "#7DD3FC" },
+      { "label": "Smart Planner", "color": "#38BDF8" },
+      { "label": "Deep Analytics", "color": "#34D399" },
+      { "label": "Review System", "color": "#A78BFA" }
+    ],
+    "launchButton": "Launch LORIQEN"
+  }
+}

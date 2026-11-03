@@ -1,0 +1,35 @@
+appId: com.margyn.app
+productName: MARGYN
+copyright: Copyright © 2026 Ali Nabizadeh
+
+directories:
+  buildResources: build
+  output: release/${version}
+
+electronDist: C:/eb-cache/electron-dist
+
+compression: maximum
+asar: true
+
+files:
+  - "electron/**/*"
+  - "out/**/*"
+  - "package.json"
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: build/icon.ico
+  signExecutable: false
+
+nsis:
+  oneClick: false
+  perMachine: true
+  allowElevation: true
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: MARGYN
+  runAfterFinish: true
+  artifactName: "${productName}-Setup-${version}-${arch}.${ext}"
