@@ -56,7 +56,7 @@ body {
   margin: 0;
   padding: 0;
   font-family: var(--font-sans);
-  background-color: #09090b; /* Obsidian dark */
+  background-color: #09090b;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -64,7 +64,10 @@ body {
   box-sizing: border-box;
 }
 
-/* Custom Scrollbar for Distraction-Free */
+/* =========================================================
+   Scrollbars
+========================================================= */
+
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -73,21 +76,37 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #3f3f46;
+  background: rgba(255, 255, 255, 0.1);
   border-radius: 10px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #52525b;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 /* =========================================================
-   MARGYN — Custom Cursors
+   MARGYN — Premium Custom Cursors (Minimal & Sharp)
 ========================================================= */
 
+/* استایلوس دیجیتال ظریف، تیز و فوق‌العاده شیک */
 .cursor-pen {
-  cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="%23fafafa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>') 2 22, crosshair !important;
+  cursor:
+    url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M17 4L21 8L9 20L4 21L5 16L17 4Z" fill="black" opacity="0.4" filter="blur(1.5px)" transform="translate(1, 1)"/><path d="M16 3L21 8L9 20L3 21L4 15L16 3Z" fill="%2318181b" stroke="%23ffffff" stroke-width="1.2" stroke-linejoin="round"/><path d="M4 15L9 20L3 21L4 15Z" fill="%2338bdf8"/><path d="M14 5L19 10" stroke="%2338bdf8" stroke-width="1.5" stroke-linecap="round"/></svg>')
+      3 21,
+    crosshair !important;
 }
 
+/* پاک‌کن مدرن و ظریف با لبه‌های صورتی نئونی */
 .cursor-eraser {
-  cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="%23fafafa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"></path><path d="M22 21H7"></path><path d="m5 11 9 9"></path></svg>') 2 22, crosshair !important;
+  cursor:
+    url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M13 4L20 11L11 20H4V13L13 4Z" fill="%2318181b" stroke="%23ffffff" stroke-width="1.2" stroke-linejoin="round"/><path d="M13 4L18 9L9 18H4V13L13 4Z" fill="%23f43f5e" opacity="0.3"/><path d="M13 4L20 11" stroke="%23f43f5e" stroke-width="1.5" stroke-linecap="round"/><path d="M4 13H13" stroke="%23f43f5e" stroke-width="1.5" stroke-linecap="round"/><circle cx="4" cy="20" r="1.5" fill="%23f43f5e" opacity="0.8"/></svg>')
+      4 20,
+    crosshair !important;
 }

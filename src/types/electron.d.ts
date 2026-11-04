@@ -12,7 +12,15 @@ declare global {
       loadActivePdf: () => Promise<Uint8Array | null>;
       saveActivePdf: (data: Uint8Array) => Promise<boolean>;
       clearActivePdf: () => Promise<boolean>;
-      openPdf: () => Promise<Uint8Array | null>;
+      openPdf: () => Promise<{
+        data: Uint8Array;
+        name: string;
+        libraryPath: string;
+      } | null>;
+
+      loadLibraryFile: (filePath: string) => Promise<Uint8Array | null>;
+      deleteLibraryFile: (filePath: string) => Promise<boolean>;
+      clearLibraryFolder: () => Promise<boolean>;
     };
   }
 }

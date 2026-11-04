@@ -1,22 +1,29 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  ReactNode,
+} from "react";
 import { getSetting, setSetting } from "@/db";
 
-// Define available actions
-export type ShortcutAction = 
-  | "pen" 
-  | "eraser" 
-  | "toggleSession" 
-  | "openPdf" 
-  | "clearPage" 
+export type ShortcutAction =
+  | "pen"
+  | "eraser"
+  | "startSession"
+  | "endSession"
+  | "openPdf"
+  | "clearPage"
   | "clearAll";
 
 export const DEFAULT_SHORTCUTS: Record<ShortcutAction, string> = {
   pen: "p",
   eraser: "e",
-  toggleSession: "s",
-  openPdf: "o",
+  startSession: "ctrl+enter",
+  endSession: "ctrl+shift+enter",
+  openPdf: "ctrl+o",
   clearPage: "delete",
   clearAll: "shift+delete",
 };
@@ -27,19 +34,32 @@ interface ShortcutContextType {
   resetShortcuts: () => Promise<void>;
 }
 
-const ShortcutContext = createContext<ShortcutContextType | undefined>(undefined);
+const ShortcutContext = createContext<ShortcutContextType | undefined>(
+  undefined,
+);
 
 export function ShortcutProvider({ children }: { children: ReactNode }) {
-  const [shortcuts, setShortcuts] = useState<Record<ShortcutAction, string>>(DEFAULT_SHORTCUTS);
+  const [shortcuts, setShortcuts] =
+    useState<Record<ShortcutAction, string>>(DEFAULT_SHORTCUTS);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // Load shortcuts from DB
   useEffect(() => {
     const loadShortcuts = async () => {
       try {
         const saved = await getSetting("shortcuts");
         if (saved) {
-          setShortcuts({ ...DEFAULT_SHORTCUTS, ...JSON.parse(saved) });
+          const parsed = JSON.parse(saved);
+          // فیلتر کردن کلیدهای قدیمی که دیگر در نوع جدید وجود ندارند
+          const validShortcuts = Object.keys(DEFAULT_SHORTCUTS).reduce(
+            (acc, key) => {
+              const k = key as ShortcutAction;
+              acc[k] = parsed[k] || DEFAULT_SHORTCUTS[k];
+              return acc;
+            },
+            {} as Record<ShortcutAction, string>,
+          );
+
+          setShortcuts(validShortcuts);
         }
       } catch (err) {
         console.error("Failed to load shortcuts", err);
@@ -61,12 +81,10 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
     await setSetting("shortcuts", JSON.stringify(DEFAULT_SHORTCUTS));
   };
 
-  // Global Listener for Shortcuts
   useEffect(() => {
     if (!isLoaded) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if typing in an input, textarea, or contenteditable
       const target = e.target as HTMLElement;
       if (
         target.tagName === "INPUT" ||
@@ -76,21 +94,55 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // Build the pressed key string (e.g., "shift+delete", "p")
       const keys = [];
       if (e.ctrlKey || e.metaKey) keys.push("ctrl");
       if (e.altKey) keys.push("alt");
       if (e.shiftKey) keys.push("shift");
-      
-      const key = e.key.toLowerCase();
-      if (!["control", "shift", "alt", "meta"].includes(key)) {
+
+      let key = e.code;
+      if (key.startsWith("Key")) key = key.replace("Key", "").toLowerCase();
+      else if (key.startsWith("Digit")) key = key.replace("Digit", "");
+      else if (key.startsWith("Numpad")) key = key.replace("Numpad", "");
+      else if (key === "Delete") key = "delete";
+      else if (key === "Backspace") key = "backspace";
+      else if (key === "Space") key = "space";
+      else if (key === "Enter")
+        key = "enter"; // هندل کردن دکمه Enter
+      else key = key.toLowerCase();
+
+      if (
+        ![
+          "control",
+          "shift",
+          "alt",
+          "meta",
+          "controlleft",
+          "controlright",
+          "shiftleft",
+          "shiftright",
+          "altleft",
+          "altright",
+          "metaleft",
+          "metaright",
+        ].includes(key)
+      ) {
         keys.push(key);
       }
 
       const pressedString = keys.join("+");
 
-      // Dispatch a custom event that components can listen to
-      const event = new CustomEvent("margyn-shortcut", { detail: pressedString });
+      // جلوگیری از رفتار پیش‌فرض مرورگر
+      if (
+        pressedString === "ctrl+o" ||
+        pressedString === "ctrl+enter" ||
+        pressedString === "ctrl+shift+enter"
+      ) {
+        e.preventDefault();
+      }
+
+      const event = new CustomEvent("margyn-shortcut", {
+        detail: pressedString,
+      });
       window.dispatchEvent(event);
     };
 
@@ -99,7 +151,9 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
   }, [isLoaded]);
 
   return (
-    <ShortcutContext.Provider value={{ shortcuts, updateShortcut, resetShortcuts }}>
+    <ShortcutContext.Provider
+      value={{ shortcuts, updateShortcut, resetShortcuts }}
+    >
       {children}
     </ShortcutContext.Provider>
   );
@@ -107,11 +161,11 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
 
 export function useShortcuts() {
   const context = useContext(ShortcutContext);
-  if (!context) throw new Error("useShortcuts must be used within ShortcutProvider");
+  if (!context)
+    throw new Error("useShortcuts must be used within ShortcutProvider");
   return context;
 }
 
-// Hook to register a specific shortcut
 export function useShortcut(action: ShortcutAction, callback: () => void) {
   const { shortcuts } = useShortcuts();
   const expectedKey = shortcuts[action];
@@ -123,6 +177,10 @@ export function useShortcut(action: ShortcutAction, callback: () => void) {
       }
     };
     window.addEventListener("margyn-shortcut", handleShortcut as EventListener);
-    return () => window.removeEventListener("margyn-shortcut", handleShortcut as EventListener);
+    return () =>
+      window.removeEventListener(
+        "margyn-shortcut",
+        handleShortcut as EventListener,
+      );
   }, [expectedKey, callback]);
 }

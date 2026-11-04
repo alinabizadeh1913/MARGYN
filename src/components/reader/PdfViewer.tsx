@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useEffect, useRef, useState, memo } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import * as pdfjsLib from "pdfjs-dist";
 import { useSession } from "@/providers/SessionProvider";
+import { useTool } from "@/providers/ToolProvider";
 import {
   Upload,
   ZoomIn,
@@ -10,130 +11,19 @@ import {
   RotateCcw,
   Maximize,
   Minimize,
-  LayoutTemplate,
-  Rows,
+  ChevronUp,
+  ChevronDown,
+  Palette,
+  ShieldAlert,
+  Lock,
 } from "lucide-react";
 import Typography from "@/typography";
 import PdfDrawingLayer from "./PdfDrawingLayer";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 
-// =========================================================
-// Lazy Rendered Pdf Page with Skeleton Loading
-// =========================================================
-const PdfPage = memo(
-  ({
-    pdfDoc,
-    pageNumber,
-    scale,
-    viewMode,
-  }: {
-    pdfDoc: pdfjsLib.PDFDocumentProxy;
-    pageNumber: number;
-    scale: number;
-    viewMode: "continuous" | "single";
-  }) => {
-    const containerRef = useRef<HTMLDivElement>(null);
-    const canvasRef = useRef<HTMLCanvasElement>(null);
-    const [size, setSize] = useState({ width: 0, height: 0 });
-    const [isVisible, setIsVisible] = useState(false);
-    const [hasRendered, setHasRendered] = useState(false);
+const REQUIRED_PHRASE = "I AM BREAKING MY FOCUS";
 
-    // Intersection Observer for Lazy Rendering
-    useEffect(() => {
-      if (!containerRef.current) return;
-      const observer = new IntersectionObserver(
-        ([entry]) => {
-          if (entry.isIntersecting) setIsVisible(true);
-        },
-        { rootMargin: "400px 0px" },
-      );
-      observer.observe(containerRef.current);
-      return () => observer.disconnect();
-    }, []);
-
-    useEffect(() => {
-      if (!isVisible && hasRendered) return;
-      let isCancelled = false;
-
-      const renderPage = async () => {
-        try {
-          // Force loading state to true when scale or page changes
-          setHasRendered(false);
-
-          const page = await pdfDoc.getPage(pageNumber);
-          if (isCancelled) return;
-          const viewport = page.getViewport({ scale });
-          setSize({ width: viewport.width, height: viewport.height });
-
-          const canvas = canvasRef.current;
-          const context = canvas?.getContext("2d", { alpha: false });
-          if (canvas && context) {
-            canvas.height = viewport.height;
-            canvas.width = viewport.width;
-            await page.render({ canvasContext: context, viewport }).promise;
-
-            if (!isCancelled) setHasRendered(true);
-          }
-        } catch (error) {}
-      };
-
-      if (isVisible || !hasRendered) renderPage();
-      return () => {
-        isCancelled = true;
-      };
-    }, [pdfDoc, pageNumber, scale, isVisible, hasRendered]);
-
-    const wrapperClass =
-      viewMode === "single"
-        ? "w-full h-full flex flex-col items-center justify-center p-4"
-        : "mb-12";
-
-    return (
-      <div
-        ref={containerRef}
-        className={`shrink-0 flex justify-center transition-all duration-300 ${wrapperClass}`}
-        data-page={pageNumber.toString()}
-      >
-        <div
-          className="relative shadow-2xl rounded-sm overflow-hidden bg-white"
-          style={{
-            width: size.width || 700,
-            height: size.height || 990,
-            minWidth: 700,
-          }}
-        >
-          {/* Always render the canvas, but cover it with loading skeleton when needed */}
-          <canvas ref={canvasRef} className="block w-full h-full" />
-
-          {/* Skeleton Loading Overlay */}
-          {!hasRendered && (
-            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-white">
-              <div className="w-8 h-8 border-[3px] border-zinc-200 border-t-zinc-500 rounded-full animate-spin"></div>
-              <Typography variant="microLabel" className="mt-4 text-zinc-400">
-                Rendering...
-              </Typography>
-            </div>
-          )}
-
-          {/* Drawing Layer (Only render when page size is known) */}
-          {size.width > 0 && (
-            <PdfDrawingLayer
-              pageNumber={pageNumber}
-              width={size.width}
-              height={size.height}
-            />
-          )}
-        </div>
-      </div>
-    );
-  },
-);
-PdfPage.displayName = "PdfPage";
-
-// =========================================================
-// PdfViewer Component
-// =========================================================
 export default function PdfViewer({
   fileData,
 }: {
@@ -141,14 +31,24 @@ export default function PdfViewer({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
-  const { setCurrentPage } = useSession();
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const renderTaskRef = useRef<pdfjsLib.RenderTask | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const { isActive, currentPage, setCurrentPage } = useSession();
+  const { canvasBg, setCanvasBg } = useTool();
 
   const [pdfDoc, setPdfDoc] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
-  const [scale, setScale] = useState(1.5);
-  const [viewMode, setViewMode] = useState<"continuous" | "single">(
-    "continuous",
-  );
+  const [scale, setScale] = useState(1.6); // زوم اولیه به 1.6 تغییر کرد
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const [pageSize, setPageSize] = useState({ width: 0, height: 0 });
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+
+  const [showBackModal, setShowBackModal] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
+  const [confirmError, setConfirmError] = useState(false);
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement)
@@ -165,6 +65,23 @@ export default function PdfViewer({
   }, []);
 
   useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (let entry of entries) {
+        setContainerSize({
+          width: entry.contentRect.width,
+          height: entry.contentRect.height,
+        });
+      }
+    });
+
+    resizeObserver.observe(container);
+    return () => resizeObserver.disconnect();
+  }, []);
+
+  useEffect(() => {
     if (!fileData) {
       setPdfDoc(null);
       return;
@@ -173,7 +90,9 @@ export default function PdfViewer({
       try {
         const safeData = new Uint8Array(fileData);
         const loadingTask = pdfjsLib.getDocument({ data: safeData });
-        setPdfDoc(await loadingTask.promise);
+        const doc = await loadingTask.promise;
+        setPdfDoc(doc);
+        if (currentPage > doc.numPages) setCurrentPage(1);
       } catch (error) {
         console.error("Failed to load PDF:", error);
       }
@@ -182,74 +101,139 @@ export default function PdfViewer({
   }, [fileData]);
 
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    const handleScroll = () => {
-      const pages = container.querySelectorAll("[data-page]");
-      let currentVisiblePage = 1;
-      const containerRect = container.getBoundingClientRect();
-      const containerCenter = containerRect.top + containerRect.height / 2;
-      pages.forEach((page) => {
-        const rect = page.getBoundingClientRect();
-        if (rect.top <= containerCenter && rect.bottom >= containerCenter) {
-          currentVisiblePage = parseInt(
-            page.getAttribute("data-page") || "1",
-            10,
-          );
+    if (!pdfDoc || !canvasRef.current) return;
+
+    let isCancelled = false;
+
+    const renderPage = async () => {
+      setIsLoading(true);
+
+      if (renderTaskRef.current) {
+        renderTaskRef.current.cancel();
+        try {
+          await renderTaskRef.current.promise;
+        } catch (e) {}
+        renderTaskRef.current = null;
+      }
+
+      if (isCancelled) return;
+
+      try {
+        const page = await pdfDoc.getPage(currentPage);
+        if (isCancelled) return;
+
+        const viewport = page.getViewport({ scale });
+        const canvas = canvasRef.current;
+        const context = canvas?.getContext("2d", { alpha: false });
+
+        if (canvas && context) {
+          canvas.height = viewport.height;
+          canvas.width = viewport.width;
+          canvas.style.width = `${viewport.width}px`;
+          canvas.style.height = `${viewport.height}px`;
+
+          setPageSize({ width: viewport.width, height: viewport.height });
+
+          const renderContext = { canvasContext: context, viewport };
+          renderTaskRef.current = page.render(renderContext);
+          await renderTaskRef.current.promise;
         }
-      });
-      setCurrentPage(currentVisiblePage);
+      } catch (error: any) {
+        if (error?.name !== "RenderingCancelledException") {
+          console.error("Render error:", error);
+        }
+      } finally {
+        if (!isCancelled) setIsLoading(false);
+      }
     };
-    container.addEventListener("scroll", handleScroll, { passive: true });
-    setTimeout(handleScroll, 100);
-    return () => container.removeEventListener("scroll", handleScroll);
-  }, [setCurrentPage, pdfDoc, viewMode]);
+
+    renderPage();
+
+    return () => {
+      isCancelled = true;
+      if (renderTaskRef.current) renderTaskRef.current.cancel();
+    };
+  }, [pdfDoc, currentPage, scale]);
 
   useEffect(() => {
     const container = containerRef.current;
-    if (!container || viewMode !== "single") return;
-    let isScrolling = false;
+    if (!container) return;
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
-      if (isScrolling) return;
-      const direction = e.deltaY > 0 ? 1 : -1;
-      const pages = Array.from(
-        container.querySelectorAll("[data-page]"),
-      ) as HTMLElement[];
-      if (pages.length === 0) return;
-      isScrolling = true;
-      let currentIndex = 0,
-        minDistance = Infinity;
-      pages.forEach((page, index) => {
-        const distance = Math.abs(page.offsetTop - container.scrollTop);
-        if (distance < minDistance) {
-          minDistance = distance;
-          currentIndex = index;
-        }
-      });
-      const targetIndex = Math.max(
-        0,
-        Math.min(pages.length - 1, currentIndex + direction),
-      );
-      container.scrollTo({
-        top: pages[targetIndex].offsetTop,
-        behavior: "auto",
-      });
-      setTimeout(() => {
-        isScrolling = false;
-      }, 100);
     };
     container.addEventListener("wheel", handleWheel, { passive: false });
     return () => container.removeEventListener("wheel", handleWheel);
-  }, [viewMode, pdfDoc]);
+  }, []);
+
+  const handleNextPage = useCallback(() => {
+    if (pdfDoc && currentPage < pdfDoc.numPages) {
+      setCurrentPage(currentPage + 1);
+    }
+  }, [pdfDoc, currentPage, setCurrentPage]);
+
+  const handlePrevPage = useCallback(() => {
+    if (currentPage <= 1) return;
+
+    if (isActive) {
+      setShowBackModal(true);
+      setConfirmText("");
+      setConfirmError(false);
+      setTimeout(() => inputRef.current?.focus(), 100);
+    } else {
+      setCurrentPage(currentPage - 1);
+    }
+  }, [currentPage, isActive, setCurrentPage]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (showBackModal) return;
+      const target = e.target as HTMLElement;
+      if (
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable
+      )
+        return;
+
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        handleNextPage();
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        handlePrevPage();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleNextPage, handlePrevPage, showBackModal]);
+
+  const handleConfirmBack = () => {
+    if (confirmText === REQUIRED_PHRASE) {
+      setShowBackModal(false);
+      setCurrentPage(currentPage - 1);
+    } else {
+      setConfirmError(true);
+      setConfirmText("");
+      inputRef.current?.focus();
+    }
+  };
 
   if (!fileData) {
     return (
-      <div className="w-full h-full flex flex-col items-center justify-center text-center px-6 bg-[#18181b]">
-        <div className="w-20 h-20 rounded-2xl bg-[#121214] border border-[#27272a] flex items-center justify-center mb-6">
-          <Upload size={32} className="text-[#52525b]" />
+      <div className="w-full h-full flex flex-col items-center justify-center text-center px-6 bg-[#09090b] relative overflow-hidden">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-[#38bdf8]/5 rounded-full blur-[100px] pointer-events-none" />
+        <div className="w-24 h-24 rounded-3xl bg-[#121214] border border-white/5 shadow-2xl flex items-center justify-center mb-8 relative group">
+          <div className="absolute inset-0 bg-[#38bdf8]/10 blur-md rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity" />
+          <Upload
+            size={36}
+            className="text-[#52525b] group-hover:text-[#38bdf8] transition-colors relative z-10"
+          />
         </div>
-        <Typography variant="pageTitle" as="h1" className="text-[#fafafa] mb-3">
+        <Typography
+          variant="pageTitle"
+          as="h1"
+          className="text-transparent bg-clip-text bg-gradient-to-br from-white to-white/50 mb-4 tracking-tight"
+        >
           Read, don't count.
         </Typography>
         <Typography variant="body" as="p" className="text-[#a1a1aa] max-w-md">
@@ -263,79 +247,195 @@ export default function PdfViewer({
   return (
     <div
       ref={viewerRef}
-      className="w-full h-full flex flex-col bg-[#18181b] relative overflow-hidden"
+      className="w-full h-full flex flex-col relative overflow-hidden transition-colors duration-500 ease-in-out"
+      style={{ backgroundColor: canvasBg }}
     >
+      <div className="absolute top-8 right-8 flex flex-col gap-4 z-50">
+        <div className="bg-white/95 backdrop-blur-xl border border-zinc-200 p-2 rounded-2xl flex flex-col gap-1.5 shadow-sm">
+          <button
+            onClick={toggleFullscreen}
+            className="p-2.5 rounded-xl text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 transition-all duration-200"
+          >
+            {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
+          </button>
+          <div className="h-px w-full bg-zinc-200 my-0.5" />
+
+          <div className="relative w-full h-full flex items-center justify-center py-0.5">
+            <input
+              type="color"
+              value={canvasBg}
+              onChange={(e) => setCanvasBg(e.target.value)}
+              className="absolute inset-0 opacity-0 cursor-pointer z-20"
+              title="Canvas Background Color"
+            />
+            <button className="p-2.5 rounded-xl text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 transition-all duration-200">
+              <Palette size={18} />
+            </button>
+          </div>
+          <div className="h-px w-full bg-zinc-200 my-0.5" />
+
+          <button
+            onClick={() => setScale((prev) => Math.min(3, prev + 0.2))}
+            className="p-2.5 rounded-xl text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 transition-all duration-200"
+          >
+            <ZoomIn size={18} />
+          </button>
+          <button
+            onClick={() => setScale((prev) => Math.max(0.5, prev - 0.2))}
+            className="p-2.5 rounded-xl text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 transition-all duration-200"
+          >
+            <ZoomOut size={18} />
+          </button>
+          <button
+            onClick={() => setScale(1.6)} // ریست به زوم 1.6
+            className="p-2.5 rounded-xl text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 transition-all duration-200"
+          >
+            <RotateCcw size={18} />
+          </button>
+        </div>
+
+        {pdfDoc && (
+          <div className="bg-white/95 backdrop-blur-xl border border-zinc-200 p-2 rounded-2xl flex flex-col gap-1.5 shadow-sm items-center">
+            <button
+              onClick={handlePrevPage}
+              disabled={currentPage === 1}
+              className={`p-2.5 rounded-xl transition-all duration-200 ${
+                currentPage === 1
+                  ? "text-zinc-300 cursor-not-allowed"
+                  : "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 active:scale-95"
+              }`}
+              title="Previous Page (Arrow Up)"
+            >
+              <ChevronUp size={20} />
+            </button>
+            <div className="h-px w-full bg-zinc-200 my-0.5" />
+            <button
+              onClick={handleNextPage}
+              disabled={currentPage === pdfDoc.numPages}
+              className={`p-2.5 rounded-xl transition-all duration-200 ${
+                currentPage === pdfDoc.numPages
+                  ? "text-zinc-300 cursor-not-allowed"
+                  : "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 active:scale-95"
+              }`}
+              title="Next Page (Arrow Down)"
+            >
+              <ChevronDown size={20} />
+            </button>
+          </div>
+        )}
+      </div>
+
       <div
         ref={containerRef}
-        className={`flex-1 overflow-auto flex flex-col items-center ${viewMode === "single" ? "overflow-hidden" : "p-8 scroll-smooth"}`}
-        style={{
-          scrollbarWidth: "none",
-          msOverflowStyle: "none",
-          scrollBehavior: "auto",
-        }}
+        className="flex-1 w-full h-full relative flex items-center justify-center overflow-hidden p-8"
       >
-        {!pdfDoc && (
-          <div className="mt-20 flex flex-col items-center">
-            <div className="w-10 h-10 border-4 border-[#27272a] border-t-emerald-500 rounded-full animate-spin"></div>
-            <Typography variant="microLabel" className="text-[#52525b] mt-4">
-              Loading PDF...
-            </Typography>
+        {isLoading && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/40 backdrop-blur-sm z-40 transition-opacity duration-300">
+            <div className="relative w-12 h-12">
+              <div className="absolute inset-0 border-[3px] border-zinc-200 rounded-full"></div>
+              <div className="absolute inset-0 border-[3px] border-t-zinc-500 rounded-full animate-spin"></div>
+            </div>
           </div>
         )}
 
-        {pdfDoc &&
-          Array.from({ length: pdfDoc.numPages }, (_, i) => (
-            <PdfPage
-              key={i + 1}
-              pdfDoc={pdfDoc}
-              pageNumber={i + 1}
-              scale={scale}
-              viewMode={viewMode}
-            />
-          ))}
+        <div
+          className="relative bg-white border border-black/5"
+          style={{ width: pageSize.width, height: pageSize.height }}
+        >
+          <canvas ref={canvasRef} className="block" />
+        </div>
+
+        {containerSize.width > 0 && pageSize.width > 0 && (
+          <PdfDrawingLayer
+            pageNumber={currentPage}
+            width={containerSize.width}
+            height={containerSize.height}
+            pdfWidth={pageSize.width}
+            pdfHeight={pageSize.height}
+          />
+        )}
       </div>
 
-      <div className="absolute top-6 right-6 flex flex-col gap-2 z-50">
-        <button
-          onClick={toggleFullscreen}
-          className="p-2 bg-[#18181b]/80 backdrop-blur-md border border-[#27272a] rounded-md text-[#a1a1aa] hover:text-[#fafafa] transition-colors shadow-lg"
-        >
-          {isFullscreen ? <Minimize size={16} /> : <Maximize size={16} />}
-        </button>
-        <button
-          onClick={() =>
-            setViewMode((prev) =>
-              prev === "continuous" ? "single" : "continuous",
-            )
-          }
-          className="p-2 bg-[#18181b]/80 backdrop-blur-md border border-[#27272a] rounded-md text-[#a1a1aa] hover:text-[#fafafa] transition-colors shadow-lg"
-        >
-          {viewMode === "continuous" ? (
-            <LayoutTemplate size={16} />
-          ) : (
-            <Rows size={16} />
-          )}
-        </button>
-        <div className="h-px w-full bg-[#27272a] my-1" />
-        <button
-          onClick={() => setScale((prev) => Math.min(3, prev + 0.2))}
-          className="p-2 bg-[#18181b]/80 backdrop-blur-md border border-[#27272a] rounded-md text-[#a1a1aa] hover:text-[#fafafa] transition-colors shadow-lg"
-        >
-          <ZoomIn size={16} />
-        </button>
-        <button
-          onClick={() => setScale((prev) => Math.max(0.8, prev - 0.2))}
-          className="p-2 bg-[#18181b]/80 backdrop-blur-md border border-[#27272a] rounded-md text-[#a1a1aa] hover:text-[#fafafa] transition-colors shadow-lg"
-        >
-          <ZoomOut size={16} />
-        </button>
-        <button
-          onClick={() => setScale(1.5)}
-          className="p-2 bg-[#18181b]/80 backdrop-blur-md border border-[#27272a] rounded-md text-[#a1a1aa] hover:text-[#fafafa] transition-colors shadow-lg"
-        >
-          <RotateCcw size={16} />
-        </button>
-      </div>
+      {showBackModal && (
+        <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/30 backdrop-blur-md transition-all duration-300">
+          <div className="bg-white/95 backdrop-blur-3xl p-8 rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.4)] border border-white/60 w-full max-w-lg flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">
+            <div className="w-16 h-16 bg-rose-100 rounded-full flex items-center justify-center mb-6 shadow-inner">
+              <ShieldAlert size={32} className="text-rose-500" />
+            </div>
+
+            <Typography
+              variant="pageTitle"
+              as="h2"
+              className="text-zinc-900 mb-2 font-semibold tracking-tight"
+            >
+              Break Your Focus?
+            </Typography>
+
+            <Typography
+              variant="body"
+              as="p"
+              className="text-zinc-500 mb-8 max-w-sm leading-relaxed"
+            >
+              Going back breaks your flow. If you absolutely must, type the
+              following phrase in <strong>ALL CAPITAL LETTERS</strong>:
+            </Typography>
+
+            <div className="w-full bg-zinc-100/80 border border-zinc-200 rounded-2xl p-4 mb-6 flex items-center justify-center gap-3 select-none">
+              <Lock size={16} className="text-zinc-400" />
+              <span className="text-zinc-800 font-mono text-base font-bold tracking-widest">
+                {REQUIRED_PHRASE}
+              </span>
+            </div>
+
+            <input
+              ref={inputRef}
+              type="text"
+              value={confirmText}
+              onChange={(e) => {
+                setConfirmText(e.target.value);
+                setConfirmError(false);
+              }}
+              onKeyDown={(e) => e.key === "Enter" && handleConfirmBack()}
+              onPaste={(e) => e.preventDefault()}
+              onCopy={(e) => e.preventDefault()}
+              onCut={(e) => e.preventDefault()}
+              onDrop={(e) => e.preventDefault()}
+              onContextMenu={(e) => e.preventDefault()}
+              autoComplete="off"
+              spellCheck="false"
+              placeholder="TYPE HERE (UPPERCASE ONLY)"
+              className={`w-full px-5 py-4 rounded-xl bg-white border-2 outline-none transition-all text-center text-lg font-mono tracking-widest shadow-sm ${
+                confirmError
+                  ? "border-rose-400 focus:border-rose-500 text-rose-600 placeholder-rose-300 animate-shake"
+                  : "border-zinc-200 focus:border-zinc-800 text-zinc-900 uppercase"
+              }`}
+            />
+            {confirmError && (
+              <Typography
+                variant="caption"
+                className="text-rose-500 mt-3 font-medium animate-pulse"
+              >
+                Incorrect. You must type it exactly as shown (ALL CAPS).
+              </Typography>
+            )}
+
+            <div className="flex gap-4 w-full mt-8">
+              <button
+                onClick={() => setShowBackModal(false)}
+                className="flex-1 px-4 py-3.5 rounded-xl bg-zinc-100 text-zinc-600 hover:bg-zinc-200 hover:text-zinc-900 transition-all font-medium active:scale-[0.98]"
+              >
+                Keep Focusing
+              </button>
+              <button
+                onClick={handleConfirmBack}
+                className="flex-1 px-4 py-3.5 rounded-xl bg-zinc-900 text-white hover:bg-zinc-800 transition-all font-medium shadow-md active:scale-[0.98]"
+              >
+                Go Back
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

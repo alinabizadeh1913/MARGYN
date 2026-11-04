@@ -27,18 +27,26 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 
-// Paths
 const getDbPath = () => path.join(app.getPath("userData"), "margyn.db");
 const getPdfPath = () =>
   path.join(app.getPath("userData"), "active_document.pdf");
+const getLibraryPath = () => path.join(app.getPath("userData"), "library");
 
-// IPC Handlers — Database
+if (!fs.existsSync(getLibraryPath())) {
+  try {
+    fs.mkdirSync(getLibraryPath(), { recursive: true });
+  } catch (e) {
+    console.error("Could not create library folder", e);
+  }
+}
+
 ipcMain.handle("db-load", async () => {
   const dbPath = getDbPath();
-  return fs.existsSync(dbPath) ? fs.readFileSync(dbPath) : null;
+  return fs.existsSync(dbPath) ? new Uint8Array(fs.readFileSync(dbPath)) : null;
 });
 
 ipcMain.handle("db-save", async (event, dataBuffer) => {
+  if (!dataBuffer) return false;
   fs.writeFileSync(getDbPath(), Buffer.from(dataBuffer));
   return true;
 });
@@ -49,18 +57,21 @@ ipcMain.handle("db-load-wasm", async () => {
     path.join(__dirname, "..", "out", "sql-wasm.wasm"),
   ];
   for (const wasmPath of possiblePaths) {
-    if (fs.existsSync(wasmPath)) return fs.readFileSync(wasmPath);
+    if (fs.existsSync(wasmPath))
+      return new Uint8Array(fs.readFileSync(wasmPath));
   }
   throw new Error("Could not find sql-wasm.wasm");
 });
 
-// IPC Handlers — Active PDF
 ipcMain.handle("pdf-load-active", async () => {
   const pdfPath = getPdfPath();
-  return fs.existsSync(pdfPath) ? fs.readFileSync(pdfPath) : null;
+  return fs.existsSync(pdfPath)
+    ? new Uint8Array(fs.readFileSync(pdfPath))
+    : null;
 });
 
 ipcMain.handle("pdf-save-active", async (event, dataBuffer) => {
+  if (!dataBuffer) return false;
   fs.writeFileSync(getPdfPath(), Buffer.from(dataBuffer));
   return true;
 });
@@ -72,20 +83,70 @@ ipcMain.handle("pdf-clear-active", async () => {
 });
 
 ipcMain.handle("dialog:openPdf", async () => {
-  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
-    properties: ["openFile"],
-    filters: [{ name: "PDF Documents", extensions: ["pdf"] }],
-  });
-  if (canceled || filePaths.length === 0) return null;
-  return fs.readFileSync(filePaths[0]);
+  try {
+    const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+      properties: ["openFile"],
+      filters: [{ name: "PDF Documents", extensions: ["pdf"] }],
+    });
+    if (canceled || filePaths.length === 0) return null;
+
+    const originalPath = filePaths[0];
+    const originalName = path.basename(originalPath);
+    const dataBuffer = fs.readFileSync(originalPath);
+
+    const uniqueId =
+      Date.now().toString() + Math.random().toString(36).substring(2, 9);
+    const safeName = originalName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+    const libraryFilePath = path.join(
+      getLibraryPath(),
+      `${uniqueId}-${safeName}`,
+    );
+
+    fs.writeFileSync(libraryFilePath, dataBuffer);
+
+    return {
+      data: new Uint8Array(dataBuffer),
+      name: originalName,
+      libraryPath: libraryFilePath,
+    };
+  } catch (error) {
+    console.error("Failed to open PDF:", error);
+    return null;
+  }
+});
+
+ipcMain.handle("library-load-file", async (event, filePath) => {
+  try {
+    if (fs.existsSync(filePath))
+      return new Uint8Array(fs.readFileSync(filePath));
+    return null;
+  } catch (error) {
+    return null;
+  }
+});
+
+ipcMain.handle("library-delete-file", async (event, filePath) => {
+  if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  return true;
+});
+
+ipcMain.handle("library-clear-all", async () => {
+  const libPath = getLibraryPath();
+  if (fs.existsSync(libPath)) {
+    const files = fs.readdirSync(libPath);
+    for (const file of files) {
+      fs.unlinkSync(path.join(libPath, file));
+    }
+  }
+  return true;
 });
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 900,
-    minWidth: 1280,
-    minHeight: 800,
+    width: 1600,
+    height: 1000,
+    minWidth: 1440, // افزایش حداقل عرض از 1280 به 1440
+    minHeight: 900, // افزایش حداقل ارتفاع از 800 به 900
     titleBarStyle: "hidden",
     titleBarOverlay: { color: "#09090b", symbolColor: "#a1a1aa", height: 40 },
     backgroundColor: "#09090b",
@@ -96,7 +157,7 @@ function createWindow() {
       sandbox: false,
       webSecurity: true,
     },
-    show: false, // برای جلوگیری از پرش و صفحه سیاه اولیه
+    show: false,
   });
 
   mainWindow.maximize();
@@ -115,15 +176,11 @@ function createWindow() {
 
   if (isDev) {
     mainWindow.loadURL(devUrl);
-    // mainWindow.webContents.openDevTools(); // در صورت نیاز برای دیباگ باز شود
   } else {
     mainWindow.loadURL("app://bundle/index.html");
   }
 
-  mainWindow.once("ready-to-show", () => {
-    mainWindow.show();
-  });
-
+  mainWindow.once("ready-to-show", () => mainWindow.show());
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
@@ -134,7 +191,6 @@ function registerCustomProtocol() {
     const url = request.url.replace("app://", "");
     const [host, ...rest] = url.split("/");
     let filePath = path.join(__dirname, "..", "out", ...rest);
-
     if (
       host === "bundle" &&
       (rest.length === 0 || rest[rest.length - 1] === "")

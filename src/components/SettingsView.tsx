@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Shield,
   Trash2,
@@ -8,6 +8,8 @@ import {
   Volume2,
   Keyboard,
   RotateCcw,
+  AlertTriangle,
+  Lock,
 } from "lucide-react";
 import Typography from "@/typography";
 import { resetDatabase, getSetting, setSetting } from "@/db";
@@ -15,12 +17,18 @@ import { useShortcuts, ShortcutAction } from "@/providers/ShortcutProvider";
 import { setAudioEnabled } from "@/lib/audio";
 import ShortcutInput from "./ShortcutInput";
 
+const REQUIRED_RESET_PHRASE = "DELETE ALL MY DATA";
+
 export default function SettingsView() {
   const { shortcuts, updateShortcut, resetShortcuts } = useShortcuts();
-  const [isResetting, setIsResetting] = useState(false);
   const [audioEnabled, setAudioEnabledState] = useState(true);
 
-  // Load audio preference on mount
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetText, setResetText] = useState("");
+  const [resetError, setResetError] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     const loadAudioSetting = async () => {
       const saved = await getSetting("audioEnabled");
@@ -33,6 +41,15 @@ export default function SettingsView() {
     loadAudioSetting();
   }, []);
 
+  useEffect(() => {
+    if (showResetModal) {
+      const timer = setTimeout(() => {
+        inputRef.current?.focus();
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [showResetModal]);
+
   const toggleAudio = async () => {
     const newValue = !audioEnabled;
     setAudioEnabledState(newValue);
@@ -40,44 +57,48 @@ export default function SettingsView() {
     await setSetting("audioEnabled", newValue.toString());
   };
 
-  const handleResetData = async () => {
-    const confirmed = window.confirm(
-      "Are you sure? This will permanently delete all your reading sessions and margins. This action cannot be undone.",
-    );
+  const handleOpenResetModal = () => {
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+    setShowResetModal(true);
+    setResetText("");
+    setResetError(false);
+  };
 
-    if (confirmed) {
+  const handleConfirmReset = async () => {
+    if (resetText === REQUIRED_RESET_PHRASE) {
       setIsResetting(true);
       try {
-        // 1. Reset the SQLite database
         await resetDatabase();
-
-        // 2. Clear the active PDF from the file system
         if (window.electronAPI) {
           await window.electronAPI.clearActivePdf();
         }
-
-        alert("All data has been cleared.");
         window.location.reload();
       } catch (error) {
         console.error("Failed to reset database:", error);
-        alert("Failed to reset data. Check console for details.");
-      } finally {
         setIsResetting(false);
       }
+    } else {
+      setResetError(true);
+      setResetText("");
+      inputRef.current?.focus();
     }
   };
 
+  // لیبل‌های دقیق برای شرت‌کیبوردها
   const shortcutLabels: Record<ShortcutAction, string> = {
     pen: "Select Pen Tool",
     eraser: "Select Eraser Tool",
-    toggleSession: "Start / End Session",
+    startSession: "Start Session",
+    endSession: "End Session",
     openPdf: "Open PDF File",
     clearPage: "Clear Current Page Drawings",
     clearAll: "Clear All Pages Drawings",
   };
 
   return (
-    <div className="flex flex-col h-full w-full bg-[#09090b] p-10 overflow-y-auto">
+    <div className="flex flex-col h-full w-full bg-[#09090b] p-10 overflow-y-auto relative">
       <div className="max-w-3xl w-full mx-auto">
         <header className="mb-10">
           <Typography
@@ -203,18 +224,16 @@ export default function SettingsView() {
                   as="span"
                   className="text-[#52525b]"
                 >
-                  Permanently delete all your reading sessions and margins.
+                  Permanently delete all your reading sessions, margins, and
+                  library history.
                 </Typography>
               </div>
               <button
-                onClick={handleResetData}
-                disabled={isResetting}
-                className="flex items-center gap-2 px-4 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 border border-rose-500/20 rounded-lg transition-colors disabled:opacity-50"
+                onClick={handleOpenResetModal}
+                className="flex items-center gap-2 px-4 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 border border-rose-500/20 rounded-lg transition-colors"
               >
                 <Trash2 size={16} />
-                <Typography variant="button">
-                  {isResetting ? "Resetting..." : "Reset Data"}
-                </Typography>
+                <Typography variant="button">Reset Data</Typography>
               </button>
             </div>
           </section>
@@ -242,6 +261,104 @@ export default function SettingsView() {
           </section>
         </div>
       </div>
+
+      {/* Custom Reset Confirmation Modal */}
+      {showResetModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-md transition-all duration-300">
+          <div className="bg-[#121214] border border-rose-500/30 p-8 rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] w-full max-w-lg flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">
+            <div className="w-16 h-16 bg-rose-500/10 rounded-full flex items-center justify-center mb-6 shadow-inner">
+              <AlertTriangle size={32} className="text-rose-500" />
+            </div>
+
+            <Typography
+              variant="pageTitle"
+              as="h2"
+              className="text-[#fafafa] mb-2 font-semibold tracking-tight"
+            >
+              Are you absolutely sure?
+            </Typography>
+
+            <Typography
+              variant="body"
+              as="p"
+              className="text-[#a1a1aa] mb-8 max-w-sm leading-relaxed"
+            >
+              This will permanently delete all your sessions, drawings, and
+              library history. This action{" "}
+              <strong className="text-rose-400">cannot be undone</strong>.
+              <br />
+              <br />
+              To confirm, type the following phrase in{" "}
+              <strong>ALL CAPITAL LETTERS</strong>:
+            </Typography>
+
+            <div className="w-full bg-[#09090b] border border-[#27272a] rounded-2xl p-4 mb-6 flex items-center justify-center gap-3 select-none">
+              <Lock size={16} className="text-[#52525b]" />
+              <span className="text-[#fafafa] font-mono text-base font-bold tracking-widest">
+                {REQUIRED_RESET_PHRASE}
+              </span>
+            </div>
+
+            <input
+              ref={inputRef}
+              type="text"
+              value={resetText}
+              onChange={(e) => {
+                setResetText(e.target.value);
+                setResetError(false);
+              }}
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                if (e.key === "Enter" && !isResetting) handleConfirmReset();
+              }}
+              onPaste={(e) => e.preventDefault()}
+              onCopy={(e) => e.preventDefault()}
+              onCut={(e) => e.preventDefault()}
+              onDrop={(e) => e.preventDefault()}
+              onContextMenu={(e) => e.preventDefault()}
+              autoComplete="off"
+              spellCheck="false"
+              disabled={isResetting}
+              placeholder="TYPE HERE (UPPERCASE ONLY)"
+              autoFocus
+              className={`w-full px-5 py-4 rounded-xl bg-[#18181b] border-2 outline-none transition-all text-center text-lg font-mono tracking-widest shadow-sm ${
+                resetError
+                  ? "border-rose-400 focus:border-rose-500 text-rose-600 placeholder-rose-300 animate-shake"
+                  : "border-[#27272a] focus:border-rose-500/50 text-[#fafafa] uppercase"
+              }`}
+            />
+            {resetError && (
+              <Typography
+                variant="caption"
+                className="text-rose-500 mt-3 font-medium animate-pulse"
+              >
+                Incorrect. You must type it exactly as shown.
+              </Typography>
+            )}
+
+            <div className="flex gap-4 w-full mt-8">
+              <button
+                onClick={() => setShowResetModal(false)}
+                disabled={isResetting}
+                className="flex-1 px-4 py-3.5 rounded-xl bg-[#18181b] text-[#a1a1aa] hover:text-[#fafafa] hover:bg-[#27272a] border border-[#27272a] transition-all font-medium active:scale-[0.98] disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmReset}
+                disabled={isResetting}
+                className="flex-1 px-4 py-3.5 rounded-xl bg-rose-500 text-white hover:bg-rose-600 transition-all font-medium shadow-[0_0_15px_rgba(244,63,94,0.3)] active:scale-[0.98] disabled:opacity-50 flex justify-center items-center"
+              >
+                {isResetting ? (
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                ) : (
+                  "Delete Everything"
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

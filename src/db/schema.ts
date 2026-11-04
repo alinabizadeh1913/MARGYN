@@ -24,3 +24,11 @@ export const settings = sqliteTable("settings", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),
 });
+
+// === NEW TABLE FOR RECENT FILES ===
+export const recentFiles = sqliteTable("recent_files", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  filePath: text("file_path").notNull(),
+  lastOpened: integer("last_opened").notNull(),
+});

@@ -12,5 +12,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
   loadActivePdf: () => ipcRenderer.invoke("pdf-load-active"),
   saveActivePdf: (data) => ipcRenderer.invoke("pdf-save-active", data),
   clearActivePdf: () => ipcRenderer.invoke("pdf-clear-active"),
+
+  // Updated openPdf returns metadata now
   openPdf: () => ipcRenderer.invoke("dialog:openPdf"),
+
+  // Library
+  loadLibraryFile: (path) => ipcRenderer.invoke("library-load-file", path),
+  deleteLibraryFile: (path) => ipcRenderer.invoke("library-delete-file", path),
+  clearLibraryFolder: () => ipcRenderer.invoke("library-clear-all"),
 });

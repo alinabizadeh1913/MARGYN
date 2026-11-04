@@ -11,6 +11,16 @@ import { getSetting, setSetting } from "@/db";
 
 type ToolType = "pen" | "eraser";
 
+export const DEFAULT_COLORS = [
+  "#ffffff", // 1 - White
+  "#000000", // 2 - Black
+  "#38bdf8", // 3 - Sky Blue
+  "#f43f5e", // 4 - Rose
+  "#10b981", // 5 - Emerald
+  "#f59e0b", // 6 - Amber
+  "#a855f7", // 7 - Purple
+];
+
 interface ToolContextType {
   tool: ToolType;
   setTool: (t: ToolType) => void;
@@ -20,6 +30,8 @@ interface ToolContextType {
   updateCustomColor: (c: string) => Promise<void>;
   size: number;
   setSize: (s: number) => void;
+  canvasBg: string;
+  setCanvasBg: (c: string) => void;
 }
 
 const ToolContext = createContext<ToolContextType | undefined>(undefined);
@@ -27,10 +39,33 @@ const ToolContext = createContext<ToolContextType | undefined>(undefined);
 export function ToolProvider({ children }: { children: ReactNode }) {
   const [tool, setTool] = useState<ToolType>("pen");
   const [color, setColor] = useState("#38bdf8");
-  const [customColor, setCustomColor] = useState("#ff00ff"); // Default fallback
-  const [size, setSize] = useState(12); // Default size changed to match new range
+  const [customColor, setCustomColor] = useState("#ff00ff");
+  const [size, setSize] = useState(12);
+  const [canvasBg, setCanvasBgState] = useState("#ffffff");
 
-  // Load custom color on mount
+  // رنگ‌ها با کلیدهای 1 تا 7
+  useEffect(() => {
+    const handleColorKeys = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable
+      )
+        return;
+
+      if (e.code.startsWith("Digit")) {
+        const num = parseInt(e.code.replace("Digit", ""), 10);
+        if (num >= 1 && num <= DEFAULT_COLORS.length) {
+          setTool("pen");
+          setColor(DEFAULT_COLORS[num - 1]);
+        }
+      }
+    };
+    window.addEventListener("keydown", handleColorKeys);
+    return () => window.removeEventListener("keydown", handleColorKeys);
+  }, []);
+
   useEffect(() => {
     const loadSettings = async () => {
       try {
@@ -38,6 +73,8 @@ export function ToolProvider({ children }: { children: ReactNode }) {
         if (savedColor) {
           setCustomColor(savedColor);
         }
+        const savedBg = localStorage.getItem("margyn_canvas_bg");
+        if (savedBg) setCanvasBgState(savedBg);
       } catch (err) {
         console.error("Failed to load settings", err);
       }
@@ -47,8 +84,13 @@ export function ToolProvider({ children }: { children: ReactNode }) {
 
   const updateCustomColor = async (newColor: string) => {
     setCustomColor(newColor);
-    setColor(newColor); // Automatically select the new custom color
+    setColor(newColor);
     await setSetting("customColor", newColor);
+  };
+
+  const setCanvasBg = (newColor: string) => {
+    setCanvasBgState(newColor);
+    localStorage.setItem("margyn_canvas_bg", newColor);
   };
 
   return (
@@ -62,6 +104,8 @@ export function ToolProvider({ children }: { children: ReactNode }) {
         updateCustomColor,
         size,
         setSize,
+        canvasBg,
+        setCanvasBg,
       }}
     >
       {children}

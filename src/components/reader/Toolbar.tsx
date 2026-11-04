@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
-import { Pen, Eraser, Trash2, ChevronDown, Palette } from "lucide-react";
-import { useTool } from "@/providers/ToolProvider";
+import { Pen, Eraser, Trash2, ChevronDown } from "lucide-react";
+import { useTool, DEFAULT_COLORS } from "@/providers/ToolProvider";
 import Typography from "@/typography";
 
 interface ToolbarProps {
@@ -32,19 +32,8 @@ export default function Toolbar({
   const sizeMenuRef = useRef<HTMLDivElement>(null);
   const colorInputRef = useRef<HTMLInputElement>(null);
 
-  const defaultColors = [
-    "#38bdf8",
-    "#f43f5e",
-    "#10b981",
-    "#f59e0b",
-    "#a855f7",
-    "#fafafa",
-  ];
-
-  // Generate even sizes from 8 to 36
   const sizes = Array.from({ length: 15 }, (_, i) => 8 + i * 2);
 
-  // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -65,83 +54,87 @@ export default function Toolbar({
   }, []);
 
   return (
-    <div className="w-full max-w-fit flex flex-wrap items-center justify-center gap-1 p-1.5 rounded-xl bg-[#18181b] border border-[#27272a] shadow-lg">
+    <div className="w-full max-w-fit flex flex-wrap items-center justify-center gap-2 p-2 rounded-2xl bg-black/40 backdrop-blur-xl border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
       {/* Tools */}
-      <div className="flex items-center gap-1 pr-2 border-r border-[#27272a]">
+      <div className="flex items-center gap-1 pr-3 border-r border-white/10">
         <button
           onClick={() => setTool("pen")}
-          className={`p-1.5 rounded-lg transition-colors ${tool === "pen" ? "bg-[#27272a] text-[#fafafa]" : "text-[#a1a1aa] hover:text-[#fafafa]"}`}
+          className={`relative p-2 rounded-xl transition-all duration-300 ${tool === "pen" ? "bg-[#38bdf8]/20 text-[#38bdf8]" : "text-[#a1a1aa] hover:text-white hover:bg-white/10"}`}
         >
-          <Pen size={16} />
+          {tool === "pen" && (
+            <div className="absolute inset-0 bg-[#38bdf8]/30 blur-md rounded-xl" />
+          )}
+          <Pen size={18} className="relative z-10" />
         </button>
         <button
           onClick={() => setTool("eraser")}
-          className={`p-1.5 rounded-lg transition-colors ${tool === "eraser" ? "bg-[#27272a] text-[#fafafa]" : "text-[#a1a1aa] hover:text-[#fafafa]"}`}
+          className={`relative p-2 rounded-xl transition-all duration-300 ${tool === "eraser" ? "bg-rose-500/20 text-rose-400" : "text-[#a1a1aa] hover:text-white hover:bg-white/10"}`}
         >
-          <Eraser size={16} />
+          {tool === "eraser" && (
+            <div className="absolute inset-0 bg-rose-500/30 blur-md rounded-xl" />
+          )}
+          <Eraser size={18} className="relative z-10" />
         </button>
       </div>
 
       {/* Colors */}
       {tool === "pen" && (
-        <div className="flex items-center gap-1.5 px-2 border-r border-[#27272a]">
-          {defaultColors.map((c) => (
-            <button
-              key={c}
-              onClick={() => setColor(c)}
-              className={`w-5 h-5 rounded-full transition-transform ${color === c ? "scale-110 ring-2 ring-offset-2 ring-offset-[#18181b] ring-[#fafafa]" : "hover:scale-110"}`}
-              style={{ backgroundColor: c }}
-            />
+        <div className="flex items-center gap-2.5 px-3 border-r border-white/10">
+          {DEFAULT_COLORS.map((c, i) => (
+            <div key={c} className="relative group flex flex-col items-center">
+              <button
+                onClick={() => setColor(c)}
+                className={`w-5 h-5 rounded-full transition-all duration-300 ${color === c ? "scale-125 ring-2 ring-white/80 ring-offset-2 ring-offset-[#09090b]" : "hover:scale-110 opacity-70 hover:opacity-100 border border-white/20"}`}
+                style={{ backgroundColor: c }}
+              />
+              <span className="absolute -bottom-4 text-[9px] text-white/40 group-hover:text-white/80 transition-colors">
+                {i + 1}
+              </span>
+            </div>
           ))}
 
           {/* Custom Color Picker */}
-          <div className="relative flex items-center justify-center w-5 h-5 ml-1">
+          <div className="relative flex items-center justify-center w-5 h-5 ml-1 group flex-col">
             <input
               ref={colorInputRef}
               type="color"
               value={customColor}
               onChange={(e) => updateCustomColor(e.target.value)}
-              className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-              title="Pick custom color"
+              className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-20"
             />
             <button
               onClick={() => colorInputRef.current?.click()}
-              className={`w-full h-full rounded-full flex items-center justify-center transition-transform ${color === customColor ? "scale-110 ring-2 ring-offset-2 ring-offset-[#18181b] ring-[#fafafa]" : "hover:scale-110"}`}
+              className={`w-full h-full rounded-full flex items-center justify-center transition-all duration-300 z-10 border border-white/20 ${color === customColor ? "scale-125 ring-2 ring-white/80 ring-offset-2 ring-offset-[#09090b]" : "hover:scale-110 opacity-70 hover:opacity-100"}`}
               style={{
                 background: `conic-gradient(from 0deg, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)`,
-                border:
-                  color === customColor
-                    ? "2px solid transparent"
-                    : "2px solid #27272a",
               }}
-              title="Custom Color"
             >
-              <div className="w-2.5 h-2.5 bg-[#18181b] rounded-full" />
+              <div className="w-2.5 h-2.5 bg-[#09090b] rounded-full" />
             </button>
           </div>
         </div>
       )}
 
       {/* Size Dropdown */}
-      <div
-        className="relative px-2 border-r border-[#27272a]"
-        ref={sizeMenuRef}
-      >
+      <div className="relative px-3 border-r border-white/10" ref={sizeMenuRef}>
         <button
           onClick={() => setIsSizeMenuOpen(!isSizeMenuOpen)}
-          className="flex items-center gap-1.5 p-1.5 rounded-lg text-[#a1a1aa] hover:text-[#fafafa] hover:bg-[#27272a] transition-colors"
+          className="flex items-center gap-2 p-1.5 rounded-lg text-[#a1a1aa] hover:text-white hover:bg-white/10 transition-colors"
         >
-          <Typography variant="chip" as="span" className="w-5 text-center">
-            {size}
-          </Typography>
+          <div className="w-6 h-6 flex items-center justify-center">
+            <div
+              className="rounded-full bg-white transition-all"
+              style={{ width: Math.min(size, 20), height: Math.min(size, 20) }}
+            />
+          </div>
           <ChevronDown
-            size={12}
-            className={`transition-transform ${isSizeMenuOpen ? "rotate-180" : ""}`}
+            size={14}
+            className={`transition-transform duration-300 ${isSizeMenuOpen ? "rotate-180" : ""}`}
           />
         </button>
 
         {isSizeMenuOpen && (
-          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-24 max-h-60 overflow-y-auto bg-[#18181b] border border-[#27272a] rounded-lg shadow-xl flex flex-col z-50 py-1">
+          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-4 w-16 max-h-64 overflow-y-auto bg-black/60 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl flex flex-col z-50 py-2 scrollbar-hide">
             {sizes.map((s) => (
               <button
                 key={s}
@@ -149,9 +142,12 @@ export default function Toolbar({
                   setSize(s);
                   setIsSizeMenuOpen(false);
                 }}
-                className={`px-4 py-1.5 text-center text-sm transition-colors ${size === s ? "text-[#38bdf8] font-bold bg-[#27272a]" : "text-[#a1a1aa] hover:text-[#fafafa] hover:bg-[#27272a]"}`}
+                className={`py-2 flex items-center justify-center transition-all ${size === s ? "bg-white/10" : "hover:bg-white/5"}`}
               >
-                {s}
+                <div
+                  className={`rounded-full ${size === s ? "bg-[#38bdf8] shadow-[0_0_10px_#38bdf8]" : "bg-[#a1a1aa]"}`}
+                  style={{ width: s / 1.5, height: s / 1.5 }}
+                />
               </button>
             ))}
           </div>
@@ -162,21 +158,20 @@ export default function Toolbar({
       <div className="relative pl-1" ref={deleteMenuRef}>
         <button
           onClick={() => setIsDeleteMenuOpen(!isDeleteMenuOpen)}
-          className={`flex items-center gap-1 p-1.5 rounded-lg transition-colors ${isDeleteMenuOpen ? "bg-rose-500/10 text-rose-500" : "text-rose-500/70 hover:text-rose-500 hover:bg-rose-500/10"}`}
-          title="Delete options"
+          className={`flex items-center gap-1.5 p-2 rounded-xl transition-all duration-300 ${isDeleteMenuOpen ? "bg-rose-500/20 text-rose-400" : "text-[#a1a1aa] hover:text-rose-400 hover:bg-rose-500/10"}`}
         >
           <Trash2 size={16} />
           <ChevronDown size={12} />
         </button>
 
         {isDeleteMenuOpen && (
-          <div className="absolute top-full right-0 mt-2 w-48 bg-[#18181b] border border-[#27272a] rounded-lg shadow-xl overflow-hidden flex flex-col z-50">
+          <div className="absolute top-full right-0 mt-4 w-48 bg-black/60 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl overflow-hidden flex flex-col z-50">
             <button
               onClick={() => {
                 onClearCurrentPage();
                 setIsDeleteMenuOpen(false);
               }}
-              className="px-4 py-2 text-left text-sm text-[#a1a1aa] hover:text-[#fafafa] hover:bg-[#27272a] transition-colors"
+              className="px-4 py-3 text-left text-sm text-[#a1a1aa] hover:text-white hover:bg-white/10 transition-colors"
             >
               Clear Current Page
             </button>
@@ -185,7 +180,7 @@ export default function Toolbar({
                 onClearAllPages();
                 setIsDeleteMenuOpen(false);
               }}
-              className="px-4 py-2 text-left text-sm text-rose-500 hover:bg-rose-500/10 transition-colors"
+              className="px-4 py-3 text-left text-sm text-rose-400 hover:bg-rose-500/20 transition-colors"
             >
               Clear All Pages
             </button>
