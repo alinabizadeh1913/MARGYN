@@ -1,4 +1,11 @@
-const { app, BrowserWindow, protocol, net, ipcMain, dialog } = require("electron");
+const {
+  app,
+  BrowserWindow,
+  protocol,
+  net,
+  ipcMain,
+  dialog,
+} = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { pathToFileURL } = require("url");
@@ -10,7 +17,13 @@ const devUrl = process.env.ELECTRON_START_URL || "http://localhost:3000";
 protocol.registerSchemesAsPrivileged([
   {
     scheme: "app",
-    privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, bypassCSP: true },
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      bypassCSP: true,
+    },
   },
 ]);
 
@@ -19,7 +32,6 @@ protocol.registerSchemesAsPrivileged([
 // =========================================================
 const getDbPath = () => path.join(app.getPath("userData"), "margyn.db");
 
-// IPC Handlers for Database Persistence
 ipcMain.handle("db-load", async () => {
   const dbPath = getDbPath();
   if (fs.existsSync(dbPath)) {
@@ -34,9 +46,20 @@ ipcMain.handle("db-save", async (event, dataBuffer) => {
   return true;
 });
 
-// =========================================================
-// IPC Handler for PDF File Dialog
-// =========================================================
+ipcMain.handle("db-load-wasm", async () => {
+  const possiblePaths = [
+    path.join(__dirname, "..", "public", "sql-wasm.wasm"),
+    path.join(__dirname, "..", "out", "sql-wasm.wasm"),
+  ];
+
+  for (const wasmPath of possiblePaths) {
+    if (fs.existsSync(wasmPath)) {
+      return fs.readFileSync(wasmPath);
+    }
+  }
+  throw new Error("Could not find sql-wasm.wasm in public or out directory.");
+});
+
 ipcMain.handle("dialog:openPdf", async () => {
   const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
     properties: ["openFile"],
@@ -44,18 +67,16 @@ ipcMain.handle("dialog:openPdf", async () => {
   });
 
   if (canceled || filePaths.length === 0) return null;
-
-  // Read the file and return as a Buffer
-  const filePath = filePaths[0];
-  return fs.readFileSync(filePath);
+  return fs.readFileSync(filePaths[0]);
 });
 
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
-    minWidth: 1024,
-    minHeight: 768,
+    // INCREASED MINIMUM SIZE: Prevents UI from breaking and ensures enough space for both panels
+    minWidth: 1280,
+    minHeight: 800,
     titleBarStyle: "hidden",
     titleBarOverlay: { color: "#09090b", symbolColor: "#a1a1aa", height: 40 },
     backgroundColor: "#09090b",
@@ -69,9 +90,16 @@ function createWindow() {
     show: false,
   });
 
+  // Maximize window on startup
+  mainWindow.maximize();
+
   if (!isDev) {
     mainWindow.webContents.on("before-input-event", (event, input) => {
-      if (input.key === "F12" || (input.control && input.shift && input.key === "I") || (input.meta && input.alt && input.key === "I")) {
+      if (
+        input.key === "F12" ||
+        (input.control && input.shift && input.key === "I") ||
+        (input.meta && input.alt && input.key === "I")
+      ) {
         event.preventDefault();
       }
     });
@@ -84,7 +112,9 @@ function createWindow() {
   }
 
   mainWindow.once("ready-to-show", () => mainWindow.show());
-  mainWindow.on("closed", () => { mainWindow = null; });
+  mainWindow.on("closed", () => {
+    mainWindow = null;
+  });
 }
 
 function registerCustomProtocol() {
@@ -92,7 +122,10 @@ function registerCustomProtocol() {
     const url = request.url.replace("app://", "");
     const [host, ...rest] = url.split("/");
     let filePath = path.join(__dirname, "..", "out", ...rest);
-    if (host === "bundle" && (rest.length === 0 || rest[rest.length - 1] === "")) {
+    if (
+      host === "bundle" &&
+      (rest.length === 0 || rest[rest.length - 1] === "")
+    ) {
       filePath = path.join(__dirname, "..", "out", "index.html");
     }
     if (!path.extname(filePath) && !filePath.endsWith("index.html")) {

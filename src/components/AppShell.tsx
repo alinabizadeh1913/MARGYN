@@ -1,14 +1,22 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import Typography from "@/typography";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
-  const isElectron = typeof window !== "undefined" && window.electronAPI;
+  // State to prevent SSR hydration mismatch
+  const [isElectron, setIsElectron] = useState(false);
+
+  useEffect(() => {
+    // Check for Electron environment only on the client side
+    if (typeof window !== "undefined" && window.electronAPI) {
+      setIsElectron(true);
+    }
+  }, []);
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden">
-      {/* Custom Titlebar for Electron */}
+      {/* Custom Titlebar for Electron (Only renders after client hydration) */}
       {isElectron && (
         <div
           className="h-[var(--titlebar-height)] w-full flex items-center justify-between bg-[#09090b] border-b border-[#27272a] select-none shrink-0 z-50"
@@ -36,7 +44,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               className="h-full px-4 hover:bg-[#27272a] text-[#a1a1aa] transition-colors"
             >
               <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                <rect x="0.5" y="0.5" width="9" height="9" stroke="currentColor" />
+                <rect
+                  x="0.5"
+                  y="0.5"
+                  width="9"
+                  height="9"
+                  stroke="currentColor"
+                />
               </svg>
             </button>
             <button
@@ -44,7 +58,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               className="h-full px-4 hover:bg-rose-600 text-[#a1a1aa] hover:text-white transition-colors"
             >
               <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                <path d="M1 1L9 9M9 1L1 9" stroke="currentColor" strokeWidth="1.5" />
+                <path
+                  d="M1 1L9 9M9 1L1 9"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                />
               </svg>
             </button>
           </div>

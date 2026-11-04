@@ -1,11 +1,14 @@
 /* =========================================================
    MARGYN — Audio Engine
-   ---------------------------------------------------------
-   Generates subtle, cinematic chimes using Web Audio API.
-   No external files required.
 ========================================================= */
 
 let audioCtx: AudioContext | null = null;
+let isAudioEnabled = true;
+
+// Export a way to toggle audio globally
+export const setAudioEnabled = (enabled: boolean) => {
+  isAudioEnabled = enabled;
+};
 
 function getContext() {
   if (!audioCtx) {
@@ -18,6 +21,7 @@ function getContext() {
 }
 
 function playTone(freq: number, startTime: number, duration: number, volume: number) {
+  if (!isAudioEnabled) return; // Block if disabled
   const ctx = getContext();
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
@@ -38,24 +42,16 @@ function playTone(freq: number, startTime: number, duration: number, volume: num
 
 export const playStartSound = () => {
   try {
-    const ctx = getContext();
-    // A rising, peaceful major arpeggio
     playTone(261.63, 0, 1.5, 0.1);    // C4
     playTone(329.63, 0.15, 1.5, 0.1); // E4
     playTone(392.00, 0.3, 2, 0.08);   // G4
-  } catch (e) {
-    console.error("Audio playback failed", e);
-  }
+  } catch (e) { console.error(e); }
 };
 
 export const playEndSound = () => {
   try {
-    const ctx = getContext();
-    // A gentle, descending resolution
     playTone(392.00, 0, 1.5, 0.1);    // G4
     playTone(329.63, 0.15, 1.5, 0.1); // E4
     playTone(261.63, 0.3, 2, 0.08);   // C4
-  } catch (e) {
-    console.error("Audio playback failed", e);
-  }
+  } catch (e) { console.error(e); }
 };

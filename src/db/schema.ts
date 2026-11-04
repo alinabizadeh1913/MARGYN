@@ -1,12 +1,5 @@
-import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
-
-/* =========================================================
-   MARGYN — Database Schema
-   ---------------------------------------------------------
-   Tracks sessions and margins without exposing numbers 
-   to the user interface.
-========================================================= */
 
 export const sessions = sqliteTable("sessions", {
   id: text("id").primaryKey(),
@@ -14,7 +7,7 @@ export const sessions = sqliteTable("sessions", {
   endTime: integer("end_time"),
   startPage: integer("start_page").notNull(),
   endPage: integer("end_page"),
-  pagesRead: integer("pages_read"), // Calculated only on end
+  pagesRead: integer("pages_read"),
   createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
@@ -22,6 +15,12 @@ export const drawings = sqliteTable("drawings", {
   id: text("id").primaryKey(),
   sessionId: text("session_id").references(() => sessions.id),
   pageNumber: integer("page_number").notNull(),
-  data: text("data").notNull(), // JSON stringified stroke data
+  target: text("target").notNull().default("margin"),
+  data: text("data").notNull(),
   createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const settings = sqliteTable("settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
 });

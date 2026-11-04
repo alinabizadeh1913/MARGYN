@@ -1,35 +1,171 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, memo } from "react";
 import * as pdfjsLib from "pdfjs-dist";
 import { useSession } from "@/providers/SessionProvider";
-import { Maximize, Upload, ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
+import {
+  Upload,
+  ZoomIn,
+  ZoomOut,
+  RotateCcw,
+  Maximize,
+  Minimize,
+  LayoutTemplate,
+  Rows,
+} from "lucide-react";
 import Typography from "@/typography";
+import PdfDrawingLayer from "./PdfDrawingLayer";
 
-// Initialize PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 
-export default function PdfViewer({ fileData }: { fileData: Uint8Array | null }) {
+// =========================================================
+// Lazy Rendered Pdf Page (Virtualization)
+// =========================================================
+const PdfPage = memo(
+  ({
+    pdfDoc,
+    pageNumber,
+    scale,
+    viewMode,
+  }: {
+    pdfDoc: pdfjsLib.PDFDocumentProxy;
+    pageNumber: number;
+    scale: number;
+    viewMode: "continuous" | "single";
+  }) => {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const [size, setSize] = useState({ width: 0, height: 0 });
+    const [isVisible, setIsVisible] = useState(false);
+    const [hasRendered, setHasRendered] = useState(false);
+
+    // Intersection Observer for Lazy Rendering (Only render pages near the viewport)
+    useEffect(() => {
+      if (!containerRef.current) return;
+      const observer = new IntersectionObserver(
+        ([entry]) => {
+          if (entry.isIntersecting) {
+            setIsVisible(true);
+            // Don't unobserve, we might want to render/unrender in future, but for now keep it rendered
+          } else {
+            setIsVisible(false);
+          }
+        },
+        { rootMargin: "1000px 0px" }, // Pre-load pages 1000px above and below viewport
+      );
+      observer.observe(containerRef.current);
+      return () => observer.disconnect();
+    }, []);
+
+    useEffect(() => {
+      if (!isVisible && hasRendered) return; // Don't re-render if it's already done and out of view
+      let isCancelled = false;
+
+      const renderPage = async () => {
+        try {
+          const page = await pdfDoc.getPage(pageNumber);
+          if (isCancelled) return;
+          const viewport = page.getViewport({ scale });
+          setSize({ width: viewport.width, height: viewport.height });
+
+          const canvas = canvasRef.current;
+          const context = canvas?.getContext("2d");
+          if (canvas && context) {
+            canvas.height = viewport.height;
+            canvas.width = viewport.width;
+            await page.render({ canvasContext: context, viewport }).promise;
+            setHasRendered(true);
+          }
+        } catch (error) {}
+      };
+
+      if (isVisible || !hasRendered) {
+        renderPage();
+      }
+      return () => {
+        isCancelled = true;
+      };
+    }, [pdfDoc, pageNumber, scale, isVisible, hasRendered]);
+
+    let wrapperClasses =
+      "shrink-0 shadow-2xl rounded-sm overflow-hidden bg-white relative transition-all duration-300 ease-in-out min-w-[700px] ";
+    wrapperClasses +=
+      viewMode === "single"
+        ? "w-full h-full flex flex-col items-center justify-center p-4"
+        : "mb-12";
+
+    return (
+      <div
+        ref={containerRef}
+        className={wrapperClasses}
+        data-page={pageNumber.toString()}
+      >
+        {/* Show skeleton until rendered */}
+        {!hasRendered && (
+          <div
+            style={{ width: size.width || 700, height: size.height || 990 }}
+            className="flex items-center justify-center text-[#a1a1aa] text-xs font-mono bg-zinc-100"
+          >
+            ...
+          </div>
+        )}
+
+        <div className={hasRendered ? "block" : "hidden"}>
+          <canvas ref={canvasRef} className="block" />
+          {size.width > 0 && (
+            <PdfDrawingLayer
+              pageNumber={pageNumber}
+              width={size.width}
+              height={size.height}
+            />
+          )}
+        </div>
+      </div>
+    );
+  },
+);
+PdfPage.displayName = "PdfPage";
+
+export default function PdfViewer({
+  fileData,
+}: {
+  fileData: Uint8Array | null;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const viewerRef = useRef<HTMLDivElement>(null);
   const { setCurrentPage } = useSession();
+
   const [pdfDoc, setPdfDoc] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
   const [scale, setScale] = useState(1.5);
+  const [viewMode, setViewMode] = useState<"continuous" | "single">(
+    "continuous",
+  );
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // Load the PDF from Uint8Array
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement)
+      viewerRef.current?.requestFullscreen().catch((err) => console.error(err));
+    else document.exitFullscreen();
+  };
+
+  useEffect(() => {
+    const handleFullscreenChange = () =>
+      setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () =>
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, []);
+
   useEffect(() => {
     if (!fileData) {
       setPdfDoc(null);
-      if (containerRef.current) containerRef.current.innerHTML = "";
       return;
     }
-
     const loadPdf = async () => {
       try {
-        // Ensure the data is a pure Uint8Array
         const safeData = new Uint8Array(fileData);
         const loadingTask = pdfjsLib.getDocument({ data: safeData });
-        const pdf = await loadingTask.promise;
-        setPdfDoc(pdf);
+        setPdfDoc(await loadingTask.promise);
       } catch (error) {
         console.error("Failed to load PDF:", error);
       }
@@ -37,62 +173,67 @@ export default function PdfViewer({ fileData }: { fileData: Uint8Array | null })
     loadPdf();
   }, [fileData]);
 
-  // Render all pages into the container
-  useEffect(() => {
-    if (!pdfDoc || !containerRef.current) return;
-
-    const renderPages = async () => {
-      const container = containerRef.current;
-      if (!container) return;
-      container.innerHTML = "";
-
-      for (let i = 1; i <= pdfDoc.numPages; i++) {
-        const page = await pdfDoc.getPage(i);
-        const viewport = page.getViewport({ scale });
-
-        const canvas = document.createElement("canvas");
-        const context = canvas.getContext("2d");
-        canvas.height = viewport.height;
-        canvas.width = viewport.width;
-        
-        const pageWrapper = document.createElement("div");
-        pageWrapper.className = "mb-8 shadow-2xl rounded-sm overflow-hidden bg-white";
-        pageWrapper.setAttribute("data-page", i.toString());
-        pageWrapper.appendChild(canvas);
-        
-        container.appendChild(pageWrapper);
-
-        if (context) {
-          await page.render({ canvasContext: context, viewport }).promise;
-        }
-      }
-    };
-
-    renderPages();
-  }, [pdfDoc, scale]);
-
-  // Anti-Obsession Logic: Silently track current page based on scroll
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-
     const handleScroll = () => {
       const pages = container.querySelectorAll("[data-page]");
       let currentVisiblePage = 1;
-
+      const containerRect = container.getBoundingClientRect();
+      const containerCenter = containerRect.top + containerRect.height / 2;
       pages.forEach((page) => {
         const rect = page.getBoundingClientRect();
-        if (rect.top <= window.innerHeight / 2 && rect.bottom >= window.innerHeight / 2) {
-          currentVisiblePage = parseInt(page.getAttribute("data-page") || "1", 10);
+        if (rect.top <= containerCenter && rect.bottom >= containerCenter) {
+          currentVisiblePage = parseInt(
+            page.getAttribute("data-page") || "1",
+            10,
+          );
         }
       });
-
       setCurrentPage(currentVisiblePage);
     };
-
-    container.addEventListener("scroll", handleScroll);
+    container.addEventListener("scroll", handleScroll, { passive: true });
+    setTimeout(handleScroll, 100);
     return () => container.removeEventListener("scroll", handleScroll);
-  }, [setCurrentPage]);
+  }, [setCurrentPage, pdfDoc, viewMode]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || viewMode !== "single") return;
+    let isScrolling = false;
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      if (isScrolling) return;
+      const direction = e.deltaY > 0 ? 1 : -1;
+      const pages = Array.from(
+        container.querySelectorAll("[data-page]"),
+      ) as HTMLElement[];
+      if (pages.length === 0) return;
+      isScrolling = true;
+      let currentIndex = 0,
+        minDistance = Infinity;
+      pages.forEach((page, index) => {
+        const distance = Math.abs(page.offsetTop - container.scrollTop);
+        if (distance < minDistance) {
+          minDistance = distance;
+          currentIndex = index;
+        }
+      });
+      const targetIndex = Math.max(
+        0,
+        Math.min(pages.length - 1, currentIndex + direction),
+      );
+      container.scrollTo({
+        top: pages[targetIndex].offsetTop,
+        behavior: "auto",
+      });
+      setTimeout(() => {
+        isScrolling = false;
+      }, 100);
+    };
+    container.addEventListener("wheel", handleWheel, { passive: false });
+    return () => container.removeEventListener("wheel", handleWheel);
+  }, [viewMode, pdfDoc]);
 
   if (!fileData) {
     return (
@@ -104,19 +245,26 @@ export default function PdfViewer({ fileData }: { fileData: Uint8Array | null })
           Read, don't count.
         </Typography>
         <Typography variant="body" as="p" className="text-[#a1a1aa] max-w-md">
-          Open a PDF to begin your session. No page numbers. No pressure. 
-          Just you and the text.
+          Open a PDF to begin your session. No page numbers. No pressure. Just
+          you and the text.
         </Typography>
       </div>
     );
   }
 
   return (
-    <div className="w-full h-full flex flex-col relative">
-      <div 
-        ref={containerRef} 
-        className="flex-1 overflow-y-auto p-12 flex flex-col items-center scroll-smooth"
-        style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+    <div
+      ref={viewerRef}
+      className="w-full h-full flex flex-col bg-[#18181b] relative overflow-hidden"
+    >
+      <div
+        ref={containerRef}
+        className={`flex-1 overflow-auto flex flex-col items-center ${viewMode === "single" ? "overflow-hidden" : "p-8 scroll-smooth"}`}
+        style={{
+          scrollbarWidth: "none",
+          msOverflowStyle: "none",
+          scrollBehavior: "auto",
+        }}
       >
         {!pdfDoc && (
           <div className="mt-20">
@@ -125,28 +273,57 @@ export default function PdfViewer({ fileData }: { fileData: Uint8Array | null })
             </Typography>
           </div>
         )}
+
+        {/* We map over all page numbers, but only visible ones actually render the canvas */}
+        {pdfDoc &&
+          Array.from({ length: pdfDoc.numPages }, (_, i) => (
+            <PdfPage
+              key={i + 1}
+              pdfDoc={pdfDoc}
+              pageNumber={i + 1}
+              scale={scale}
+              viewMode={viewMode}
+            />
+          ))}
       </div>
 
-      {/* Floating Tools (Zoom, Fullscreen) */}
-      <div className="absolute top-6 right-6 flex flex-col gap-2">
-        <button 
-          onClick={() => setScale(prev => Math.min(3, prev + 0.2))}
+      <div className="absolute top-6 right-6 flex flex-col gap-2 z-50">
+        <button
+          onClick={toggleFullscreen}
           className="p-2 bg-[#18181b]/80 backdrop-blur-md border border-[#27272a] rounded-md text-[#a1a1aa] hover:text-[#fafafa] transition-colors shadow-lg"
-          title="Zoom In"
+        >
+          {isFullscreen ? <Minimize size={16} /> : <Maximize size={16} />}
+        </button>
+        <button
+          onClick={() =>
+            setViewMode((prev) =>
+              prev === "continuous" ? "single" : "continuous",
+            )
+          }
+          className="p-2 bg-[#18181b]/80 backdrop-blur-md border border-[#27272a] rounded-md text-[#a1a1aa] hover:text-[#fafafa] transition-colors shadow-lg"
+        >
+          {viewMode === "continuous" ? (
+            <LayoutTemplate size={16} />
+          ) : (
+            <Rows size={16} />
+          )}
+        </button>
+        <div className="h-px w-full bg-[#27272a] my-1" />
+        <button
+          onClick={() => setScale((prev) => Math.min(3, prev + 0.2))}
+          className="p-2 bg-[#18181b]/80 backdrop-blur-md border border-[#27272a] rounded-md text-[#a1a1aa] hover:text-[#fafafa] transition-colors shadow-lg"
         >
           <ZoomIn size={16} />
         </button>
-        <button 
-          onClick={() => setScale(prev => Math.max(0.8, prev - 0.2))}
+        <button
+          onClick={() => setScale((prev) => Math.max(0.8, prev - 0.2))}
           className="p-2 bg-[#18181b]/80 backdrop-blur-md border border-[#27272a] rounded-md text-[#a1a1aa] hover:text-[#fafafa] transition-colors shadow-lg"
-          title="Zoom Out"
         >
           <ZoomOut size={16} />
         </button>
-        <button 
+        <button
           onClick={() => setScale(1.5)}
           className="p-2 bg-[#18181b]/80 backdrop-blur-md border border-[#27272a] rounded-md text-[#a1a1aa] hover:text-[#fafafa] transition-colors shadow-lg"
-          title="Reset Zoom"
         >
           <RotateCcw size={16} />
         </button>

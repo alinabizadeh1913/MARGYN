@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Database APIs
   loadDb: () => ipcRenderer.invoke("db-load"),
   saveDb: (data) => ipcRenderer.invoke("db-save", data),
+  loadWasm: () => ipcRenderer.invoke("db-load-wasm"),
   // File APIs
   openPdf: () => ipcRenderer.invoke("dialog:openPdf"),
 });

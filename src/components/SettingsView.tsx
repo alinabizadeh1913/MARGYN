@@ -1,12 +1,44 @@
 "use client";
 
-import React, { useState } from "react";
-import { Shield, Trash2, Info, Volume2 } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import {
+  Shield,
+  Trash2,
+  Info,
+  Volume2,
+  Keyboard,
+  RotateCcw,
+} from "lucide-react";
 import Typography from "@/typography";
-import { resetDatabase } from "@/db";
+import { resetDatabase, getSetting, setSetting } from "@/db";
+import { useShortcuts, ShortcutAction } from "@/providers/ShortcutProvider";
+import { setAudioEnabled } from "@/lib/audio";
+import ShortcutInput from "./ShortcutInput";
 
 export default function SettingsView() {
+  const { shortcuts, updateShortcut, resetShortcuts } = useShortcuts();
   const [isResetting, setIsResetting] = useState(false);
+  const [audioEnabled, setAudioEnabledState] = useState(true);
+
+  // Load audio preference on mount
+  useEffect(() => {
+    const loadAudioSetting = async () => {
+      const saved = await getSetting("audioEnabled");
+      if (saved !== null) {
+        const isEnabled = saved === "true";
+        setAudioEnabledState(isEnabled);
+        setAudioEnabled(isEnabled);
+      }
+    };
+    loadAudioSetting();
+  }, []);
+
+  const toggleAudio = async () => {
+    const newValue = !audioEnabled;
+    setAudioEnabledState(newValue);
+    setAudioEnabled(newValue);
+    await setSetting("audioEnabled", newValue.toString());
+  };
 
   const handleResetData = async () => {
     const confirmed = window.confirm(
@@ -18,7 +50,7 @@ export default function SettingsView() {
       try {
         await resetDatabase();
         alert("All data has been cleared.");
-        window.location.reload(); // Reload to ensure clean state
+        window.location.reload();
       } catch (error) {
         console.error("Failed to reset database:", error);
         alert("Failed to reset data. Check console for details.");
@@ -26,6 +58,15 @@ export default function SettingsView() {
         setIsResetting(false);
       }
     }
+  };
+
+  const shortcutLabels: Record<ShortcutAction, string> = {
+    pen: "Select Pen Tool",
+    eraser: "Select Eraser Tool",
+    toggleSession: "Start / End Session",
+    openPdf: "Open PDF File",
+    clearPage: "Clear Current Page Drawings",
+    clearAll: "Clear All Pages Drawings",
   };
 
   return (
@@ -57,7 +98,7 @@ export default function SettingsView() {
                 Preferences
               </Typography>
             </div>
-            <div className="flex items-center justify-between py-3 border-b border-[#27272a]/50">
+            <div className="flex items-center justify-between py-3">
               <div>
                 <Typography
                   variant="label"
@@ -74,9 +115,62 @@ export default function SettingsView() {
                   Play subtle sounds when starting or ending a session.
                 </Typography>
               </div>
-              <div className="w-10 h-6 bg-emerald-500/20 rounded-full relative cursor-pointer border border-emerald-500/30">
-                <div className="absolute right-1 top-1 w-4 h-4 bg-emerald-500 rounded-full" />
+              <button
+                onClick={toggleAudio}
+                className={`w-10 h-6 rounded-full relative transition-colors border ${
+                  audioEnabled
+                    ? "bg-emerald-500/20 border-emerald-500/30"
+                    : "bg-[#27272a] border-[#3f3f46]"
+                }`}
+              >
+                <div
+                  className={`absolute top-1 w-4 h-4 rounded-full transition-all ${
+                    audioEnabled
+                      ? "right-1 bg-emerald-500"
+                      : "left-1 bg-[#71717a]"
+                  }`}
+                />
+              </button>
+            </div>
+          </section>
+
+          {/* Keyboard Shortcuts */}
+          <section className="bg-[#121214] border border-[#27272a] rounded-2xl p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <Keyboard size={20} className="text-[#a1a1aa]" />
+                <Typography
+                  variant="cardTitle"
+                  as="h2"
+                  className="text-[#fafafa]"
+                >
+                  Keyboard Shortcuts
+                </Typography>
               </div>
+              <button
+                onClick={resetShortcuts}
+                className="flex items-center gap-2 px-3 py-1.5 text-xs text-[#a1a1aa] hover:text-[#fafafa] bg-[#18181b] border border-[#27272a] rounded-md transition-colors"
+              >
+                <RotateCcw size={14} />
+                Reset to Defaults
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {(Object.keys(shortcuts) as ShortcutAction[]).map((action) => (
+                <div
+                  key={action}
+                  className="flex items-center justify-between py-2 border-b border-[#27272a]/50 last:border-0"
+                >
+                  <Typography variant="body" className="text-[#a1a1aa]">
+                    {shortcutLabels[action]}
+                  </Typography>
+                  <ShortcutInput
+                    value={shortcuts[action]}
+                    onChange={(val) => updateShortcut(action, val)}
+                  />
+                </div>
+              ))}
             </div>
           </section>
 
