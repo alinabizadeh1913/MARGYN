@@ -9,6 +9,10 @@ declare global {
       loadDb: () => Promise<Uint8Array | null>;
       saveDb: (data: Uint8Array) => Promise<boolean>;
       loadWasm: () => Promise<Uint8Array>;
+
+      // ✅ کلید رمزنگاری per-install
+      getCryptoKey: () => Promise<string>;
+
       loadActivePdf: () => Promise<Uint8Array | null>;
       saveActivePdf: (data: Uint8Array) => Promise<boolean>;
       clearActivePdf: () => Promise<boolean>;
@@ -24,7 +28,6 @@ declare global {
         libraryPath: string;
       } | null>;
 
-      // ✅ تایپ جدید برای خواندن مسیر فایل درگ شده
       getPathForFile: (file: File) => string;
 
       onOpenPdfFile: (callback: (filePath: string) => void) => () => void;
@@ -38,11 +41,17 @@ declare global {
         data: any,
         defaultDir: string | null,
       ) => Promise<string | null>;
+
       saveProject: (
         data: any,
         filePath: string | null,
+        defaultDir: string | null,
       ) => Promise<string | null>;
-      importProject: () => Promise<{ data: any; filePath: string } | null>;
+
+      importProject: (
+        defaultDir?: string | null,
+      ) => Promise<{ data: any; filePath: string } | null>;
+
       readProjectFromPath: (
         filePath: string,
       ) => Promise<{ data: any; filePath: string } | null>;

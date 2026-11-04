@@ -11,14 +11,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
   saveDb: (data) => ipcRenderer.invoke("db-save", data),
   loadWasm: () => ipcRenderer.invoke("db-load-wasm"),
 
+  // ✅ کلید رمزنگاری per-install
+  getCryptoKey: () => ipcRenderer.invoke("crypto-get-key"),
+
   loadActivePdf: () => ipcRenderer.invoke("pdf-load-active"),
-  saveActivePdf: (data) => ipcRenderer.invoke("pdf-save-active", data),
+  saveActivePdf: (data) => ipcRenderer.invoke("pdf-save-active"),
   clearActivePdf: () => ipcRenderer.invoke("pdf-clear-active"),
   openPdf: () => ipcRenderer.invoke("dialog:openPdf"),
 
   readPdfPath: (path) => ipcRenderer.invoke("pdf:read-path", path),
-
-  // ✅ API جدید برای گرفتن مسیر فایل درگ شده
   getPathForFile: (file) => webUtils.getPathForFile(file),
 
   onOpenPdfFile: (callback) => {
@@ -34,9 +35,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
   selectDirectory: () => ipcRenderer.invoke("dialog:selectDirectory"),
   exportProject: (data, defaultDir) =>
     ipcRenderer.invoke("project:export", { data, defaultDir }),
-  saveProject: (data, filePath) =>
-    ipcRenderer.invoke("project:save", { data, filePath }),
-  importProject: () => ipcRenderer.invoke("project:import"),
+
+  saveProject: (data, filePath, defaultDir) =>
+    ipcRenderer.invoke("project:save", { data, filePath, defaultDir }),
+
+  importProject: (defaultDir) =>
+    ipcRenderer.invoke("project:import", { defaultDir }),
+
   readProjectFromPath: (filePath) =>
     ipcRenderer.invoke("project:read-from-path", filePath),
 

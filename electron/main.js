@@ -6,20 +6,21 @@ const {
   ipcMain,
   dialog,
   Menu,
+  safeStorage,
 } = require("electron");
 const path = require("path");
 const fs = require("fs");
+const crypto = require("crypto");
 const { pathToFileURL } = require("url");
 
 let mainWindow;
 let forceQuit = false;
 let pendingFilePath = null;
-let isRecordingShortcut = false; // ✅ استیت جدید برای زمان ضبط شورت‌کات
+let isRecordingShortcut = false;
 
 const isDev = process.env.NODE_ENV === "development";
 const devUrl = process.env.ELECTRON_START_URL || "http://localhost:3000";
 
-// ===== Single Instance Lock =====
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
   app.quit();
@@ -42,7 +43,6 @@ if (!gotTheLock) {
     }
   });
 }
-// ================================
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -61,6 +61,7 @@ const getDbPath = () => path.join(app.getPath("userData"), "margyn.db");
 const getPdfPath = () =>
   path.join(app.getPath("userData"), "active_document.pdf");
 const getLibraryPath = () => path.join(app.getPath("userData"), "library");
+const getKeyPath = () => path.join(app.getPath("userData"), "margyn.key");
 
 if (!fs.existsSync(getLibraryPath())) {
   try {
@@ -68,12 +69,41 @@ if (!fs.existsSync(getLibraryPath())) {
   } catch (e) {}
 }
 
-// ✅ گوش دادن به وضعیت ضبط شورت‌کات
+// ✅ کلید رمزنگاری per-install با safeStorage
+ipcMain.handle("crypto-get-key", async () => {
+  try {
+    const keyPath = getKeyPath();
+
+    if (fs.existsSync(keyPath)) {
+      const stored = fs.readFileSync(keyPath);
+      if (safeStorage.isEncryptionAvailable()) {
+        try {
+          return safeStorage.decryptString(stored);
+        } catch (e) {
+          console.error("Failed to decrypt key, regenerating:", e);
+        }
+      } else {
+        return stored.toString("utf-8");
+      }
+    }
+
+    const newKey = crypto.randomBytes(32).toString("hex");
+    const toStore = safeStorage.isEncryptionAvailable()
+      ? safeStorage.encryptString(newKey)
+      : Buffer.from(newKey, "utf-8");
+
+    fs.writeFileSync(keyPath, toStore);
+    return newKey;
+  } catch (error) {
+    console.error("crypto-get-key failed:", error);
+    return crypto.randomBytes(32).toString("hex");
+  }
+});
+
 ipcMain.on("set-recording-shortcut", (event, isRecording) => {
   isRecordingShortcut = isRecording;
 });
 
-// Window Controls
 ipcMain.on("window-minimize", () => {
   if (mainWindow) mainWindow.minimize();
 });
@@ -95,15 +125,19 @@ ipcMain.on("app-force-close", () => {
   if (mainWindow) mainWindow.close();
 });
 
-// DB & PDF Core
 ipcMain.handle("db-load", async () => {
   const dbPath = getDbPath();
   return fs.existsSync(dbPath) ? new Uint8Array(fs.readFileSync(dbPath)) : null;
 });
 ipcMain.handle("db-save", async (event, dataBuffer) => {
   if (!dataBuffer) return false;
-  fs.writeFileSync(getDbPath(), Buffer.from(dataBuffer));
-  return true;
+  try {
+    await fs.promises.writeFile(getDbPath(), Buffer.from(dataBuffer));
+    return true;
+  } catch (e) {
+    console.error("db-save failed:", e);
+    return false;
+  }
 });
 ipcMain.handle("db-load-wasm", async () => {
   const paths = [
@@ -122,8 +156,12 @@ ipcMain.handle("pdf-load-active", async () => {
 });
 ipcMain.handle("pdf-save-active", async (event, dataBuffer) => {
   if (!dataBuffer) return false;
-  fs.writeFileSync(getPdfPath(), Buffer.from(dataBuffer));
-  return true;
+  try {
+    await fs.promises.writeFile(getPdfPath(), Buffer.from(dataBuffer));
+    return true;
+  } catch (e) {
+    return false;
+  }
 });
 ipcMain.handle("pdf-clear-active", async () => {
   const pdfPath = getPdfPath();
@@ -131,7 +169,6 @@ ipcMain.handle("pdf-clear-active", async () => {
   return true;
 });
 
-// Open PDF Dialog (Manual Open)
 ipcMain.handle("dialog:openPdf", async () => {
   try {
     const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
@@ -144,15 +181,13 @@ ipcMain.handle("dialog:openPdf", async () => {
     const originalName = path.basename(originalPath);
     const dataBuffer = fs.readFileSync(originalPath);
 
-    const uniqueId =
-      Date.now().toString() + Math.random().toString(36).substring(2, 9);
+    const hash = crypto.createHash("md5").update(dataBuffer).digest("hex");
     const safeName = originalName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
-    const libraryFilePath = path.join(
-      getLibraryPath(),
-      `${uniqueId}-${safeName}`,
-    );
+    const libraryFilePath = path.join(getLibraryPath(), `${hash}-${safeName}`);
 
-    fs.writeFileSync(libraryFilePath, dataBuffer);
+    if (!fs.existsSync(libraryFilePath)) {
+      fs.writeFileSync(libraryFilePath, dataBuffer);
+    }
 
     return {
       data: new Uint8Array(dataBuffer),
@@ -164,7 +199,6 @@ ipcMain.handle("dialog:openPdf", async () => {
   }
 });
 
-// Read PDF from Windows Command Line Path
 ipcMain.handle("pdf:read-path", async (event, filePath) => {
   try {
     if (!fs.existsSync(filePath)) return null;
@@ -172,15 +206,13 @@ ipcMain.handle("pdf:read-path", async (event, filePath) => {
     const originalName = path.basename(filePath);
     const dataBuffer = fs.readFileSync(filePath);
 
-    const uniqueId =
-      Date.now().toString() + Math.random().toString(36).substring(2, 9);
+    const hash = crypto.createHash("md5").update(dataBuffer).digest("hex");
     const safeName = originalName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
-    const libraryFilePath = path.join(
-      getLibraryPath(),
-      `${uniqueId}-${safeName}`,
-    );
+    const libraryFilePath = path.join(getLibraryPath(), `${hash}-${safeName}`);
 
-    fs.writeFileSync(libraryFilePath, dataBuffer);
+    if (!fs.existsSync(libraryFilePath)) {
+      fs.writeFileSync(libraryFilePath, dataBuffer);
+    }
 
     return {
       data: new Uint8Array(dataBuffer),
@@ -192,7 +224,6 @@ ipcMain.handle("pdf:read-path", async (event, filePath) => {
   }
 });
 
-// Library
 ipcMain.handle("library-load-file", async (event, filePath) => {
   try {
     if (fs.existsSync(filePath))
@@ -215,7 +246,6 @@ ipcMain.handle("library-clear-all", async () => {
   return true;
 });
 
-// ===== PROJECT EXPORT/IMPORT =====
 ipcMain.handle("dialog:selectDirectory", async () => {
   const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
     properties: ["openDirectory", "createDirectory"],
@@ -249,36 +279,47 @@ ipcMain.handle("project:export", async (event, { data, defaultDir }) => {
   }
 });
 
-ipcMain.handle("project:save", async (event, { data, filePath }) => {
-  try {
-    let targetPath = filePath;
-    if (!targetPath) {
-      let defaultName = "Untitled Project.margyn";
-      if (data && data.fileName) {
-        defaultName = data.fileName.replace(/\.[^/.]+$/, "") + ".margyn";
+ipcMain.handle(
+  "project:save",
+  async (event, { data, filePath, defaultDir }) => {
+    try {
+      let targetPath = filePath;
+      if (!targetPath) {
+        let defaultName = "Untitled Project.margyn";
+        if (data && data.fileName) {
+          defaultName = data.fileName.replace(/\.[^/.]+$/, "") + ".margyn";
+        }
+
+        const defaultPath = defaultDir
+          ? path.join(defaultDir, defaultName)
+          : path.join(app.getPath("documents"), defaultName);
+
+        const { canceled, filePath: savePath } = await dialog.showSaveDialog(
+          mainWindow,
+          {
+            title: "Save Margyn Project",
+            defaultPath: defaultPath,
+            filters: [{ name: "Margyn Project", extensions: ["margyn"] }],
+          },
+        );
+        if (canceled || !savePath) return null;
+        targetPath = savePath;
       }
-
-      const { canceled, filePath: savePath } = await dialog.showSaveDialog(
-        mainWindow,
-        {
-          title: "Save Margyn Project",
-          defaultPath: path.join(app.getPath("documents"), defaultName),
-          filters: [{ name: "Margyn Project", extensions: ["margyn"] }],
-        },
-      );
-      if (canceled || !savePath) return null;
-      targetPath = savePath;
+      fs.writeFileSync(targetPath, JSON.stringify(data, null, 2));
+      return targetPath;
+    } catch (error) {
+      return null;
     }
-    fs.writeFileSync(targetPath, JSON.stringify(data, null, 2));
-    return targetPath;
-  } catch (error) {
-    return null;
-  }
-});
+  },
+);
 
-ipcMain.handle("project:import", async () => {
+ipcMain.handle("project:import", async (event, { defaultDir }) => {
   try {
+    const defaultPath = defaultDir ? defaultDir : app.getPath("documents");
+
     const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+      title: "Import Margyn Project",
+      defaultPath: defaultPath,
       properties: ["openFile"],
       filters: [{ name: "Margyn Project", extensions: ["margyn"] }],
     });
@@ -312,7 +353,6 @@ ipcMain.handle("project:read-from-path", async (event, filePath) => {
     return null;
   }
 });
-// ========================================================
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -336,13 +376,11 @@ function createWindow() {
   mainWindow.maximize();
 
   mainWindow.webContents.on("before-input-event", (event, input) => {
-    // ✅ مهار کامل Ctrl+W برای جلوگیری از بسته شدن نرم‌افزار
     if (
       input.type === "keyDown" &&
       (input.control || input.meta) &&
       input.key.toLowerCase() === "w"
     ) {
-      // اگر در حال ضبط شورت‌کات در تنظیمات هستیم، اجازه بده به React برسه
       if (!isRecordingShortcut) {
         event.preventDefault();
         mainWindow.webContents.send("shortcut-triggered", "ctrl+w");
@@ -350,7 +388,6 @@ function createWindow() {
       return;
     }
 
-    // بلاک کردن دکمه‌های DevTools
     if (
       input.key === "F12" ||
       (input.control &&
@@ -429,6 +466,14 @@ app.whenReady().then(() => {
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+});
+
+// ✅ اطمینان از flush نهایی قبل از بستن
+app.on("before-quit", (e) => {
+  if (!forceQuit && mainWindow) {
+    e.preventDefault();
+    mainWindow.webContents.send("app-close-request");
+  }
 });
 
 app.on("window-all-closed", () => {

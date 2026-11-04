@@ -17,6 +17,7 @@ export type ShortcutAction =
   | "endSession"
   | "openPdf"
   | "closePdf"
+  | "switchTab" // ✅ اضافه شد
   | "clearPage"
   | "clearAll"
   | "toggleMargin"
@@ -31,6 +32,7 @@ export const DEFAULT_SHORTCUTS: Record<ShortcutAction, string> = {
   endSession: "ctrl+shift+enter",
   openPdf: "ctrl+o",
   closePdf: "ctrl+w",
+  switchTab: "ctrl+tab", // ✅ اضافه شد
   clearPage: "delete",
   clearAll: "shift+delete",
   toggleMargin: "ctrl+b",
@@ -56,7 +58,6 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
     useState<Record<ShortcutAction, string>>(DEFAULT_SHORTCUTS);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // ✅ استیت جدید برای کنترل فعال بودن شورت‌کات‌ها
   const [isShortcutsEnabled, setIsShortcutsEnabled] = useState(true);
   const isShortcutsEnabledRef = useRef(isShortcutsEnabled);
 
@@ -126,7 +127,7 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
     if (!isLoaded) return;
 
     const cleanup = window.electronAPI?.onShortcutTriggered((shortcut) => {
-      if (!isShortcutsEnabledRef.current) return; // ✅
+      if (!isShortcutsEnabledRef.current) return;
       window.dispatchEvent(
         new CustomEvent("margyn-shortcut", { detail: shortcut }),
       );
@@ -141,7 +142,6 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
     if (!isLoaded) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      // ✅ اگر شورت‌کات‌ها غیرفعال باشن، هیچ کاری نکن
       if (!isShortcutsEnabledRef.current) return;
 
       const target = e.target as HTMLElement;
@@ -163,6 +163,8 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
       else if (key === "Backspace") key = "backspace";
       else if (key === "Space") key = "space";
       else if (key === "Enter") key = "enter";
+      else if (key === "Tab")
+        key = "tab"; // ✅ اضافه شد
       else key = key.toLowerCase();
 
       if (
@@ -193,6 +195,7 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
       if (
         pressedString === "ctrl+o" ||
         pressedString === "ctrl+w" ||
+        pressedString === "ctrl+tab" || // ✅ اضافه شد
         pressedString === "ctrl+enter" ||
         pressedString === "ctrl+shift+enter" ||
         pressedString === "ctrl+b" ||

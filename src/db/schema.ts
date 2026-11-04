@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
 
 export const sessions = sqliteTable("sessions", {
@@ -16,7 +16,7 @@ export const sessions = sqliteTable("sessions", {
 export const drawings = sqliteTable("drawings", {
   id: text("id").primaryKey(),
   sessionId: text("session_id").references(() => sessions.id),
-  filePath: text("file_path"), // ✅ استقلال داده‌ای
+  filePath: text("file_path"),
   pageNumber: integer("page_number").notNull(),
   target: text("target").notNull().default("margin"),
   data: text("data").notNull(),
@@ -35,4 +35,6 @@ export const recentFiles = sqliteTable("recent_files", {
   lastOpened: integer("last_opened").notNull(),
   completed: integer("completed").default(0),
   projectPath: text("project_path"),
+  lastPage: integer("last_page").default(1),
+  scale: real("scale").default(1.3), // ✅ ستون جدید
 });

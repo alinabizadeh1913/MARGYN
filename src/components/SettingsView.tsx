@@ -34,6 +34,16 @@ export default function SettingsView() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && showResetModal) {
+        setShowResetModal(false);
+      }
+    };
+    window.addEventListener("keydown", handleEsc);
+    return () => window.removeEventListener("keydown", handleEsc);
+  }, [showResetModal]);
+
+  useEffect(() => {
     const loadSettings = async () => {
       const savedAudio = await getSetting("audioEnabled");
       if (savedAudio !== null) {
@@ -113,7 +123,8 @@ export default function SettingsView() {
     startSession: "Start Session",
     endSession: "End Session",
     openPdf: "Open PDF File",
-    closePdf: "Close Current PDF/Project", // ✅ اضافه شد
+    closePdf: "Close Current Tab",
+    switchTab: "Switch Tab", // ✅ اضافه شد
     clearPage: "Clear Current Page Drawings",
     clearAll: "Clear All Pages Drawings",
     toggleMargin: "Toggle Margin Sidebar",
@@ -139,7 +150,6 @@ export default function SettingsView() {
         </header>
 
         <div className="space-y-6">
-          {/* Preferences (Audio) */}
           <section className="bg-[#121214] border border-[#27272a] rounded-2xl p-6">
             <div className="flex items-center gap-3 mb-4">
               <Volume2 size={20} className="text-[#a1a1aa]" />
@@ -187,7 +197,6 @@ export default function SettingsView() {
             </div>
           </section>
 
-          {/* Storage Preferences */}
           <section className="bg-[#121214] border border-[#27272a] rounded-2xl p-6">
             <div className="flex items-center gap-3 mb-4">
               <FolderOpen size={20} className="text-[#a1a1aa]" />
@@ -225,7 +234,6 @@ export default function SettingsView() {
             </div>
           </section>
 
-          {/* Application Control */}
           <section className="bg-[#121214] border border-[#27272a] rounded-2xl p-6">
             <div className="flex items-center gap-3 mb-4">
               <RefreshCw size={20} className="text-[#a1a1aa]" />
@@ -264,7 +272,6 @@ export default function SettingsView() {
             </div>
           </section>
 
-          {/* Keyboard Shortcuts */}
           <section className="bg-[#121214] border border-[#27272a] rounded-2xl p-6">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
@@ -304,7 +311,6 @@ export default function SettingsView() {
             </div>
           </section>
 
-          {/* Danger Zone */}
           <section className="bg-[#121214] border border-rose-500/20 rounded-2xl p-6">
             <div className="flex items-center gap-3 mb-4">
               <Shield size={20} className="text-rose-500" />
@@ -340,7 +346,6 @@ export default function SettingsView() {
             </div>
           </section>
 
-          {/* About */}
           <section className="bg-[#121214] border border-[#27272a] rounded-2xl p-6">
             <div className="flex items-center gap-3 mb-4">
               <Info size={20} className="text-[#a1a1aa]" />
@@ -366,7 +371,6 @@ export default function SettingsView() {
         </div>
       </div>
 
-      {/* Custom Reset Confirmation Modal */}
       {showResetModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-md transition-all duration-300">
           <div className="bg-[#121214] border border-rose-500/30 p-8 rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] w-full max-w-lg flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">

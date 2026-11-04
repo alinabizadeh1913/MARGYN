@@ -8,6 +8,9 @@ import HistoryView from "./HistoryView";
 import SettingsView from "./SettingsView";
 import LibraryView from "./LibraryView";
 import SplashScreen from "./SplashScreen";
+import TabsBar, { OpenTab } from "./TabsBar";
+import TimerDisplay from "./reader/TimerDisplay";
+import { encryptData, decryptData } from "@/lib/crypto";
 import {
   Play,
   Square,
@@ -27,6 +30,7 @@ import {
   Upload,
   Save,
   AlertTriangle,
+  Clock,
 } from "lucide-react";
 import { SessionProvider, useSession } from "@/providers/SessionProvider";
 import { ToolProvider, useTool } from "@/providers/ToolProvider";
@@ -34,7 +38,8 @@ import {
   ShortcutProvider,
   useShortcut,
   useShortcuts,
-} from "@/providers/ShortcutProvider"; // ✅ useShortcuts اضافه شد
+} from "@/providers/ShortcutProvider";
+import { TimeProvider } from "@/providers/TimeProvider";
 import Typography from "@/typography";
 import {
   clearPageDrawings,
@@ -68,19 +73,19 @@ function AppContent() {
     setCurrentPage,
     syncSessionWithFile,
     isSessionSyncing,
+    timerEndsAt,
+    startTimer,
   } = useSession();
   const { setTool } = useTool();
-
-  // ✅ گرفتن تابع فعال/غیرفعال کردن شورت‌کات‌ها
   const { setShortcutsEnabled } = useShortcuts();
 
   const [view, setView] = useState<
     "reader" | "library" | "history" | "settings"
   >("reader");
-  const [pdfData, setPdfData] = useState<Uint8Array | null>(null);
-  const [isMarginOpen, setIsMarginOpen] = useState(false);
-  const [isAppReady, setIsAppReady] = useState(false);
+  const [openTabs, setOpenTabs] = useState<OpenTab[]>([]);
+  const [activeTabId, setActiveTabId] = useState<string | null>(null);
 
+  const [pdfData, setPdfData] = useState<Uint8Array | null>(null);
   const [activeFileName, setActiveFileName] = useState<string>("");
   const [activeFilePath, setActiveFilePath] = useState<string>("");
   const [activeProjectPath, setActiveProjectPath] = useState<string | null>(
@@ -89,6 +94,11 @@ function AppContent() {
   const [totalPages, setTotalPages] = useState(0);
   const [isCurrentPdfCompleted, setIsCurrentPdfCompleted] = useState(false);
 
+  const [activeScale, setActiveScale] = useState(1.3);
+  const [hasText, setHasText] = useState(true);
+
+  const [isMarginOpen, setIsMarginOpen] = useState(false);
+  const [isAppReady, setIsAppReady] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const [showEndModal, setShowEndModal] = useState(false);
   const [showCloseModal, setShowCloseModal] = useState(false);
@@ -105,16 +115,160 @@ function AppContent() {
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
 
   const undoStack = useRef<any[][]>([]);
+  const isInitRef = useRef(false);
+  const scaleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // ✅ فعال/غیرفعال کردن شورت‌کات‌ها بر اساس صفحه فعلی
+  const stateRef = useRef({
+    requestSafeAction: (action: () => void) => {},
+    loadProjectFromPath: async (path: string) => {},
+    loadPdfFile: async (
+      data: any,
+      name: string,
+      path: string,
+      comp: any,
+      proj: any,
+    ) => {},
+    activeTabId: null as string | null,
+    isDirty: false,
+    activeProjectPath: null as string | null,
+    pdfData: null as any,
+    openTabs: [] as OpenTab[],
+  });
+
   useEffect(() => {
     setShortcutsEnabled(view === "reader");
   }, [view, setShortcutsEnabled]);
+
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (showCloseModal) {
+          setShowCloseModal(false);
+          setPendingAction(null);
+        } else if (showEndModal) setShowEndModal(false);
+        else if (showBackwardErrorModal) setShowBackwardErrorModal(false);
+        else if (showCongratsModal) setShowCongratsModal(false);
+      }
+    };
+    window.addEventListener("keydown", handleEsc);
+    return () => window.removeEventListener("keydown", handleEsc);
+  }, [showCloseModal, showEndModal, showBackwardErrorModal, showCongratsModal]);
+
+  const handleScaleChange = useCallback(
+    (newScale: number) => {
+      setActiveScale(newScale);
+      if (activeTabId) {
+        setOpenTabs((prev) =>
+          prev.map((t) =>
+            t.id === activeTabId ? { ...t, scale: newScale } : t,
+          ),
+        );
+      }
+
+      if (scaleTimeoutRef.current) clearTimeout(scaleTimeoutRef.current);
+      scaleTimeoutRef.current = setTimeout(async () => {
+        if (activeFilePath) {
+          try {
+            const db = await getDb();
+            await db
+              .update(recentFiles)
+              .set({ scale: newScale })
+              .where(eq(recentFiles.filePath, activeFilePath));
+            await saveDb();
+          } catch (e) {}
+        }
+      }, 500);
+    },
+    [activeTabId, activeFilePath],
+  );
+
+  useEffect(() => {
+    if (!activeFilePath || currentPage < 1) return;
+    const saveLastPage = async () => {
+      try {
+        const db = await getDb();
+        await db
+          .update(recentFiles)
+          .set({ lastPage: currentPage })
+          .where(eq(recentFiles.filePath, activeFilePath));
+        await saveDb();
+      } catch (e) {}
+    };
+    saveLastPage();
+  }, [currentPage, activeFilePath]);
+
+  useEffect(() => {
+    const activeTab = openTabs.find((t) => t.id === activeTabId);
+    if (activeTab) {
+      setPdfData(activeTab.pdfData);
+      setActiveFileName(activeTab.name);
+      setActiveFilePath(activeTab.filePath);
+      setActiveProjectPath(activeTab.projectPath);
+      setTotalPages(activeTab.totalPages);
+      setIsCurrentPdfCompleted(activeTab.isCompleted);
+      setIsDirty(activeTab.isDirty);
+      setActiveScale(activeTab.scale || 1.3);
+    } else if (!activeTabId) {
+      setPdfData(null);
+      setActiveFileName("");
+      setActiveFilePath("");
+      setActiveProjectPath(null);
+      setTotalPages(0);
+      setIsCurrentPdfCompleted(false);
+      setIsDirty(false);
+      setActiveScale(1.3);
+      setHasText(true);
+    }
+  }, [activeTabId, openTabs]);
+
+  useEffect(() => {
+    syncSessionWithFile(activeFilePath);
+  }, [activeFilePath, syncSessionWithFile]);
+
+  useEffect(() => {
+    if (!isAppReady) return;
+    const saveTabsToDb = async () => {
+      const tabsData = openTabs.map((t) => ({
+        id: t.id,
+        name: t.name,
+        filePath: t.filePath,
+        projectPath: t.projectPath,
+        totalPages: t.totalPages,
+        currentPage: t.currentPage,
+        isCompleted: t.isCompleted,
+        scale: t.scale,
+      }));
+      await setSetting("openTabsState", JSON.stringify(tabsData));
+      await setSetting("activeTabId", activeTabId || "");
+    };
+    saveTabsToDb();
+  }, [openTabs, activeTabId, isAppReady]);
 
   const showToast = (message: string, type: "success" | "error") => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
   };
+
+  useEffect(() => {
+    const handleSaveError = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      showToast(detail || "Failed to save drawing.", "error");
+    };
+    window.addEventListener("margyn-save-error", handleSaveError);
+    return () =>
+      window.removeEventListener("margyn-save-error", handleSaveError);
+  }, []);
+
+  useEffect(() => {
+    const handleNoText = () => {
+      showToast(
+        "No text found to highlight in this area. Please draw over PDF text.",
+        "error",
+      );
+    };
+    window.addEventListener("margyn-no-text", handleNoText);
+    return () => window.removeEventListener("margyn-no-text", handleNoText);
+  }, []);
 
   const requestSafeAction = (action: () => void) => {
     if (isDirty || (!activeProjectPath && pdfData)) {
@@ -132,29 +286,7 @@ function AppContent() {
     completed: number,
     projectPath: string | null = null,
   ) => {
-    if (isActive && sessionId) {
-      try {
-        const db = await getDb();
-        await db
-          .update(sessions)
-          .set({ lastPage: currentPage })
-          .where(eq(sessions.id, sessionId));
-        await saveDb(true);
-      } catch (e) {}
-    }
-
-    setCurrentPage(1);
-    setPdfData(uint8Data);
-    setActiveFileName(name);
-    setActiveFilePath(path);
-    setIsCurrentPdfCompleted(completed === 1);
-
-    const syncPromise = syncSessionWithFile(path);
-
-    await window.electronAPI?.saveActivePdf(uint8Data);
-
     let finalProjectPath = projectPath;
-
     if (!finalProjectPath) {
       const db = await getDb();
       const fileRecord = (
@@ -168,28 +300,82 @@ function AppContent() {
       }
     }
 
-    setActiveProjectPath(finalProjectPath);
-
     if (finalProjectPath) {
       await updateRecentFileProjectPath(path, finalProjectPath);
     }
-
     await setSetting("activeFilePath", path);
-    await syncPromise;
+    await window.electronAPI?.saveActivePdf(uint8Data);
 
-    setView("reader");
+    const existingTab = openTabs.find((t) => t.filePath === path);
+
+    if (existingTab) {
+      setActiveTabId(existingTab.id);
+      setPdfData(existingTab.pdfData);
+      setActiveFileName(existingTab.name);
+      setActiveFilePath(existingTab.filePath);
+      setActiveProjectPath(existingTab.projectPath);
+      setTotalPages(existingTab.totalPages);
+      setIsCurrentPdfCompleted(existingTab.isCompleted);
+      setIsDirty(existingTab.isDirty);
+      setActiveScale(existingTab.scale || 1.3);
+      setView("reader");
+      return;
+    }
+
+    const db = await getDb();
+    const fileRecord = (
+      await db.select().from(recentFiles).where(eq(recentFiles.filePath, path))
+    )[0];
+    const initialScale = fileRecord?.scale || 1.3;
+
+    const newTabId = Date.now().toString();
+    const newTab: OpenTab = {
+      id: newTabId,
+      name,
+      filePath: path,
+      pdfData: uint8Data,
+      projectPath: finalProjectPath,
+      isDirty: false,
+      totalPages: 0,
+      currentPage: 1,
+      isCompleted: completed === 1,
+      scale: initialScale,
+    };
+
+    setOpenTabs((prev) => [...prev, newTab]);
+
+    setActiveTabId(newTabId);
+    setPdfData(uint8Data);
+    setActiveFileName(name);
+    setActiveFilePath(path);
+    setActiveProjectPath(finalProjectPath);
+    setTotalPages(0);
+    setIsCurrentPdfCompleted(completed === 1);
     setIsDirty(false);
+    setActiveScale(initialScale);
+    setView("reader");
+  };
+
+  stateRef.current = {
+    requestSafeAction,
+    loadProjectFromPath: async (path: string) => {},
+    loadPdfFile,
+    activeTabId,
+    isDirty,
+    activeProjectPath,
+    pdfData,
+    openTabs,
   };
 
   const handleOpenPdf = useCallback(() => {
-    requestSafeAction(async () => {
+    stateRef.current.requestSafeAction(async () => {
       if (window.electronAPI) {
         try {
           const result = await window.electronAPI.openPdf();
           if (result && result.data) {
             const record = await addRecentFile(result.name, result.libraryPath);
             if (record)
-              await loadPdfFile(
+              await stateRef.current.loadPdfFile(
                 new Uint8Array(result.data),
                 record.name,
                 record.filePath,
@@ -200,140 +386,160 @@ function AppContent() {
         } catch (e) {}
       }
     });
-  }, [
-    isDirty,
-    activeProjectPath,
-    syncSessionWithFile,
-    isActive,
-    sessionId,
-    currentPage,
-  ]);
+  }, []);
 
-  const handleSelectLibraryFile = useCallback(
-    (filePath: string) => {
-      requestSafeAction(async () => {
-        if (window.electronAPI) {
-          try {
-            const data = await window.electronAPI.loadLibraryFile(filePath);
-            if (data) {
-              const db = await getDb();
-              const record = (
-                await db
-                  .select()
-                  .from(recentFiles)
-                  .where(eq(recentFiles.filePath, filePath))
-              )[0];
+  const handleSelectLibraryFile = useCallback((filePath: string) => {
+    stateRef.current.requestSafeAction(async () => {
+      if (window.electronAPI) {
+        try {
+          const data = await window.electronAPI.loadLibraryFile(filePath);
+          if (data) {
+            const db = await getDb();
+            const record = (
+              await db
+                .select()
+                .from(recentFiles)
+                .where(eq(recentFiles.filePath, filePath))
+            )[0];
 
-              let finalName = record?.name;
-              if (!finalName) {
-                const baseName = filePath.split(/[/\\]/).pop() || "";
-                finalName =
-                  baseName.split("-").slice(1).join("-") || "Untitled Document";
-              }
-
-              await loadPdfFile(
-                new Uint8Array(data),
-                finalName,
-                filePath,
-                record?.completed || 0,
-                record?.projectPath || null,
-              );
+            let finalName = record?.name;
+            if (!finalName) {
+              const baseName = filePath.split(/[/\\]/).pop() || "";
+              finalName =
+                baseName.split("-").slice(1).join("-") || "Untitled Document";
             }
-          } catch (e) {}
-        }
-      });
-    },
-    [
-      isDirty,
-      activeProjectPath,
-      syncSessionWithFile,
-      isActive,
-      sessionId,
-      currentPage,
-    ],
-  );
 
-  const handleClosePdf = useCallback(() => {
-    if (!pdfData) return;
-    requestSafeAction(async () => {
-      setPdfData(null);
-      setActiveFileName("");
-      setActiveFilePath("");
-      setActiveProjectPath(null);
-      setIsDirty(false);
-      setTotalPages(0);
-      setIsCurrentPdfCompleted(false);
-      setCurrentPage(1);
-      setView("reader");
-
-      try {
-        if (window.electronAPI) {
-          await window.electronAPI.clearActivePdf();
-        }
-        await setSetting("activeFilePath", "");
-        await syncSessionWithFile("");
-      } catch (error) {
-        console.error("Failed to close PDF:", error);
+            await stateRef.current.loadPdfFile(
+              new Uint8Array(data),
+              finalName,
+              filePath,
+              record?.completed || 0,
+              record?.projectPath || null,
+            );
+          }
+        } catch (e) {}
       }
     });
-  }, [
-    pdfData,
-    isDirty,
-    activeProjectPath,
-    syncSessionWithFile,
-    setCurrentPage,
-  ]);
+  }, []);
 
-  useShortcut("closePdf", handleClosePdf);
+  // ✅ handleCloseTab: هر تب dirty (فعال یا غیرفعال) اول activate، بعد مودال
+  const handleCloseTab = useCallback(
+    (e: React.MouseEvent, tabId: string) => {
+      e.stopPropagation();
+      const tabToClose = openTabs.find((t) => t.id === tabId);
+      if (!tabToClose) return;
 
-  const loadProjectFromPath = useCallback(
-    async (filePath: string) => {
-      if (!window.electronAPI) return;
-      try {
-        const result = await window.electronAPI.readProjectFromPath(filePath);
-        if (!result) {
-          showToast("Failed to read project file.", "error");
-          return;
-        }
+      const hasUnsaved =
+        tabToClose.isDirty || (!tabToClose.projectPath && tabToClose.pdfData);
 
-        const { data: projectData, filePath: actualPath } = result;
-        const db = await getDb();
-        const existing = await db
-          .select()
-          .from(recentFiles)
-          .where(eq(recentFiles.projectPath, actualPath));
-
-        const defaultName =
-          actualPath
-            .split(/[/\\]/)
-            .pop()
-            ?.replace(".margyn", "")
-            .replace(".pdf", "") || "Imported Project";
-        const displayName = projectData.fileName || defaultName;
-
-        let record;
-        let pdfBytes;
-
-        if (existing.length > 0) {
-          record = existing[0];
-          const existingPdf = await window.electronAPI.loadLibraryFile(
-            record.filePath,
-          );
-          if (existingPdf) {
-            pdfBytes = new Uint8Array(existingPdf);
+      const doClose = () => {
+        setOpenTabs((prev) => {
+          const remaining = prev.filter((t) => t.id !== tabId);
+          if (remaining.length > 0) {
+            setActiveTabId(remaining[remaining.length - 1].id);
           } else {
-            pdfBytes = Uint8Array.from(
-              Buffer.from(projectData.fileBase64, "base64"),
-            );
-            await window.electronAPI.saveActivePdf(pdfBytes);
-            const newFakePath =
-              "imported-" + Date.now() + "-" + displayName + ".pdf";
-            record = await addRecentFile(displayName, newFakePath, actualPath);
+            setActiveTabId(null);
+            setPdfData(null);
+            setActiveFileName("");
+            setActiveFilePath("");
+            setActiveProjectPath(null);
+            setTotalPages(0);
+            setIsCurrentPdfCompleted(false);
+            setIsDirty(false);
+            setActiveScale(1.3);
+            setHasText(true);
+            setSetting("activeFilePath", "");
+            window.electronAPI?.clearActivePdf();
           }
-          await db
-            .update(recentFiles)
-            .set({ lastOpened: Date.now(), name: displayName })
-            .where(eq(recentFiles.id, record.id));
+          return remaining;
+        });
+      };
+
+      if (hasUnsaved) {
+        if (tabId !== activeTabId) {
+          setActiveTabId(tabId);
+          setView("reader");
+        }
+        setPendingAction(() => doClose);
+        setShowCloseModal(true);
+        return;
+      }
+
+      if (tabId !== activeTabId) {
+        setOpenTabs((prev) => prev.filter((t) => t.id !== tabId));
+      } else {
+        doClose();
+      }
+    },
+    [openTabs, activeTabId],
+  );
+
+  useShortcut("closePdf", () => {
+    if (stateRef.current.activeTabId) {
+      handleCloseTab(
+        { stopPropagation: () => {} } as React.MouseEvent,
+        stateRef.current.activeTabId,
+      );
+    }
+  });
+
+  useShortcut("switchTab", () => {
+    if (stateRef.current.openTabs.length < 2) return;
+    const currentIndex = stateRef.current.openTabs.findIndex(
+      (t) => t.id === stateRef.current.activeTabId,
+    );
+    if (currentIndex !== -1) {
+      const nextIndex = (currentIndex + 1) % stateRef.current.openTabs.length;
+      setActiveTabId(stateRef.current.openTabs[nextIndex].id);
+    }
+  });
+
+  const handleReorderTabs = useCallback(
+    (draggedIndex: number, hoveredIndex: number) => {
+      setOpenTabs((prev) => {
+        const newTabs = [...prev];
+        const [draggedTab] = newTabs.splice(draggedIndex, 1);
+        newTabs.splice(hoveredIndex, 0, draggedTab);
+        return newTabs;
+      });
+    },
+    [],
+  );
+
+  const loadProjectFromPath = useCallback(async (filePath: string) => {
+    if (!window.electronAPI) return;
+    try {
+      const result = await window.electronAPI.readProjectFromPath(filePath);
+      if (!result) {
+        showToast("Failed to read project file.", "error");
+        return;
+      }
+
+      const { data: projectData, filePath: actualPath } = result;
+      const db = await getDb();
+      const existing = await db
+        .select()
+        .from(recentFiles)
+        .where(eq(recentFiles.projectPath, actualPath));
+
+      const defaultName =
+        actualPath
+          .split(/[/\\]/)
+          .pop()
+          ?.replace(".margyn", "")
+          .replace(".pdf", "") || "Imported Project";
+      const displayName = projectData.fileName || defaultName;
+
+      let record;
+      let pdfBytes;
+
+      if (existing.length > 0) {
+        record = existing[0];
+        const existingPdf = await window.electronAPI.loadLibraryFile(
+          record.filePath,
+        );
+        if (existingPdf) {
+          pdfBytes = new Uint8Array(existingPdf);
         } else {
           pdfBytes = Uint8Array.from(
             Buffer.from(projectData.fileBase64, "base64"),
@@ -343,93 +549,164 @@ function AppContent() {
             "imported-" + Date.now() + "-" + displayName + ".pdf";
           record = await addRecentFile(displayName, newFakePath, actualPath);
         }
-
-        if (record && pdfBytes) {
-          await loadPdfFile(
-            pdfBytes,
-            record.name,
-            record.filePath,
-            projectData.completed,
-            actualPath,
-          );
-
-          await db
-            .delete(sessions)
-            .where(eq(sessions.filePath, record.filePath));
-          await db
-            .delete(drawings)
-            .where(eq(drawings.filePath, record.filePath));
-
-          const sessionIdMap: Record<string, string> = {};
-          if (projectData.sessions?.length > 0) {
-            const newSessions = projectData.sessions.map((s: any) => {
-              const newId =
-                Date.now().toString() +
-                Math.random().toString(36).substring(2, 9);
-              sessionIdMap[s.id] = newId;
-              return { ...s, id: newId, filePath: record.filePath };
-            });
-            await db.insert(sessions).values(newSessions);
-          }
-          if (projectData.drawings?.length > 0) {
-            const newDrawings = projectData.drawings.map((d: any) => ({
-              ...d,
-              id:
-                Date.now().toString() +
-                Math.random().toString(36).substring(2, 9),
-              filePath: record.filePath,
-              sessionId:
-                d.sessionId && sessionIdMap[d.sessionId]
-                  ? sessionIdMap[d.sessionId]
-                  : null,
-            }));
-            await db.insert(drawings).values(newDrawings);
-          }
-          await saveDb(true);
-          showToast("Project loaded successfully!", "success");
-        }
-      } catch (error) {
-        console.error("Failed to load project", error);
-        showToast("Failed to load project.", "error");
+        await db
+          .update(recentFiles)
+          .set({ lastOpened: Date.now(), name: displayName })
+          .where(eq(recentFiles.id, record.id));
+      } else {
+        pdfBytes = Uint8Array.from(
+          Buffer.from(projectData.fileBase64, "base64"),
+        );
+        await window.electronAPI.saveActivePdf(pdfBytes);
+        const newFakePath =
+          "imported-" + Date.now() + "-" + displayName + ".pdf";
+        record = await addRecentFile(displayName, newFakePath, actualPath);
       }
-    },
-    [syncSessionWithFile, isActive, sessionId, currentPage],
-  );
+
+      if (record && pdfBytes) {
+        await stateRef.current.loadPdfFile(
+          pdfBytes,
+          record.name,
+          record.filePath,
+          projectData.completed,
+          actualPath,
+        );
+
+        await db.delete(sessions).where(eq(sessions.filePath, record.filePath));
+        await db.delete(drawings).where(eq(drawings.filePath, record.filePath));
+
+        let parsedSessions = [];
+        let parsedDrawings = [];
+
+        if (typeof projectData.sessions === "string") {
+          try {
+            parsedSessions = await decryptData(projectData.sessions);
+          } catch (err) {}
+        } else if (Array.isArray(projectData.sessions)) {
+          parsedSessions = projectData.sessions;
+        }
+
+        if (typeof projectData.drawings === "string") {
+          try {
+            parsedDrawings = await decryptData(projectData.drawings);
+          } catch (err) {}
+        } else if (Array.isArray(projectData.drawings)) {
+          parsedDrawings = projectData.drawings;
+        }
+
+        const sessionIdMap: Record<string, string> = {};
+        if (parsedSessions.length > 0) {
+          const newSessions = parsedSessions.map((s: any) => {
+            const newId =
+              Date.now().toString() +
+              Math.random().toString(36).substring(2, 9);
+            sessionIdMap[s.id] = newId;
+            return { ...s, id: newId, filePath: record.filePath };
+          });
+          await db.insert(sessions).values(newSessions);
+        }
+        if (parsedDrawings.length > 0) {
+          const newDrawings = parsedDrawings.map((d: any) => ({
+            ...d,
+            id:
+              Date.now().toString() +
+              Math.random().toString(36).substring(2, 9),
+            filePath: record.filePath,
+            sessionId:
+              d.sessionId && sessionIdMap[d.sessionId]
+                ? sessionIdMap[d.sessionId]
+                : null,
+          }));
+          await db.insert(drawings).values(newDrawings);
+        }
+        await saveDb(true);
+        showToast("Project loaded successfully!", "success");
+      }
+    } catch (error) {
+      console.error("Failed to load project", error);
+      showToast("Failed to load project.", "error");
+    }
+  }, []);
+
+  stateRef.current.loadProjectFromPath = loadProjectFromPath;
 
   useEffect(() => {
-    const init = async () => {
-      try {
-        await getDb();
-        if (window.electronAPI) {
-          const data = await window.electronAPI.loadActivePdf();
-          const savedPath = await getSetting("activeFilePath");
+    if (!isInitRef.current) {
+      isInitRef.current = true;
+      const init = async () => {
+        try {
+          await getDb();
 
-          if (data && savedPath) {
-            setPdfData(new Uint8Array(data));
-            setActiveFilePath(savedPath);
+          const savedTabsStr = await getSetting("openTabsState");
+          const savedActiveId = await getSetting("activeTabId");
 
-            const recents = await getRecentFiles();
-            const currentFile = recents.find(
-              (f: any) => f.filePath === savedPath,
-            );
-            if (currentFile) {
-              setActiveFileName(currentFile.name);
-              setIsCurrentPdfCompleted(currentFile.completed === 1);
-              if (currentFile.projectPath) {
-                setActiveProjectPath(currentFile.projectPath);
+          let loadedAnyTabs = false;
+
+          if (savedTabsStr) {
+            try {
+              const parsedTabs = JSON.parse(savedTabsStr);
+              if (Array.isArray(parsedTabs) && parsedTabs.length > 0) {
+                const loadedTabs: OpenTab[] = [];
+                for (const tab of parsedTabs) {
+                  if (window.electronAPI) {
+                    const data = await window.electronAPI.loadLibraryFile(
+                      tab.filePath,
+                    );
+                    if (data) {
+                      loadedTabs.push({
+                        ...tab,
+                        pdfData: new Uint8Array(data),
+                        isDirty: false,
+                      });
+                    }
+                  }
+                }
+
+                if (loadedTabs.length > 0) {
+                  setOpenTabs(loadedTabs);
+                  loadedAnyTabs = true;
+
+                  const validActive = loadedTabs.find(
+                    (t) => t.id === savedActiveId,
+                  );
+                  if (validActive) {
+                    setActiveTabId(validActive.id);
+                  } else {
+                    setActiveTabId(loadedTabs[0].id);
+                  }
+                }
+              }
+            } catch (e) {
+              console.error("Failed to parse saved tabs", e);
+            }
+          }
+
+          if (!loadedAnyTabs && window.electronAPI) {
+            const data = await window.electronAPI.loadActivePdf();
+            const savedPath = await getSetting("activeFilePath");
+            if (data && savedPath) {
+              const recents = await getRecentFiles();
+              const currentFile = recents.find(
+                (f: any) => f.filePath === savedPath,
+              );
+              if (currentFile) {
+                await stateRef.current.loadPdfFile(
+                  new Uint8Array(data),
+                  currentFile.name,
+                  savedPath,
+                  currentFile.completed,
+                  currentFile.projectPath,
+                );
               }
             }
-            await syncSessionWithFile(savedPath);
-          } else {
-            await syncSessionWithFile("");
           }
+        } catch (err) {
+        } finally {
+          setIsAppReady(true);
         }
-      } catch (err) {
-      } finally {
-        setIsAppReady(true);
-      }
-    };
-    init();
+      };
+      init();
+    }
 
     const handleFirstClick = () => {
       prewarmAudio();
@@ -437,25 +714,36 @@ function AppContent() {
     };
     window.addEventListener("click", handleFirstClick);
 
-    const handleDataChange = () => setIsDirty(true);
+    const handleDataChange = () => {
+      setIsDirty(true);
+      if (stateRef.current.activeTabId) {
+        setOpenTabs((prev) =>
+          prev.map((t) =>
+            t.id === stateRef.current.activeTabId ? { ...t, isDirty: true } : t,
+          ),
+        );
+      }
+    };
     window.addEventListener("margyn-data-changed", handleDataChange);
 
     let cleanupFileOpen: (() => void) | undefined;
     if (window.electronAPI?.onOpenMargynFile) {
       cleanupFileOpen = window.electronAPI.onOpenMargynFile((filePath) => {
-        requestSafeAction(() => loadProjectFromPath(filePath));
+        stateRef.current.requestSafeAction(() =>
+          stateRef.current.loadProjectFromPath(filePath),
+        );
       });
     }
 
     let cleanupPdfOpen: (() => void) | undefined;
     if (window.electronAPI?.onOpenPdfFile) {
       cleanupPdfOpen = window.electronAPI.onOpenPdfFile((filePath) => {
-        requestSafeAction(async () => {
+        stateRef.current.requestSafeAction(async () => {
           const result = await window.electronAPI?.readPdfPath(filePath);
           if (result && result.data) {
             const record = await addRecentFile(result.name, result.libraryPath);
             if (record) {
-              await loadPdfFile(
+              await stateRef.current.loadPdfFile(
                 new Uint8Array(result.data),
                 record.name,
                 record.filePath,
@@ -474,17 +762,52 @@ function AppContent() {
       if (cleanupFileOpen) cleanupFileOpen();
       if (cleanupPdfOpen) cleanupPdfOpen();
     };
-  }, [syncSessionWithFile, loadProjectFromPath]);
+  }, []);
 
+  // ✅ flush DB قبل از بستن
   useEffect(() => {
     if (!window.electronAPI) return;
-    const cleanup = window.electronAPI.onAppCloseRequest(() => {
-      requestSafeAction(() => {
+    const cleanup = window.electronAPI.onAppCloseRequest(async () => {
+      try {
+        await saveDb(true);
+      } catch (e) {
+        console.error("Failed to flush DB before close:", e);
+      }
+
+      const dirtyTabs = stateRef.current.openTabs.filter(
+        (t) => t.isDirty || (!t.projectPath && t.pdfData),
+      );
+
+      if (dirtyTabs.length === 0) {
         window.electronAPI?.forceCloseApp();
-      });
+        return;
+      }
+
+      const processNextDirtyTab = async (remainingDirty: OpenTab[]) => {
+        if (remainingDirty.length === 0) {
+          try {
+            await saveDb(true);
+          } catch (e) {}
+          window.electronAPI?.forceCloseApp();
+          return;
+        }
+
+        const currentTabToProcess = remainingDirty[0];
+        setActiveTabId(currentTabToProcess.id);
+        setView("reader");
+
+        setPendingAction(() => () => {
+          const newRemaining = remainingDirty.slice(1);
+          processNextDirtyTab(newRemaining);
+        });
+
+        setShowCloseModal(true);
+      };
+
+      processNextDirtyTab(dirtyTabs);
     });
     return cleanup;
-  }, [isDirty, activeProjectPath, pdfData]);
+  }, []);
 
   useEffect(() => {
     if (showEndModal) {
@@ -496,28 +819,26 @@ function AppContent() {
   const getProjectData = async () => {
     if (!pdfData || !activeFilePath) return null;
     const db = await getDb();
-    const fileSessions = await db
-      .select()
-      .from(sessions)
-      .where(eq(sessions.filePath, activeFilePath));
-    const allDrawings = await db
-      .select()
-      .from(drawings)
-      .where(eq(drawings.filePath, activeFilePath));
-    const fileRecord = (
-      await db
+    const [fileSessions, allDrawings, fileRecords] = await Promise.all([
+      db.select().from(sessions).where(eq(sessions.filePath, activeFilePath)),
+      db.select().from(drawings).where(eq(drawings.filePath, activeFilePath)),
+      db
         .select()
         .from(recentFiles)
-        .where(eq(recentFiles.filePath, activeFilePath))
-    )[0];
+        .where(eq(recentFiles.filePath, activeFilePath)),
+    ]);
+    const fileRecord = fileRecords[0];
+
+    const encryptedSessions = await encryptData(fileSessions);
+    const encryptedDrawings = await encryptData(allDrawings);
 
     return {
       version: "1.0",
       fileName: activeFileName,
       fileBase64: Buffer.from(pdfData).toString("base64"),
       completed: fileRecord?.completed || 0,
-      sessions: fileSessions,
-      drawings: allDrawings,
+      sessions: encryptedSessions,
+      drawings: encryptedDrawings,
     };
   };
 
@@ -525,11 +846,38 @@ function AppContent() {
     if (!window.electronAPI) return false;
 
     if (!activeProjectPath) {
-      showToast(
-        "Please click 'Export' to save this project for the first time.",
-        "error",
-      );
-      return false;
+      const defaultDir = await getSetting("defaultExportDir");
+      try {
+        const projectData = await getProjectData();
+        if (!projectData) return false;
+
+        const savedPath = await window.electronAPI.saveProject(
+          projectData,
+          null,
+          defaultDir,
+        );
+
+        if (savedPath) {
+          setActiveProjectPath(savedPath);
+          await updateRecentFileProjectPath(activeFilePath, savedPath);
+          setIsDirty(false);
+          if (activeTabId) {
+            setOpenTabs((prev) =>
+              prev.map((t) =>
+                t.id === activeTabId
+                  ? { ...t, projectPath: savedPath, isDirty: false }
+                  : t,
+              ),
+            );
+          }
+          showToast("Project saved successfully!", "success");
+          return true;
+        }
+        return false;
+      } catch (error) {
+        showToast("Failed to save project.", "error");
+        return false;
+      }
     }
 
     try {
@@ -539,10 +887,18 @@ function AppContent() {
       const savedPath = await window.electronAPI.saveProject(
         projectData,
         activeProjectPath,
+        null,
       );
 
       if (savedPath) {
         setIsDirty(false);
+        if (activeTabId) {
+          setOpenTabs((prev) =>
+            prev.map((t) =>
+              t.id === activeTabId ? { ...t, isDirty: false } : t,
+            ),
+          );
+        }
         showToast("Project saved successfully!", "success");
         return true;
       }
@@ -569,6 +925,15 @@ function AppContent() {
         setActiveProjectPath(savedPath);
         await updateRecentFileProjectPath(activeFilePath, savedPath);
         setIsDirty(false);
+        if (activeTabId) {
+          setOpenTabs((prev) =>
+            prev.map((t) =>
+              t.id === activeTabId
+                ? { ...t, projectPath: savedPath, isDirty: false }
+                : t,
+            ),
+          );
+        }
         showToast("Project exported successfully!", "success");
         return true;
       }
@@ -580,105 +945,13 @@ function AppContent() {
   };
 
   const handleImportProject = () => {
-    requestSafeAction(async () => {
+    stateRef.current.requestSafeAction(async () => {
       if (!window.electronAPI) return;
       try {
-        const result = await window.electronAPI.importProject();
+        const defaultDir = await getSetting("defaultExportDir");
+        const result = await window.electronAPI.importProject(defaultDir);
         if (!result) return;
-
-        const { data: projectData, filePath: margynPath } = result;
-        const db = await getDb();
-        const existing = await db
-          .select()
-          .from(recentFiles)
-          .where(eq(recentFiles.projectPath, margynPath));
-
-        const defaultName =
-          margynPath
-            .split(/[/\\]/)
-            .pop()
-            ?.replace(".margyn", "")
-            .replace(".pdf", "") || "Imported Project";
-        const displayName = projectData.fileName || defaultName;
-
-        let record;
-        let pdfBytes;
-
-        if (existing.length > 0) {
-          record = existing[0];
-          const existingPdf = await window.electronAPI.loadLibraryFile(
-            record.filePath,
-          );
-          if (existingPdf) {
-            pdfBytes = new Uint8Array(existingPdf);
-          } else {
-            pdfBytes = Uint8Array.from(
-              Buffer.from(projectData.fileBase64, "base64"),
-            );
-            await window.electronAPI.saveActivePdf(pdfBytes);
-            const newFakePath =
-              "imported-" + Date.now() + "-" + displayName + ".pdf";
-            record = await addRecentFile(displayName, newFakePath, margynPath);
-          }
-          await db
-            .update(recentFiles)
-            .set({ lastOpened: Date.now(), name: displayName })
-            .where(eq(recentFiles.id, record.id));
-        } else {
-          pdfBytes = Uint8Array.from(
-            Buffer.from(projectData.fileBase64, "base64"),
-          );
-          await window.electronAPI.saveActivePdf(pdfBytes);
-          const newFakePath =
-            "imported-" + Date.now() + "-" + displayName + ".pdf";
-          record = await addRecentFile(displayName, newFakePath, margynPath);
-        }
-
-        if (record && pdfBytes) {
-          await loadPdfFile(
-            pdfBytes,
-            record.name,
-            record.filePath,
-            projectData.completed,
-            margynPath,
-          );
-
-          await db
-            .delete(sessions)
-            .where(eq(sessions.filePath, record.filePath));
-          await db
-            .delete(drawings)
-            .where(eq(drawings.filePath, record.filePath));
-
-          const sessionIdMap: Record<string, string> = {};
-          if (projectData.sessions?.length > 0) {
-            const newSessions = projectData.sessions.map((s: any) => {
-              const newId =
-                Date.now().toString() +
-                Math.random().toString(36).substring(2, 9);
-              sessionIdMap[s.id] = newId;
-              return { ...s, id: newId, filePath: record.filePath };
-            });
-            await db.insert(sessions).values(newSessions);
-          }
-          if (projectData.drawings?.length > 0) {
-            const newDrawings = projectData.drawings.map((d: any) => ({
-              ...d,
-              id:
-                Date.now().toString() +
-                Math.random().toString(36).substring(2, 9),
-              filePath: record.filePath,
-              sessionId:
-                d.sessionId && sessionIdMap[d.sessionId]
-                  ? sessionIdMap[d.sessionId]
-                  : null,
-            }));
-            await db.insert(drawings).values(newDrawings);
-          }
-          await saveDb(true);
-          setIsDirty(false);
-          showToast("Project imported successfully!", "success");
-        }
+        await stateRef.current.loadProjectFromPath(result.filePath);
       } catch (error) {
         showToast("Failed to import project.", "error");
       }
@@ -757,11 +1030,9 @@ function AppContent() {
 
   const handleTryEndSession = () => {
     if (isActive) {
-      if (startPage !== null && currentPage < startPage) {
+      if (startPage !== null && currentPage < startPage)
         setShowBackwardErrorModal(true);
-      } else {
-        setShowEndModal(true);
-      }
+      else setShowEndModal(true);
     } else {
       startSession(activeFilePath, totalPages);
     }
@@ -769,11 +1040,9 @@ function AppContent() {
 
   useShortcut("endSession", () => {
     if (isActive && !showEndModal && !showBackwardErrorModal) {
-      if (startPage !== null && currentPage < startPage) {
+      if (startPage !== null && currentPage < startPage)
         setShowBackwardErrorModal(true);
-      } else {
-        setShowEndModal(true);
-      }
+      else setShowEndModal(true);
     }
   });
 
@@ -807,11 +1076,8 @@ function AppContent() {
 
   const handleModalSave = async () => {
     let success = false;
-    if (activeProjectPath) {
-      success = await handleSaveProject();
-    } else {
-      success = await handleExportProject();
-    }
+    if (activeProjectPath) success = await handleSaveProject();
+    else success = await handleExportProject();
 
     if (success) {
       setShowCloseModal(false);
@@ -825,6 +1091,11 @@ function AppContent() {
   const handleModalDiscard = () => {
     setShowCloseModal(false);
     setIsDirty(false);
+    if (activeTabId) {
+      setOpenTabs((prev) =>
+        prev.map((t) => (t.id === activeTabId ? { ...t, isDirty: false } : t)),
+      );
+    }
     if (pendingAction) {
       pendingAction();
       setPendingAction(null);
@@ -834,6 +1105,17 @@ function AppContent() {
   const handleModalCancel = () => {
     setShowCloseModal(false);
     setPendingAction(null);
+  };
+
+  const handleStartTimer = () => {
+    const input = prompt(
+      "Focus duration in minutes (25 / 40 / 50 / 90 / 120 or custom):",
+      "25",
+    );
+    if (!input) return;
+    const mins = parseInt(input, 10);
+    if (isNaN(mins) || mins <= 0) return;
+    startTimer(mins * 60 * 1000);
   };
 
   const showResumeButton = !isActive && lastFocusPage !== null;
@@ -907,6 +1189,7 @@ function AppContent() {
                   <Toolbar
                     onClearCurrentPage={handleClearCurrentPage}
                     onClearAllPages={handleClearAllPages}
+                    hasText={hasText}
                   />
                 </div>
               )}
@@ -944,11 +1227,7 @@ function AppContent() {
                   {activeProjectPath && (
                     <button
                       onClick={handleSaveProject}
-                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all duration-300 text-xs font-medium border ${
-                        isDirty
-                          ? "text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.2)]"
-                          : "text-[#52525b] border-transparent cursor-default"
-                      }`}
+                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all duration-300 text-xs font-medium border ${isDirty ? "text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.2)]" : "text-[#52525b] border-transparent cursor-default"}`}
                       disabled={!isDirty}
                     >
                       <Save
@@ -960,6 +1239,21 @@ function AppContent() {
                   )}
 
                   <div className="w-px h-6 bg-white/10 mx-0.5" />
+
+                  {/* ✅ Focus Timer display */}
+                  <TimerDisplay />
+
+                  {/* ✅ Focus Timer button (only when no timer running) */}
+                  {!timerEndsAt && !isSessionSyncing && (
+                    <button
+                      onClick={handleStartTimer}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[#38bdf8] hover:bg-[#38bdf8]/10 transition-all text-xs font-medium"
+                      title="Set focus timer"
+                    >
+                      <Clock size={15} />
+                      <span className="hidden 2xl:inline">Timer</span>
+                    </button>
+                  )}
 
                   {isSessionSyncing ? (
                     <div className="flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-[#18181b] text-[#52525b] border border-[#27272a] cursor-wait">
@@ -978,22 +1272,10 @@ function AppContent() {
                   ) : (
                     <button
                       onClick={handleTryEndSession}
-                      className={`group relative flex items-center gap-1.5 px-4 py-1.5 rounded-full transition-all duration-500 overflow-hidden ${
-                        isActive
-                          ? "bg-rose-500/10 text-rose-400 border border-rose-500/30"
-                          : showResumeButton
-                            ? "bg-amber-500/10 text-amber-500 border border-amber-500/30 hover:border-amber-400"
-                            : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:border-emerald-400"
-                      }`}
+                      className={`group relative flex items-center gap-1.5 px-4 py-1.5 rounded-full transition-all duration-500 overflow-hidden ${isActive ? "bg-rose-500/10 text-rose-400 border border-rose-500/30" : showResumeButton ? "bg-amber-500/10 text-amber-500 border border-amber-500/30 hover:border-amber-400" : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:border-emerald-400"}`}
                     >
                       <div
-                        className={`absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 blur-md ${
-                          isActive
-                            ? "bg-rose-500/20"
-                            : showResumeButton
-                              ? "bg-amber-500/20"
-                              : "bg-emerald-500/20"
-                        }`}
+                        className={`absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 blur-md ${isActive ? "bg-rose-500/20" : showResumeButton ? "bg-amber-500/20" : "bg-emerald-500/20"}`}
                       />
 
                       {isActive ? (
@@ -1039,6 +1321,16 @@ function AppContent() {
             </div>
           </header>
 
+          {view === "reader" && openTabs.length > 0 && (
+            <TabsBar
+              tabs={openTabs}
+              activeTabId={activeTabId}
+              onSelectTab={setActiveTabId}
+              onCloseTab={handleCloseTab}
+              onReorderTabs={handleReorderTabs}
+            />
+          )}
+
           <main className="flex-1 flex overflow-hidden relative">
             {view === "reader" && (
               <>
@@ -1072,9 +1364,26 @@ function AppContent() {
 
                 <div className="flex-1 h-full relative overflow-hidden flex items-center justify-center">
                   <PdfViewer
+                    key={activeTabId || "empty"}
                     fileData={pdfData}
                     filePath={activeFilePath}
-                    onDocumentLoad={setTotalPages}
+                    initialScale={activeScale}
+                    onScaleChange={handleScaleChange}
+                    onTextLayerStatus={setHasText}
+                    onDocumentLoad={(pages) => {
+                      setTotalPages(pages);
+                      if (activeTabId) {
+                        setOpenTabs((prev) =>
+                          prev.map((t) =>
+                            t.id === activeTabId
+                              ? { ...t, totalPages: pages }
+                              : t,
+                          ),
+                        );
+                      }
+                    }}
+                    onDropPdf={undefined}
+                    onOpenPdf={handleOpenPdf}
                   />
                 </div>
               </>
@@ -1157,11 +1466,7 @@ function AppContent() {
                   spellCheck="false"
                   placeholder="TYPE HERE (UPPERCASE ONLY)"
                   autoFocus
-                  className={`w-full px-5 py-4 rounded-xl bg-[#18181b] border-2 outline-none transition-all text-center text-lg font-mono tracking-widest shadow-sm ${
-                    endError
-                      ? "border-rose-400 focus:border-rose-500 text-rose-600 placeholder-rose-300 animate-shake"
-                      : "border-[#27272a] focus:border-rose-500/50 text-[#fafafa]"
-                  }`}
+                  className={`w-full px-5 py-4 rounded-xl bg-[#18181b] border-2 outline-none transition-all text-center text-lg font-mono tracking-widest shadow-sm ${endError ? "border-rose-400 focus:border-rose-500 text-rose-600 placeholder-rose-300 animate-shake" : "border-[#27272a] focus:border-rose-500/50 text-[#fafafa]"}`}
                 />
                 {endError && (
                   <Typography
@@ -1195,7 +1500,6 @@ function AppContent() {
                 <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mb-6 shadow-inner">
                   <AlertTriangle size={32} className="text-amber-500" />
                 </div>
-
                 <Typography
                   variant="pageTitle"
                   as="h2"
@@ -1203,7 +1507,6 @@ function AppContent() {
                 >
                   Cannot End Session
                 </Typography>
-
                 <Typography
                   variant="body"
                   as="p"
@@ -1215,7 +1518,6 @@ function AppContent() {
                   <strong>Page {startPage} or beyond</strong> before ending the
                   session.
                 </Typography>
-
                 <button
                   onClick={() => setShowBackwardErrorModal(false)}
                   className="w-full px-4 py-3.5 rounded-xl bg-amber-500 text-black hover:bg-amber-400 transition-all font-medium shadow-[0_0_15px_rgba(245,158,11,0.3)] active:scale-[0.98]"
@@ -1325,11 +1627,7 @@ function AppContent() {
           {toast && (
             <div className="fixed bottom-8 right-8 z-[200] animate-in slide-in-from-bottom-5 fade-in duration-300">
               <div
-                className={`flex items-center gap-4 px-6 py-4 rounded-2xl shadow-2xl border backdrop-blur-xl ${
-                  toast.type === "success"
-                    ? "bg-[#121214]/90 border-emerald-500/30 text-emerald-400 shadow-[0_10px_40px_-10px_rgba(16,185,129,0.3)]"
-                    : "bg-[#121214]/90 border-rose-500/30 text-rose-400 shadow-[0_10px_40px_-10px_rgba(244,63,94,0.3)]"
-                }`}
+                className={`flex items-center gap-4 px-6 py-4 rounded-2xl shadow-2xl border backdrop-blur-xl ${toast.type === "success" ? "bg-[#121214]/90 border-emerald-500/30 text-emerald-400 shadow-[0_10px_40px_-10px_rgba(16,185,129,0.3)]" : "bg-[#121214]/90 border-rose-500/30 text-rose-400 shadow-[0_10px_40px_-10px_rgba(244,63,94,0.3)]"}`}
               >
                 {toast.type === "success" ? (
                   <CheckCircle2 size={24} className="shrink-0" />
@@ -1353,12 +1651,14 @@ function AppContent() {
 
 export default function MainComponent() {
   return (
-    <SessionProvider>
-      <ShortcutProvider>
-        <ToolProvider>
-          <AppContent />
-        </ToolProvider>
-      </ShortcutProvider>
-    </SessionProvider>
+    <TimeProvider>
+      <SessionProvider>
+        <ShortcutProvider>
+          <ToolProvider>
+            <AppContent />
+          </ToolProvider>
+        </ShortcutProvider>
+      </SessionProvider>
+    </TimeProvider>
   );
 }

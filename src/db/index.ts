@@ -37,22 +37,19 @@ export async function getDb() {
         CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, file_path TEXT, start_time INTEGER NOT NULL, end_time INTEGER, start_page INTEGER NOT NULL, end_page INTEGER, last_page INTEGER, pages_read INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
         CREATE TABLE IF NOT EXISTS drawings (id TEXT PRIMARY KEY, session_id TEXT, file_path TEXT, page_number INTEGER NOT NULL, target TEXT NOT NULL DEFAULT 'margin', data TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
         CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-        CREATE TABLE IF NOT EXISTS recent_files (id TEXT PRIMARY KEY, name TEXT NOT NULL, file_path TEXT NOT NULL, last_opened INTEGER NOT NULL, completed INTEGER DEFAULT 0, project_path TEXT);
+        CREATE TABLE IF NOT EXISTS recent_files (id TEXT PRIMARY KEY, name TEXT NOT NULL, file_path TEXT NOT NULL, last_opened INTEGER NOT NULL, completed INTEGER DEFAULT 0, project_path TEXT, last_page INTEGER DEFAULT 1, scale REAL DEFAULT 1.3);
       `);
 
-      // مایگریشن‌ها برای دیتابیس‌های قدیمی
       try {
         sqliteInstance.run("SELECT file_path FROM sessions LIMIT 1");
       } catch (e) {
         sqliteInstance.run("ALTER TABLE sessions ADD COLUMN file_path TEXT");
       }
-
       try {
         sqliteInstance.run("SELECT last_page FROM sessions LIMIT 1");
       } catch (e) {
         sqliteInstance.run("ALTER TABLE sessions ADD COLUMN last_page INTEGER");
       }
-
       try {
         sqliteInstance.run("SELECT target FROM drawings LIMIT 1");
       } catch (e) {
@@ -60,13 +57,11 @@ export async function getDb() {
           "ALTER TABLE drawings ADD COLUMN target TEXT NOT NULL DEFAULT 'margin'",
         );
       }
-
       try {
         sqliteInstance.run("SELECT file_path FROM drawings LIMIT 1");
       } catch (e) {
         sqliteInstance.run("ALTER TABLE drawings ADD COLUMN file_path TEXT");
       }
-
       try {
         sqliteInstance.run("SELECT completed FROM recent_files LIMIT 1");
       } catch (e) {
@@ -74,12 +69,25 @@ export async function getDb() {
           "ALTER TABLE recent_files ADD COLUMN completed INTEGER DEFAULT 0",
         );
       }
-
       try {
         sqliteInstance.run("SELECT project_path FROM recent_files LIMIT 1");
       } catch (e) {
         sqliteInstance.run(
           "ALTER TABLE recent_files ADD COLUMN project_path TEXT",
+        );
+      }
+      try {
+        sqliteInstance.run("SELECT last_page FROM recent_files LIMIT 1");
+      } catch (e) {
+        sqliteInstance.run(
+          "ALTER TABLE recent_files ADD COLUMN last_page INTEGER DEFAULT 1",
+        );
+      }
+      try {
+        sqliteInstance.run("SELECT scale FROM recent_files LIMIT 1");
+      } catch (e) {
+        sqliteInstance.run(
+          "ALTER TABLE recent_files ADD COLUMN scale REAL DEFAULT 1.3",
         );
       }
 
@@ -119,13 +127,15 @@ export async function saveDb(immediate = false) {
   saveTimeout = setTimeout(performSave, 3000);
 }
 
+// ✅ saveDrawing با retry
 export async function saveDrawing(
   filePath: string,
   pageNumber: number,
   target: "margin" | "pdf",
   lines: any[],
-) {
-  if (!filePath) return;
+  retries = 3,
+): Promise<boolean> {
+  if (!filePath) return false;
   try {
     const database = await getDb();
     const existing = await database
@@ -162,8 +172,14 @@ export async function saveDrawing(
       });
     }
     await saveDb();
+    return true;
   } catch (err) {
-    console.error("Save error:", err);
+    console.error(`Save error (${retries} retries left):`, err);
+    if (retries > 0) {
+      await new Promise((r) => setTimeout(r, 500));
+      return saveDrawing(filePath, pageNumber, target, lines, retries - 1);
+    }
+    return false;
   }
 }
 
@@ -191,13 +207,10 @@ export async function loadDrawing(
         const parsed = JSON.parse(result[0].data);
         if (Array.isArray(parsed)) return parsed;
       } catch (e) {
-        console.error("Corrupted drawing data found, resetting this page.");
         return [];
       }
     }
-  } catch (e) {
-    console.error("DB load error", e);
-  }
+  } catch (e) {}
   return [];
 }
 
@@ -282,7 +295,7 @@ export async function resetDatabase() {
     CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, file_path TEXT, start_time INTEGER NOT NULL, end_time INTEGER, start_page INTEGER NOT NULL, end_page INTEGER, last_page INTEGER, pages_read INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS drawings (id TEXT PRIMARY KEY, session_id TEXT, file_path TEXT, page_number INTEGER NOT NULL, target TEXT NOT NULL DEFAULT 'margin', data TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS recent_files (id TEXT PRIMARY KEY, name TEXT NOT NULL, file_path TEXT NOT NULL, last_opened INTEGER NOT NULL, completed INTEGER DEFAULT 0, project_path TEXT);
+    CREATE TABLE IF NOT EXISTS recent_files (id TEXT PRIMARY KEY, name TEXT NOT NULL, file_path TEXT NOT NULL, last_opened INTEGER NOT NULL, completed INTEGER DEFAULT 0, project_path TEXT, last_page INTEGER DEFAULT 1, scale REAL DEFAULT 1.3);
   `);
   await saveDb(true);
 }
@@ -294,7 +307,6 @@ export async function addRecentFile(
 ) {
   try {
     const database = await getDb();
-
     if (projectPath) {
       const existingProject = await database
         .select()
@@ -312,7 +324,6 @@ export async function addRecentFile(
         return existingProject[0];
       }
     }
-
     if (!projectPath) {
       const existingName = await database
         .select()
@@ -327,7 +338,6 @@ export async function addRecentFile(
         return { ...existingName[0], filePath };
       }
     }
-
     const existing = await database
       .select()
       .from(recentFiles)
@@ -349,6 +359,8 @@ export async function addRecentFile(
         lastOpened: Date.now(),
         completed: 0,
         projectPath: projectPath,
+        lastPage: 1,
+        scale: 1.3,
       });
       await saveDb();
       return {
@@ -357,10 +369,11 @@ export async function addRecentFile(
         filePath,
         completed: 0,
         projectPath: projectPath,
+        lastPage: 1,
+        scale: 1.3,
       };
     }
   } catch (e) {
-    console.error("Failed to add recent file", e);
     return null;
   }
 }

@@ -8,10 +8,11 @@ import React, {
   ReactNode,
   useEffect,
   useCallback,
+  useRef,
 } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { getDb, saveDb, getSetting, setSetting } from "@/db";
-import { sessions } from "@/db/schema";
+import { sessions, recentFiles } from "@/db/schema";
 import { eq, isNull, desc, and } from "drizzle-orm";
 import { playStartSound, playEndSound } from "@/lib/audio";
 
@@ -27,6 +28,11 @@ interface SessionContextType {
   syncSessionWithFile: (filePath: string) => Promise<void>;
   clearSessionState: () => void;
   isSessionSyncing: boolean;
+  // ✅ Focus Timer
+  timerEndsAt: number | null;
+  timerDurationMs: number | null;
+  startTimer: (durationMs: number) => Promise<void>;
+  stopTimer: () => Promise<void>;
 }
 
 const SessionContext = createContext<SessionContextType | undefined>(undefined);
@@ -38,6 +44,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [startPage, setStartPage] = useState<number | null>(null);
   const [currentPage, setCurrentPageState] = useState(1);
   const [isSessionSyncing, setIsSessionSyncing] = useState(true);
+
+  // ✅ Focus Timer state
+  const [timerEndsAt, setTimerEndsAt] = useState<number | null>(null);
+  const [timerDurationMs, setTimerDurationMs] = useState<number | null>(null);
+
+  // ✅ debounce برای updateLastPage
+  const lastPageTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingPageRef = useRef<{ sessionId: string; page: number } | null>(
+    null,
+  );
 
   const setCurrentPage = useCallback(async (page: number) => {
     setCurrentPageState(page);
@@ -66,7 +82,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setIsActive(true);
         setSessionId(active.id);
         setStartPage(active.startPage);
-
         const targetPage = active.lastPage || active.startPage;
         setCurrentPageState(targetPage);
         await setSetting("lastPage", targetPage.toString());
@@ -86,14 +101,28 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           const latest = latestSessions[0];
           const lastKnownPage =
             latest.endPage || latest.lastPage || latest.startPage;
-
           setLastFocusPage(lastKnownPage);
           setCurrentPageState(lastKnownPage);
           await setSetting("lastPage", lastKnownPage.toString());
         } else {
-          setLastFocusPage(null);
-          // ✅ فیکس: حذف ریست کردن صفحه در پس‌زمینه برای جلوگیری از پرش به صفحه ۱
-          await setSetting("lastPage", "1");
+          const fileRecord = await db
+            .select()
+            .from(recentFiles)
+            .where(eq(recentFiles.filePath, filePath));
+
+          if (
+            fileRecord.length > 0 &&
+            fileRecord[0].lastPage &&
+            fileRecord[0].lastPage > 1
+          ) {
+            setLastFocusPage(null);
+            setCurrentPageState(fileRecord[0].lastPage);
+            await setSetting("lastPage", fileRecord[0].lastPage.toString());
+          } else {
+            setLastFocusPage(null);
+            setCurrentPageState(1);
+            await setSetting("lastPage", "1");
+          }
         }
       }
     } catch (error) {
@@ -110,41 +139,45 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setLastFocusPage(null);
   }, []);
 
+  // ✅ debounce روی updateLastPage - جلوگیری از I/O storm
   useEffect(() => {
     if (isActive && sessionId) {
-      const updateLastPage = async () => {
+      pendingPageRef.current = { sessionId, page: currentPage };
+
+      if (lastPageTimerRef.current) clearTimeout(lastPageTimerRef.current);
+
+      lastPageTimerRef.current = setTimeout(async () => {
+        const pending = pendingPageRef.current;
+        if (!pending) return;
         try {
           const db = await getDb();
           await db
             .update(sessions)
-            .set({ lastPage: currentPage })
-            .where(eq(sessions.id, sessionId));
-          await saveDb(true);
+            .set({ lastPage: pending.page })
+            .where(eq(sessions.id, pending.sessionId));
+          await saveDb();
         } catch (e) {}
-      };
-      updateLastPage();
+      }, 1500);
     }
+
+    return () => {
+      if (lastPageTimerRef.current) clearTimeout(lastPageTimerRef.current);
+    };
   }, [currentPage, isActive, sessionId]);
 
+  // ✅ شروع session: اول DB، بعد UI
   const startSession = useCallback(
     async (filePath: string, totalPages?: number) => {
       if (!filePath) return;
       try {
         playStartSound();
         const newId = uuidv4();
-        setSessionId(newId);
 
         let targetPage = currentPage;
         if (lastFocusPage !== null) {
           targetPage = lastFocusPage + 1;
-          if (totalPages && targetPage > totalPages) {
-            targetPage = totalPages;
-          }
+          if (totalPages && targetPage > totalPages) targetPage = totalPages;
         }
-
-        setStartPage(targetPage);
-        setCurrentPageState(targetPage);
-        setIsActive(true);
 
         const db = await getDb();
         await db.insert(sessions).values({
@@ -155,7 +188,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           lastPage: targetPage,
         });
         await saveDb(true);
-      } catch (error) {}
+
+        setSessionId(newId);
+        setStartPage(targetPage);
+        setCurrentPageState(targetPage);
+        setIsActive(true);
+      } catch (error) {
+        console.error("Failed to start session:", error);
+        window.dispatchEvent(
+          new CustomEvent("margyn-save-error", {
+            detail: "Failed to start session. Please try again.",
+          }),
+        );
+      }
     },
     [currentPage, lastFocusPage],
   );
@@ -164,13 +209,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     if (!sessionId || startPage === null) return;
 
     try {
+      // ✅ پاک کردن pending timer
+      if (lastPageTimerRef.current) {
+        clearTimeout(lastPageTimerRef.current);
+        lastPageTimerRef.current = null;
+      }
+      pendingPageRef.current = null;
+
       playEndSound();
       const pagesRead = Math.abs(currentPage - startPage) + 1;
-
-      setIsActive(false);
-      setSessionId(null);
-      setStartPage(null);
-      setLastFocusPage(currentPage);
 
       const db = await getDb();
       await db
@@ -183,8 +230,52 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         })
         .where(eq(sessions.id, sessionId));
       await saveDb(true);
-    } catch (error) {}
+
+      setIsActive(false);
+      setSessionId(null);
+      setStartPage(null);
+      setLastFocusPage(currentPage);
+    } catch (error) {
+      console.error("Failed to end session:", error);
+    }
   }, [sessionId, startPage, currentPage]);
+
+  // ✅ Focus Timer
+  const startTimer = useCallback(async (durationMs: number) => {
+    const endsAt = Date.now() + durationMs;
+    setTimerEndsAt(endsAt);
+    setTimerDurationMs(durationMs);
+    await setSetting("timerEndsAt", endsAt.toString());
+    await setSetting("timerDurationMs", durationMs.toString());
+  }, []);
+
+  const stopTimer = useCallback(async () => {
+    setTimerEndsAt(null);
+    setTimerDurationMs(null);
+    await setSetting("timerEndsAt", "");
+    await setSetting("timerDurationMs", "");
+  }, []);
+
+  // ✅ بازیابی timer از DB در start
+  useEffect(() => {
+    const loadTimer = async () => {
+      try {
+        const endsAtStr = await getSetting("timerEndsAt");
+        const durationStr = await getSetting("timerDurationMs");
+        if (endsAtStr && durationStr) {
+          const endsAtNum = parseInt(endsAtStr, 10);
+          if (endsAtNum > Date.now()) {
+            setTimerEndsAt(endsAtNum);
+            setTimerDurationMs(parseInt(durationStr, 10));
+          } else {
+            await setSetting("timerEndsAt", "");
+            await setSetting("timerDurationMs", "");
+          }
+        }
+      } catch (e) {}
+    };
+    loadTimer();
+  }, []);
 
   const value = useMemo(
     () => ({
@@ -199,6 +290,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       syncSessionWithFile,
       clearSessionState,
       isSessionSyncing,
+      timerEndsAt,
+      timerDurationMs,
+      startTimer,
+      stopTimer,
     }),
     [
       isActive,
@@ -207,11 +302,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       startPage,
       currentPage,
       isSessionSyncing,
+      timerEndsAt,
+      timerDurationMs,
       setCurrentPage,
       startSession,
       endSession,
       syncSessionWithFile,
       clearSessionState,
+      startTimer,
+      stopTimer,
     ],
   );
 
@@ -222,8 +321,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
 export function useSession() {
   const context = useContext(SessionContext);
-  if (context === undefined) {
+  if (context === undefined)
     throw new Error("useSession must be used within a SessionProvider");
-  }
   return context;
 }

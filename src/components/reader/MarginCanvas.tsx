@@ -31,7 +31,12 @@ export default function MarginCanvas({ filePath }: { filePath?: string }) {
     return () => ro.disconnect();
   }, [resize]);
 
-  const cursorClass = tool === "eraser" ? "cursor-eraser" : "cursor-pen";
+  const cursorClass =
+    tool === "eraser"
+      ? "cursor-eraser"
+      : tool === "select"
+        ? "cursor-default"
+        : "cursor-pen";
 
   return (
     <div

@@ -32,9 +32,15 @@ export default function LibraryView({
   const [files, setFiles] = useState<RecentFile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showConfirmClear, setShowConfirmClear] = useState(false);
-
-  // ✅ تب‌بندی جدید: PDF و پروژه‌ها
   const [activeTab, setActiveTab] = useState<"pdfs" | "projects">("pdfs");
+
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && showConfirmClear) setShowConfirmClear(false);
+    };
+    window.addEventListener("keydown", handleEsc);
+    return () => window.removeEventListener("keydown", handleEsc);
+  }, [showConfirmClear]);
 
   const loadFiles = async () => {
     setIsLoading(true);
@@ -44,7 +50,6 @@ export default function LibraryView({
     const seen = new Set();
 
     for (const file of data as RecentFile[]) {
-      // ✅ فیکس باگ: برای PDF ها بر اساس اسم فایل چک میکنیم نه مسیر یکتا
       const key = file.projectPath ? file.projectPath : file.name;
       if (!seen.has(key)) {
         seen.add(key);
@@ -85,7 +90,6 @@ export default function LibraryView({
     });
   };
 
-  // ✅ فیلتر کردن فایل‌ها بر اساس تب انتخاب شده
   const filteredFiles = files.filter((file) => {
     if (activeTab === "projects") return !!file.projectPath;
     return !file.projectPath;
@@ -136,7 +140,6 @@ export default function LibraryView({
           </div>
         </header>
 
-        {/* ✅ تب‌های PDFs و Projects */}
         <div className="flex items-center gap-2 mb-6 bg-[#121214] p-1.5 rounded-2xl w-fit border border-[#27272a]">
           <button
             onClick={() => setActiveTab("pdfs")}
@@ -187,60 +190,82 @@ export default function LibraryView({
           </div>
         ) : (
           <div className="grid gap-3">
-            {filteredFiles.map((file) => (
-              <div
-                key={file.id}
-                onClick={() => onSelectFile(file.filePath)}
-                className="group flex items-center justify-between p-5 bg-[#121214] border border-[#27272a] rounded-2xl cursor-pointer hover:bg-[#18181b] hover:border-[#38bdf8]/50 transition-all duration-300 relative overflow-hidden"
-              >
-                <div className="absolute inset-0 bg-gradient-to-r from-[#38bdf8]/0 via-[#38bdf8]/0 to-[#38bdf8]/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+            {filteredFiles.map((file) => {
+              const isProject = !!file.projectPath;
+              const projectName = isProject
+                ? file.projectPath!.split(/[/\\]/).pop()?.replace(".margyn", "")
+                : null;
+              const displayName =
+                projectName || file.name || "Untitled Project";
 
-                <div className="flex items-center gap-5 relative z-10">
-                  <div className="w-12 h-12 rounded-xl bg-[#09090b] border border-[#27272a] flex items-center justify-center group-hover:border-[#38bdf8]/30 transition-colors shrink-0">
-                    {activeTab === "projects" ? (
-                      <FolderArchive
-                        size={20}
-                        className="text-[#a1a1aa] group-hover:text-[#38bdf8] transition-colors"
-                      />
-                    ) : (
-                      <FileText
-                        size={20}
-                        className="text-[#a1a1aa] group-hover:text-[#38bdf8] transition-colors"
-                      />
-                    )}
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <Typography
-                        variant="cardTitle"
-                        className="text-[#fafafa] group-hover:text-[#38bdf8] transition-colors line-clamp-1"
-                      >
-                        {file.name || "Untitled Project"}
-                      </Typography>
-                      {file.completed === 1 && (
-                        <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-500 text-[10px] font-bold rounded-full border border-emerald-500/20">
-                          Completed
-                        </span>
+              return (
+                <div
+                  key={file.id}
+                  onClick={() => onSelectFile(file.filePath)}
+                  className="group flex items-center justify-between p-5 bg-[#121214] border border-[#27272a] rounded-2xl cursor-pointer hover:bg-[#18181b] hover:border-[#38bdf8]/50 transition-all duration-300 relative overflow-hidden"
+                >
+                  <div className="absolute inset-0 bg-gradient-to-r from-[#38bdf8]/0 via-[#38bdf8]/0 to-[#38bdf8]/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+
+                  <div className="flex items-center gap-5 relative z-10">
+                    <div className="w-12 h-12 rounded-xl bg-[#09090b] border border-[#27272a] flex items-center justify-center group-hover:border-[#38bdf8]/30 transition-colors shrink-0">
+                      {isProject ? (
+                        <FolderArchive
+                          size={20}
+                          className="text-emerald-400 group-hover:text-emerald-300 transition-colors"
+                        />
+                      ) : (
+                        <FileText
+                          size={20}
+                          className="text-rose-400 group-hover:text-rose-300 transition-colors"
+                        />
                       )}
                     </div>
-                    <div className="flex items-center gap-2 text-[#52525b]">
-                      <Clock size={12} />
-                      <Typography variant="caption" className="text-[#52525b]">
-                        {formatDate(file.lastOpened)}
-                      </Typography>
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <Typography
+                          variant="cardTitle"
+                          className="text-[#fafafa] group-hover:text-[#38bdf8] transition-colors line-clamp-1"
+                        >
+                          {displayName}
+                        </Typography>
+
+                        {/* ✅ بج نوع فایل در کتابخانه */}
+                        <span
+                          className={`px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider shrink-0 ${isProject ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" : "bg-rose-500/10 text-rose-500 border border-rose-500/20"}`}
+                        >
+                          {isProject ? "MARGYN" : "PDF"}
+                        </span>
+
+                        {file.completed === 1 && (
+                          <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-500 text-[10px] font-bold rounded-full border border-emerald-500/20">
+                            Completed
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 text-[#52525b]">
+                        <Clock size={12} />
+                        <Typography
+                          variant="caption"
+                          className="text-[#52525b]"
+                        >
+                          {formatDate(file.lastOpened)}
+                        </Typography>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <button
-                  onClick={(e) => handleDeleteSingle(e, file.id, file.filePath)}
-                  className="p-3 text-[#52525b] hover:text-rose-500 hover:bg-rose-500/10 rounded-xl transition-all opacity-0 group-hover:opacity-100 relative z-10"
-                  title="Remove from history"
-                >
-                  <Trash2 size={18} />
-                </button>
-              </div>
-            ))}
+                  <button
+                    onClick={(e) =>
+                      handleDeleteSingle(e, file.id, file.filePath)
+                    }
+                    className="p-3 text-[#52525b] hover:text-rose-500 hover:bg-rose-500/10 rounded-xl transition-all opacity-0 group-hover:opacity-100 relative z-10"
+                    title="Remove from history"
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

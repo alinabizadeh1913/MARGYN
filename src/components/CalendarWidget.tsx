@@ -5,8 +5,10 @@ import {
   ChevronLeft,
   ChevronRight,
   Calendar as CalendarIcon,
+  Lock,
 } from "lucide-react";
 import Typography from "@/typography";
+import { useTime } from "@/providers/TimeProvider";
 
 interface CalendarWidgetProps {
   sessionsByDate: Record<string, any[]>;
@@ -15,7 +17,15 @@ interface CalendarWidgetProps {
   viewedDays: Set<string>;
 }
 
-const DAYS_OF_WEEK = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+const DAYS_OF_WEEK = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+];
 
 export default function CalendarWidget({
   sessionsByDate,
@@ -23,152 +33,168 @@ export default function CalendarWidget({
   onSelectDate,
   viewedDays,
 }: CalendarWidgetProps) {
-  const [currentMonth, setCurrentMonth] = useState(
-    new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1),
-  );
+  const { now } = useTime();
 
-  const getDaysInMonth = (year: number, month: number) => {
-    return new Date(year, month + 1, 0).getDate();
+  // ✅ پیدا کردن ابتدای هفته (یکشنبه) برای تاریخ انتخاب شده
+  const [weekStart, setWeekStart] = useState<Date>(() => {
+    const d = new Date(selectedDate);
+    const day = d.getDay();
+    const diff = d.getDate() - day; // یکشنبه
+    return new Date(d.setDate(diff));
+  });
+
+  const prevWeek = () => {
+    const newStart = new Date(weekStart);
+    newStart.setDate(weekStart.getDate() - 7);
+    setWeekStart(newStart);
   };
 
-  const getFirstDayOfMonth = (year: number, month: number) => {
-    return new Date(year, month, 1).getDay();
+  const nextWeek = () => {
+    const newStart = new Date(weekStart);
+    newStart.setDate(weekStart.getDate() + 7);
+    setWeekStart(newStart);
   };
 
-  const prevMonth = () => {
-    setCurrentMonth(
-      new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1),
-    );
-  };
-
-  const nextMonth = () => {
-    setCurrentMonth(
-      new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1),
-    );
-  };
-
-  // ✅ تابع رفتن به امروز
   const goToToday = () => {
-    const today = new Date();
-    setCurrentMonth(new Date(today.getFullYear(), today.getMonth(), 1));
-    onSelectDate(today);
+    const today = new Date(now);
+    const day = today.getDay();
+    const diff = today.getDate() - day;
+    setWeekStart(new Date(today.setDate(diff)));
+    onSelectDate(new Date(now));
   };
 
-  const year = currentMonth.getFullYear();
-  const month = currentMonth.getMonth();
-  const daysInMonth = getDaysInMonth(year, month);
-  const firstDay = getFirstDayOfMonth(year, month);
-
-  const today = new Date();
-  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-
-  const renderCells = () => {
-    const cells = [];
-
-    for (let i = 0; i < firstDay; i++) {
-      cells.push(<div key={`empty-${i}`} className="h-10 w-10" />);
-    }
-
-    for (let d = 1; d <= daysInMonth; d++) {
-      const dateObj = new Date(year, month, d);
-      const dateKey = `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-
-      const hasSessions =
-        !!sessionsByDate[dateKey] && sessionsByDate[dateKey].length > 0;
-      const isSelected =
-        selectedDate.getDate() === d &&
-        selectedDate.getMonth() === month &&
-        selectedDate.getFullYear() === year;
-      const isToday = todayKey === dateKey;
-
-      const isUnlocked =
-        hasSessions &&
-        today.getTime() - dateObj.getTime() > 7 * 24 * 60 * 60 * 1000;
-      const isUnseen = isUnlocked && !viewedDays.has(dateKey);
-
-      cells.push(
-        <button
-          key={dateKey}
-          onClick={() => onSelectDate(dateObj)}
-          className={`relative h-10 w-10 rounded-xl flex flex-col items-center justify-center transition-all duration-200
-            ${isSelected ? "bg-[#38bdf8] text-black shadow-[0_0_15px_rgba(56,189,248,0.4)]" : "hover:bg-[#27272a] text-[#fafafa]"}
-            ${isToday && !isSelected ? "border border-[#38bdf8]/50 text-[#38bdf8]" : ""}
-          `}
-        >
-          <span
-            className={`text-sm ${isSelected ? "font-bold" : "font-medium"}`}
-          >
-            {d}
-          </span>
-
-          {hasSessions && (
-            <div className="absolute bottom-1.5 flex gap-0.5">
-              {isUnseen ? (
-                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
-              ) : isUnlocked ? (
-                <span
-                  className={`w-1.5 h-1.5 rounded-full ${isSelected ? "bg-black/50" : "bg-emerald-500"}`}
-                />
-              ) : (
-                <span
-                  className={`w-1.5 h-1.5 rounded-full ${isSelected ? "bg-black/30" : "bg-[#52525b]"}`}
-                />
-              )}
-            </div>
-          )}
-        </button>,
-      );
-    }
-
-    return cells;
+  const formatDateKey = (date: Date) => {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
   };
+
+  const today = new Date(now);
+  const todayKey = formatDateKey(today);
+
+  // ✅ ساخت 7 روز هفته
+  const weekDays = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(weekStart);
+    d.setDate(weekStart.getDate() + i);
+    return d;
+  });
 
   return (
-    <div className="bg-[#121214] border border-[#27272a] rounded-3xl p-6 shadow-sm">
+    <div className="bg-[#121214] border border-[#27272a] rounded-3xl p-6 shadow-sm w-full">
       <div className="flex items-center justify-between mb-6">
-        <Typography variant="cardTitle" className="text-[#fafafa]">
-          {currentMonth.toLocaleString("en-US", {
-            month: "long",
-            year: "numeric",
-          })}
-        </Typography>
+        <div className="flex flex-col">
+          <Typography variant="cardTitle" className="text-[#fafafa] text-xl">
+            {weekStart.toLocaleString("en-US", {
+              month: "long",
+              year: "numeric",
+            })}
+          </Typography>
+          <Typography variant="caption" className="text-[#52525b] mt-1">
+            Week of{" "}
+            {weekStart.toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+            })}{" "}
+            -{" "}
+            {weekDays[6].toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+            })}
+          </Typography>
+        </div>
+
         <div className="flex gap-2">
-          {/* ✅ دکمه Today */}
           <button
             onClick={goToToday}
-            className="px-3 py-2 rounded-xl bg-[#18181b] border border-[#27272a] text-[#a1a1aa] hover:text-[#fafafa] hover:bg-[#27272a] transition-all flex items-center justify-center"
-            title="Go to Today"
+            className="px-4 py-2 rounded-xl bg-[#18181b] border border-[#27272a] text-[#a1a1aa] hover:text-[#fafafa] hover:bg-[#27272a] transition-all flex items-center justify-center gap-2 text-sm font-medium"
           >
             <CalendarIcon size={16} />
-          </button>
-
-          <button
-            onClick={prevMonth}
-            className="p-2 rounded-xl bg-[#18181b] border border-[#27272a] text-[#a1a1aa] hover:text-[#fafafa] hover:bg-[#27272a] transition-all"
-          >
-            <ChevronLeft size={16} />
+            Today
           </button>
           <button
-            onClick={nextMonth}
+            onClick={prevWeek}
             className="p-2 rounded-xl bg-[#18181b] border border-[#27272a] text-[#a1a1aa] hover:text-[#fafafa] hover:bg-[#27272a] transition-all"
           >
-            <ChevronRight size={16} />
+            <ChevronLeft size={20} />
+          </button>
+          <button
+            onClick={nextWeek}
+            className="p-2 rounded-xl bg-[#18181b] border border-[#27272a] text-[#a1a1aa] hover:text-[#fafafa] hover:bg-[#27272a] transition-all"
+          >
+            <ChevronRight size={20} />
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-7 gap-1 mb-2">
-        {DAYS_OF_WEEK.map((day) => (
-          <div key={day} className="h-8 flex items-center justify-center">
-            <span className="text-[11px] font-bold text-[#52525b] uppercase tracking-wider">
-              {day}
-            </span>
-          </div>
-        ))}
-      </div>
+      <div className="grid grid-cols-7 gap-2 w-full">
+        {weekDays.map((dateObj, index) => {
+          const dateKey = formatDateKey(dateObj);
+          const hasSessions =
+            !!sessionsByDate[dateKey] && sessionsByDate[dateKey].length > 0;
+          const isSelected =
+            selectedDate.getDate() === dateObj.getDate() &&
+            selectedDate.getMonth() === dateObj.getMonth() &&
+            selectedDate.getFullYear() === dateObj.getFullYear();
+          const isToday = todayKey === dateKey;
 
-      <div className="grid grid-cols-7 gap-1 place-items-center">
-        {renderCells()}
+          // محاسبه قفل
+          const startOfDay = new Date(
+            dateObj.getFullYear(),
+            dateObj.getMonth(),
+            dateObj.getDate(),
+            0,
+            0,
+            0,
+            0,
+          ).getTime();
+          const unlockTime = startOfDay + 7 * 24 * 60 * 60 * 1000;
+          const isUnlocked = hasSessions && now >= unlockTime;
+          const isUnseen = isUnlocked && !viewedDays.has(dateKey);
+          const isLocked = hasSessions && !isUnlocked;
+
+          return (
+            <button
+              key={dateKey}
+              onClick={() => onSelectDate(dateObj)}
+              className={`relative flex flex-col items-center justify-center p-4 rounded-2xl transition-all duration-300 border ${
+                isSelected
+                  ? "bg-[#38bdf8] text-black border-[#38bdf8] shadow-[0_0_20px_rgba(56,189,248,0.3)] scale-[1.02] z-10"
+                  : "bg-[#09090b] border-[#27272a] text-[#fafafa] hover:bg-[#18181b] hover:border-[#3f3f46]"
+              } ${isToday && !isSelected ? "border-[#38bdf8]/50" : ""}`}
+            >
+              <span
+                className={`text-[11px] font-bold uppercase tracking-wider mb-1 ${isSelected ? "text-black/60" : "text-[#52525b]"}`}
+              >
+                {DAYS_OF_WEEK[index].substring(0, 3)}
+              </span>
+              <span
+                className={`text-2xl font-bold ${isSelected ? "text-black" : isToday ? "text-[#38bdf8]" : "text-[#fafafa]"}`}
+              >
+                {dateObj.getDate()}
+              </span>
+
+              {/* نشانگر وضعیت سشن */}
+              <div className="absolute bottom-2 flex items-center justify-center h-2">
+                {hasSessions && (
+                  <>
+                    {isUnseen ? (
+                      <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+                    ) : isUnlocked ? (
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full ${isSelected ? "bg-black/50" : "bg-emerald-500"}`}
+                      />
+                    ) : (
+                      <Lock
+                        size={10}
+                        className={
+                          isSelected ? "text-black/40" : "text-[#52525b]"
+                        }
+                      />
+                    )}
+                  </>
+                )}
+              </div>
+            </button>
+          );
+        })}
       </div>
     </div>
   );

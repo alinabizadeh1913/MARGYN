@@ -1,18 +1,41 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
-import { Pen, Eraser, Trash2, ChevronDown } from "lucide-react";
-import { useTool, DEFAULT_COLORS } from "@/providers/ToolProvider";
+import {
+  Pen,
+  Eraser,
+  Highlighter,
+  Square,
+  Circle,
+  Minus,
+  MoveUpRight,
+  Trash2,
+  ChevronDown,
+  MousePointer2,
+  Undo2,
+  Redo2,
+} from "lucide-react";
+import { useTool, DEFAULT_COLORS, ToolType } from "@/providers/ToolProvider";
 import Typography from "@/typography";
 
 interface ToolbarProps {
   onClearCurrentPage: () => void;
   onClearAllPages: () => void;
+  hasText?: boolean;
+}
+
+interface ToolItem {
+  id: ToolType;
+  icon: React.ElementType;
+  label: string;
+  disabled?: boolean;
+  tooltip?: string;
 }
 
 export default function Toolbar({
   onClearCurrentPage,
   onClearAllPages,
+  hasText = true,
 }: ToolbarProps) {
   const {
     tool,
@@ -39,61 +62,98 @@ export default function Toolbar({
       if (
         deleteMenuRef.current &&
         !deleteMenuRef.current.contains(event.target as Node)
-      ) {
+      )
         setIsDeleteMenuOpen(false);
-      }
       if (
         sizeMenuRef.current &&
         !sizeMenuRef.current.contains(event.target as Node)
-      ) {
+      )
         setIsSizeMenuOpen(false);
-      }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // highlighter needs a text layer – fall back to pen on scanned pages
+  useEffect(() => {
+    if (!hasText && tool === "highlighter") setTool("pen");
+  }, [hasText, tool, setTool]);
+
+  const tools: ToolItem[] = [
+    { id: "select", icon: MousePointer2, label: "Select / Move (V)" },
+    { id: "pen", icon: Pen, label: "Pen (P)" },
+    {
+      id: "highlighter",
+      icon: Highlighter,
+      label: "Highlighter (H)",
+      disabled: !hasText,
+      tooltip: "Highlighter requires text in PDF",
+    },
+    { id: "eraser", icon: Eraser, label: "Eraser (E)" },
+    { id: "rectangle", icon: Square, label: "Rectangle (R)" },
+    { id: "circle", icon: Circle, label: "Ellipse (O)" },
+    { id: "line", icon: Minus, label: "Line (L) – Shift = 45°" },
+    { id: "arrow", icon: MoveUpRight, label: "Arrow (A) – snaps to shapes" },
+  ];
+
   return (
-    <div className="flex flex-nowrap items-center gap-1 p-1 rounded-xl bg-black/40 backdrop-blur-xl border border-white/10 shadow-lg shrink-0">
+    <div className="relative z-[60] flex flex-nowrap items-center gap-1 p-1 rounded-xl bg-black/40 backdrop-blur-xl border border-white/10 shadow-lg shrink-0">
       {/* Tools */}
       <div className="flex items-center gap-0.5 pr-1 border-r border-white/10 shrink-0">
+        {tools.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTool(t.id)}
+            disabled={t.disabled}
+            title={t.disabled ? t.tooltip : t.label}
+            className={`relative p-1.5 rounded-lg transition-all duration-300 ${
+              tool === t.id
+                ? "bg-[#38bdf8]/20 text-[#38bdf8]"
+                : t.disabled
+                  ? "text-[#3f3f46] cursor-not-allowed"
+                  : "text-[#a1a1aa] hover:text-white hover:bg-white/10"
+            }`}
+          >
+            {tool === t.id && (
+              <div className="absolute inset-0 bg-[#38bdf8]/30 blur-md rounded-lg" />
+            )}
+            <t.icon size={15} className="relative z-10" />
+          </button>
+        ))}
+      </div>
+
+      {/* Undo / Redo */}
+      <div className="flex items-center gap-0.5 px-1 border-r border-white/10 shrink-0">
         <button
-          onClick={() => setTool("pen")}
-          className={`relative p-1.5 rounded-lg transition-all duration-300 ${tool === "pen" ? "bg-[#38bdf8]/20 text-[#38bdf8]" : "text-[#a1a1aa] hover:text-white hover:bg-white/10"}`}
+          onClick={() => window.dispatchEvent(new Event("margyn-undo"))}
+          title="Undo (Ctrl+Z)"
+          className="p-1.5 rounded-lg text-[#a1a1aa] hover:text-white hover:bg-white/10 transition-colors"
         >
-          {tool === "pen" && (
-            <div className="absolute inset-0 bg-[#38bdf8]/30 blur-md rounded-lg" />
-          )}
-          <Pen size={15} className="relative z-10" />
+          <Undo2 size={15} />
         </button>
         <button
-          onClick={() => setTool("eraser")}
-          className={`relative p-1.5 rounded-lg transition-all duration-300 ${tool === "eraser" ? "bg-rose-500/20 text-rose-400" : "text-[#a1a1aa] hover:text-white hover:bg-white/10"}`}
+          onClick={() => window.dispatchEvent(new Event("margyn-redo"))}
+          title="Redo (Ctrl+Shift+Z)"
+          className="p-1.5 rounded-lg text-[#a1a1aa] hover:text-white hover:bg-white/10 transition-colors"
         >
-          {tool === "eraser" && (
-            <div className="absolute inset-0 bg-rose-500/30 blur-md rounded-lg" />
-          )}
-          <Eraser size={15} className="relative z-10" />
+          <Redo2 size={15} />
         </button>
       </div>
 
       {/* Colors */}
-      {tool === "pen" && (
+      {["select", "pen", "highlighter", "rectangle", "circle", "line", "arrow"].includes(
+        tool,
+      ) && (
         <div className="flex items-center gap-1.5 px-1.5 border-r border-white/10 shrink-0">
-          {DEFAULT_COLORS.map((c, i) => (
+          {DEFAULT_COLORS.map((c) => (
             <div key={c} className="relative group flex flex-col items-center">
               <button
                 onClick={() => setColor(c)}
                 className={`w-3.5 h-3.5 rounded-full transition-all duration-300 ${color === c ? "scale-125 ring-2 ring-white/80 ring-offset-1 ring-offset-[#09090b]" : "hover:scale-110 opacity-70 hover:opacity-100 border border-white/20"}`}
                 style={{ backgroundColor: c }}
               />
-              <span className="absolute -bottom-3.5 text-[8px] font-bold text-white/30 group-hover:text-white/80 transition-colors">
-                {i + 1}
-              </span>
             </div>
           ))}
-
-          {/* Custom Color Picker */}
           <div className="relative flex items-center justify-center w-3.5 h-3.5 ml-0.5 group">
             <input
               ref={colorInputRef}
@@ -137,7 +197,8 @@ export default function Toolbar({
         </button>
 
         {isSizeMenuOpen && (
-          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-4 w-16 max-h-64 overflow-y-auto bg-[#121214] border border-[#27272a] rounded-xl shadow-2xl flex flex-col z-50 py-2 scrollbar-hide">
+          /* ✅ z-index افزایش یافت تا زیر لایه مشکی نره */
+          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-4 w-16 max-h-64 overflow-y-auto bg-[#121214] border border-[#27272a] rounded-xl shadow-2xl flex flex-col z-[999] py-2 scrollbar-hide">
             {sizes.map((s) => (
               <button
                 key={s}
@@ -168,8 +229,8 @@ export default function Toolbar({
         </button>
 
         {isDeleteMenuOpen && (
-          /* ✅ تغییرات اینجا اعمال شد: بک‌گراند کاملا توپر و حذف بلور */
-          <div className="absolute top-full right-0 mt-4 w-48 bg-[#121214] border border-[#27272a] rounded-xl shadow-2xl overflow-hidden flex flex-col z-50">
+          /* ✅ z-index افزایش یافت */
+          <div className="absolute top-full right-0 mt-4 w-48 bg-[#121214] border border-[#27272a] rounded-xl shadow-2xl overflow-hidden flex flex-col z-[999]">
             <button
               onClick={() => {
                 onClearCurrentPage();

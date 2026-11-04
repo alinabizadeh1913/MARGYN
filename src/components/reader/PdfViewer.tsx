@@ -27,6 +27,8 @@ import {
 } from "lucide-react";
 import Typography from "@/typography";
 import PdfDrawingLayer from "./PdfDrawingLayer";
+import { buildTextLines } from "./pdfText";
+import type { TextLine } from "./inkTypes";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "pdf.worker.min.mjs";
 
@@ -39,34 +41,39 @@ interface LoadedDoc {
   id: number;
   doc: pdfjsLib.PDFDocumentProxy;
 }
-
 interface DisplayedPage {
   key: string;
   pageNumber: number;
   width: number;
   height: number;
 }
-
 interface CachedPage {
   canvas: HTMLCanvasElement;
   cssWidth: number;
   cssHeight: number;
+  textLines: TextLine[];
 }
 
 interface PdfViewerProps {
   fileData: Uint8Array | null;
   filePath?: string;
+  initialScale?: number;
   onDocumentLoad?: (totalPages: number) => void;
   onDropPdf?: (file: File) => void;
   onOpenPdf?: () => void;
+  onScaleChange?: (scale: number) => void;
+  onTextLayerStatus?: (hasText: boolean) => void;
 }
 
 export default function PdfViewer({
   fileData,
   filePath,
+  initialScale,
   onDocumentLoad,
   onDropPdf,
   onOpenPdf,
+  onScaleChange,
+  onTextLayerStatus,
 }: PdfViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
@@ -89,10 +96,11 @@ export default function PdfViewer({
   const { canvasBg, setCanvasBg } = useTool();
 
   const [loadedDoc, setLoadedDoc] = useState<LoadedDoc | null>(null);
-  const [scale, setScale] = useState(DEFAULT_SCALE);
+  const [scale, setScale] = useState(initialScale || DEFAULT_SCALE);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   const [displayed, setDisplayed] = useState<DisplayedPage | null>(null);
+  const [textLines, setTextLines] = useState<TextLine[]>([]);
   const [revealedKey, setRevealedKey] = useState<string | null>(null);
   const [errorKey, setErrorKey] = useState<string | null>(null);
   const [isRendering, setIsRendering] = useState(false);
@@ -108,14 +116,32 @@ export default function PdfViewer({
 
   const [isDragging, setIsDragging] = useState(false);
 
+  useEffect(() => {
+    if (initialScale) setScale(initialScale);
+  }, [initialScale]);
+
+  const changeScale = (newScale: number) => {
+    setScale(newScale);
+    if (onScaleChange) onScaleChange(newScale);
+  };
+
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (showBackModal) setShowBackModal(false);
+        else if (showGoToPageModal) setShowGoToPageModal(false);
+      }
+    };
+    window.addEventListener("keydown", handleEsc);
+    return () => window.removeEventListener("keydown", handleEsc);
+  }, [showBackModal, showGoToPageModal]);
+
   const isNavigationLocked = !isActive && lastFocusPage !== null;
 
   const requestKey = loadedDoc
     ? `${loadedDoc.id}:${currentPage}:${scale}`
     : null;
-
   const isCacheHit = requestKey ? cacheRef.current.has(requestKey) : false;
-
   const isLoading =
     !isCacheHit &&
     (isRendering ||
@@ -123,9 +149,19 @@ export default function PdfViewer({
       displayed?.key !== requestKey ||
       revealedKey !== requestKey);
 
-  const latestRef = useRef({ onDocumentLoad, currentPage, setCurrentPage });
+  const latestRef = useRef({
+    onDocumentLoad,
+    currentPage,
+    setCurrentPage,
+    onTextLayerStatus,
+  });
   useEffect(() => {
-    latestRef.current = { onDocumentLoad, currentPage, setCurrentPage };
+    latestRef.current = {
+      onDocumentLoad,
+      currentPage,
+      setCurrentPage,
+      onTextLayerStatus,
+    };
   });
 
   const toggleFullscreen = () => {
@@ -145,7 +181,6 @@ export default function PdfViewer({
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-
     const resizeObserver = new ResizeObserver((entries) => {
       const entry = entries[entries.length - 1];
       if (!entry) return;
@@ -157,7 +192,6 @@ export default function PdfViewer({
           : { width, height },
       );
     });
-
     resizeObserver.observe(container);
     return () => resizeObserver.disconnect();
   }, []);
@@ -177,7 +211,6 @@ export default function PdfViewer({
     setRevealedKey(null);
     setErrorKey(null);
     displayedKeyRef.current = null;
-
     if (!fileData) {
       latestRef.current.onDocumentLoad?.(0);
       return;
@@ -194,9 +227,8 @@ export default function PdfViewer({
         docIdRef.current += 1;
         setLoadedDoc({ id: docIdRef.current, doc });
         latestRef.current.onDocumentLoad?.(doc.numPages);
-        if (latestRef.current.currentPage > doc.numPages) {
+        if (latestRef.current.currentPage > doc.numPages)
           latestRef.current.setCurrentPage(1);
-        }
       })
       .catch((error) => {
         if (!cancelled) console.error("Failed to load PDF:", error);
@@ -220,8 +252,8 @@ export default function PdfViewer({
           continue;
 
         prefetchingRef.current.add(key);
-
         const delay = Math.abs(i - current) * 50;
+
         setTimeout(async () => {
           try {
             const page = await doc.doc.getPage(i);
@@ -245,15 +277,24 @@ export default function PdfViewer({
 
             await task.promise;
 
+            const textContent = await page.getTextContent();
+            const lines = buildTextLines(
+              textContent.items as any[],
+              viewport,
+              pdfjsLib.Util,
+            );
+
             cacheRef.current.set(key, {
               canvas: offscreen,
               cssWidth: Math.floor(viewport.width),
               cssHeight: Math.floor(viewport.height),
+              textLines: lines,
             });
 
             if (cacheRef.current.size > MAX_CACHE_SIZE) {
+              const protectedKey = `${doc.id}:${current}:${scale}`;
               const oldestKey = cacheRef.current.keys().next().value;
-              if (oldestKey && oldestKey !== `${doc.id}:${current}:${scale}`) {
+              if (oldestKey && oldestKey !== protectedKey) {
                 const c = cacheRef.current.get(oldestKey)?.canvas;
                 if (c) {
                   c.width = 0;
@@ -263,9 +304,8 @@ export default function PdfViewer({
               }
             }
           } catch (err: any) {
-            if (err.message !== "Transport destroyed") {
+            if (err.message !== "Transport destroyed")
               console.warn(`Prefetch failed for page ${i}`, err);
-            }
           } finally {
             prefetchingRef.current.delete(key);
           }
@@ -302,9 +342,10 @@ export default function PdfViewer({
           width: cached.cssWidth,
           height: cached.cssHeight,
         });
+        setTextLines(cached.textLines);
+        latestRef.current.onTextLayerStatus?.(cached.textLines.length > 0);
         setRevealedKey(currentKey);
         setIsRendering(false);
-
         prefetchPages(loadedDoc, pageNumber);
         return;
       }
@@ -334,7 +375,6 @@ export default function PdfViewer({
           }),
         ]);
         if (getPageTimeout) clearTimeout(getPageTimeout);
-
         if (cancelled) {
           page.cleanup();
           return;
@@ -372,8 +412,19 @@ export default function PdfViewer({
 
         await Promise.race([renderPromise, timeoutPromise]);
         if (renderTimeout) clearTimeout(renderTimeout);
-
         if (cancelled) return;
+
+        const textContent = await page.getTextContent();
+        const lines = buildTextLines(
+          textContent.items as any[],
+          viewport,
+          pdfjsLib.Util,
+        );
+
+        if (!cancelled) {
+          setTextLines(lines);
+          latestRef.current.onTextLayerStatus?.(lines.length > 0);
+        }
 
         const visible = canvasRef.current;
         const visibleCtx = visible?.getContext("2d", { alpha: false });
@@ -390,23 +441,18 @@ export default function PdfViewer({
           width: cssWidth,
           height: cssHeight,
         });
-
         cacheRef.current.set(currentKey, {
           canvas: offscreen,
           cssWidth,
           cssHeight,
+          textLines: lines,
         });
         offscreen = null;
-
         prefetchPages(loadedDoc, pageNumber);
       } catch (error: any) {
         if (renderTimeout) clearTimeout(renderTimeout);
         if (getPageTimeout) clearTimeout(getPageTimeout);
-
-        if (error.message === "Transport destroyed") {
-          return;
-        }
-
+        if (error.message === "Transport destroyed") return;
         if (!cancelled && error?.name !== "RenderingCancelledException") {
           console.error("Render error:", error);
           setErrorKey(currentKey);
@@ -419,9 +465,7 @@ export default function PdfViewer({
           offscreen.width = 0;
           offscreen.height = 0;
         }
-        if (page && cancelled) {
-          page.cleanup();
-        }
+        if (page && cancelled) page.cleanup();
       }
     };
 
@@ -446,7 +490,6 @@ export default function PdfViewer({
       revealedKey === requestKey
     )
       return;
-
     let raf2 = 0;
     const raf1 = requestAnimationFrame(() => {
       raf2 = requestAnimationFrame(() => setRevealedKey(requestKey));
@@ -459,15 +502,13 @@ export default function PdfViewer({
 
   const handleNextPage = useCallback(() => {
     if (isNavigationLocked) return;
-    if (loadedDoc && currentPage < loadedDoc.doc.numPages) {
+    if (loadedDoc && currentPage < loadedDoc.doc.numPages)
       setCurrentPage(currentPage + 1);
-    }
   }, [loadedDoc, currentPage, setCurrentPage, isNavigationLocked]);
 
   const handlePrevPage = useCallback(() => {
     if (isNavigationLocked) return;
     if (currentPage <= 1) return;
-
     if (isActive) {
       setShowBackModal(true);
       setConfirmText("");
@@ -485,16 +526,12 @@ export default function PdfViewer({
     let isScrolling = false;
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
-
       if (isNavigationLocked) return;
       if (isActive) return;
       if (isScrolling) return;
 
-      if (e.deltaY > 0) {
-        handleNextPage();
-      } else if (e.deltaY < 0) {
-        handlePrevPage();
-      }
+      if (e.deltaY > 0) handleNextPage();
+      else if (e.deltaY < 0) handlePrevPage();
 
       isScrolling = true;
       setTimeout(() => {
@@ -516,7 +553,6 @@ export default function PdfViewer({
         target.isContentEditable
       )
         return;
-
       if (isNavigationLocked) return;
 
       if (e.key === "ArrowDown") {
@@ -552,9 +588,7 @@ export default function PdfViewer({
     if (!loadedDoc) return;
     setGoToPageValue((prev) => {
       const current = parseInt(prev, 10) || currentPage;
-      if (current < loadedDoc.doc.numPages) {
-        return (current + 1).toString();
-      }
+      if (current < loadedDoc.doc.numPages) return (current + 1).toString();
       return prev;
     });
   }, [loadedDoc, currentPage]);
@@ -562,9 +596,7 @@ export default function PdfViewer({
   const handleDecrement = useCallback(() => {
     setGoToPageValue((prev) => {
       const current = parseInt(prev, 10) || currentPage;
-      if (current > 1) {
-        return (current - 1).toString();
-      }
+      if (current > 1) return (current - 1).toString();
       return prev;
     });
   }, [currentPage]);
@@ -589,9 +621,7 @@ export default function PdfViewer({
   }, []);
 
   useEffect(() => {
-    if (!showGoToPageModal) {
-      stopContinuousChange();
-    }
+    if (!showGoToPageModal) stopContinuousChange();
     return () => stopContinuousChange();
   }, [showGoToPageModal, stopContinuousChange]);
 
@@ -599,7 +629,6 @@ export default function PdfViewer({
     if (!loadedDoc || isNavigationLocked) return;
     const inputVal = goToPageInputRef.current?.value;
     let page = parseInt(inputVal || goToPageValue, 10);
-
     if (isNaN(page) || page < 1) page = 1;
     if (page > loadedDoc.doc.numPages) page = loadedDoc.doc.numPages;
 
@@ -638,10 +667,7 @@ export default function PdfViewer({
   if (!fileData) {
     return (
       <div
-        // ✅ حذف کلاس ring-4 و ring-inset
-        className={`w-full h-full flex flex-col items-center justify-center text-center px-6 bg-[#09090b] relative overflow-hidden transition-all duration-300 ${
-          isDragging ? "bg-[#38bdf8]/5" : ""
-        }`}
+        className={`w-full h-full flex flex-col items-center justify-center text-center px-6 bg-[#09090b] relative overflow-hidden transition-all duration-300 ${isDragging ? "bg-[#38bdf8]/5" : ""}`}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
@@ -651,7 +677,6 @@ export default function PdfViewer({
         />
         <div className="absolute top-0 left-0 w-[500px] h-[500px] bg-[#a855f7]/5 rounded-full blur-[100px] -translate-x-1/2 -translate-y-1/2 pointer-events-none" />
         <div className="absolute bottom-0 right-0 w-[500px] h-[500px] bg-[#10b981]/5 rounded-full blur-[100px] translate-x-1/2 translate-y-1/2 pointer-events-none" />
-
         <div className="absolute inset-0 bg-[linear-gradient(to_right,#27272a_1px,transparent_1px),linear-gradient(to_bottom,#27272a_1px,transparent_1px)] bg-[size:64px_64px] opacity-[0.02] pointer-events-none" />
 
         <div className="relative z-10 flex flex-col items-center animate-in fade-in zoom-in-95 duration-700 ease-out">
@@ -663,13 +688,8 @@ export default function PdfViewer({
             <div
               className={`absolute inset-0 blur-xl rounded-3xl transition-all duration-500 ${isDragging ? "bg-[#38bdf8]/40" : "bg-[#38bdf8]/0 group-hover:bg-[#38bdf8]/20"}`}
             />
-
             <div
-              className={`w-24 h-24 rounded-3xl bg-[#121214] border shadow-[0_0_40px_rgba(0,0,0,0.5)] flex items-center justify-center relative z-10 transition-all duration-500 ${
-                isDragging
-                  ? "border-[#38bdf8] bg-[#18181b]"
-                  : "border-white/10 group-hover:-translate-y-2 group-hover:border-[#38bdf8]/40 group-hover:bg-[#18181b]"
-              }`}
+              className={`w-24 h-24 rounded-3xl bg-[#121214] border shadow-[0_0_40px_rgba(0,0,0,0.5)] flex items-center justify-center relative z-10 transition-all duration-500 ${isDragging ? "border-[#38bdf8] bg-[#18181b]" : "border-white/10 group-hover:-translate-y-2 group-hover:border-[#38bdf8]/40 group-hover:bg-[#18181b]"}`}
             >
               {isDragging ? (
                 <FileDown size={36} className="text-[#38bdf8] animate-bounce" />
@@ -686,9 +706,7 @@ export default function PdfViewer({
             <Typography
               variant="pageTitle"
               as="h1"
-              className={`text-transparent bg-clip-text bg-gradient-to-br from-white via-white to-white/50 mb-3 tracking-tight text-3xl font-bold transition-all duration-500 ${
-                isDragging ? "scale-105" : ""
-              }`}
+              className={`text-transparent bg-clip-text bg-gradient-to-br from-white via-white to-white/50 mb-3 tracking-tight text-3xl font-bold transition-all duration-500 ${isDragging ? "scale-105" : ""}`}
             >
               {isDragging ? "Drop your PDF here" : "Read, don't count."}
             </Typography>
@@ -724,7 +742,6 @@ export default function PdfViewer({
             {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
           </button>
           <div className="h-px w-full bg-zinc-200 my-0.5" />
-
           <div className="relative w-full h-full flex items-center justify-center py-0.5">
             <input
               type="color"
@@ -740,19 +757,19 @@ export default function PdfViewer({
           <div className="h-px w-full bg-zinc-200 my-0.5" />
 
           <button
-            onClick={() => setScale((prev) => Math.min(3, prev + 0.2))}
+            onClick={() => changeScale(Math.min(3, scale + 0.2))}
             className="p-2.5 rounded-xl text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 transition-all duration-200"
           >
             <ZoomIn size={18} />
           </button>
           <button
-            onClick={() => setScale((prev) => Math.max(0.5, prev - 0.2))}
+            onClick={() => changeScale(Math.max(0.5, scale - 0.2))}
             className="p-2.5 rounded-xl text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 transition-all duration-200"
           >
             <ZoomOut size={18} />
           </button>
           <button
-            onClick={() => setScale(DEFAULT_SCALE)}
+            onClick={() => changeScale(DEFAULT_SCALE)}
             className="p-2.5 rounded-xl text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 transition-all duration-200"
           >
             <RotateCcw size={18} />
@@ -765,11 +782,7 @@ export default function PdfViewer({
               <button
                 onClick={handlePrevPage}
                 disabled={currentPage === 1 || isNavigationLocked}
-                className={`p-2.5 rounded-xl transition-all duration-200 flex items-center justify-center ${
-                  currentPage === 1 || isNavigationLocked
-                    ? "text-zinc-300 cursor-not-allowed"
-                    : "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 active:scale-95"
-                }`}
+                className={`p-2.5 rounded-xl transition-all duration-200 flex items-center justify-center ${currentPage === 1 || isNavigationLocked ? "text-zinc-300 cursor-not-allowed" : "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 active:scale-95"}`}
                 title="Previous Page (Arrow Up)"
               >
                 <ChevronUp size={20} />
@@ -780,11 +793,7 @@ export default function PdfViewer({
                 disabled={
                   currentPage === loadedDoc.doc.numPages || isNavigationLocked
                 }
-                className={`p-2.5 rounded-xl transition-all duration-200 flex items-center justify-center ${
-                  currentPage === loadedDoc.doc.numPages || isNavigationLocked
-                    ? "text-zinc-300 cursor-not-allowed"
-                    : "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 active:scale-95"
-                }`}
+                className={`p-2.5 rounded-xl transition-all duration-200 flex items-center justify-center ${currentPage === loadedDoc.doc.numPages || isNavigationLocked ? "text-zinc-300 cursor-not-allowed" : "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 active:scale-95"}`}
                 title="Next Page (Arrow Down)"
               >
                 <ChevronDown size={20} />
@@ -794,11 +803,7 @@ export default function PdfViewer({
             <button
               onClick={() => setShowGoToPageModal(true)}
               disabled={isNavigationLocked}
-              className={`bg-white/95 backdrop-blur-xl border border-zinc-200 p-3 rounded-2xl shadow-sm transition-all duration-200 flex items-center justify-center ${
-                isNavigationLocked
-                  ? "text-zinc-300 cursor-not-allowed"
-                  : "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100"
-              }`}
+              className={`bg-white/95 backdrop-blur-xl border border-zinc-200 p-3 rounded-2xl shadow-sm transition-all duration-200 flex items-center justify-center ${isNavigationLocked ? "text-zinc-300 cursor-not-allowed" : "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100"}`}
               title="Go to Page"
             >
               <Hash size={20} className="block" />
@@ -839,6 +844,7 @@ export default function PdfViewer({
               height={containerSize.height}
               pdfWidth={displayed.width}
               pdfHeight={displayed.height}
+              textLines={textLines}
             />
           </div>
         )}
@@ -870,13 +876,13 @@ export default function PdfViewer({
         </div>
       )}
 
+      {/* Modals ... (بدون تغییر) */}
       {showBackModal && (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40 backdrop-blur-md transition-all duration-300">
           <div className="bg-[#121214] border border-rose-500/30 p-8 rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] w-full max-w-lg flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">
             <div className="w-16 h-16 bg-rose-500/10 rounded-full flex items-center justify-center mb-6 shadow-inner">
               <ShieldAlert size={32} className="text-rose-500" />
             </div>
-
             <Typography
               variant="pageTitle"
               as="h2"
@@ -884,7 +890,6 @@ export default function PdfViewer({
             >
               Break Your Focus?
             </Typography>
-
             <Typography
               variant="body"
               as="p"
@@ -893,14 +898,12 @@ export default function PdfViewer({
               Going back breaks your flow. If you absolutely must, type the
               following phrase in <strong>ALL CAPITAL LETTERS</strong>:
             </Typography>
-
             <div className="w-full bg-[#09090b] border border-[#27272a] rounded-2xl p-4 mb-6 flex items-center justify-center gap-3 select-none">
               <Lock size={16} className="text-[#52525b]" />
               <span className="text-[#fafafa] font-mono text-base font-bold tracking-widest">
                 {REQUIRED_PHRASE}
               </span>
             </div>
-
             <input
               ref={inputRef}
               type="text"
@@ -921,11 +924,7 @@ export default function PdfViewer({
               autoComplete="off"
               spellCheck="false"
               placeholder="TYPE HERE (UPPERCASE ONLY)"
-              className={`w-full px-5 py-4 rounded-xl bg-[#18181b] border-2 outline-none transition-all text-center text-lg font-mono tracking-widest shadow-sm ${
-                confirmError
-                  ? "border-rose-400 focus:border-rose-500 text-rose-600 placeholder-rose-300 animate-shake"
-                  : "border-[#27272a] focus:border-rose-500/50 text-[#fafafa]"
-              }`}
+              className={`w-full px-5 py-4 rounded-xl bg-[#18181b] border-2 outline-none transition-all text-center text-lg font-mono tracking-widest shadow-sm ${confirmError ? "border-rose-400 focus:border-rose-500 text-rose-600 placeholder-rose-300 animate-shake" : "border-[#27272a] focus:border-rose-500/50 text-[#fafafa]"}`}
             />
             {confirmError && (
               <Typography
@@ -935,7 +934,6 @@ export default function PdfViewer({
                 Incorrect. You must type it exactly as shown (ALL CAPS).
               </Typography>
             )}
-
             <div className="flex gap-4 w-full mt-8">
               <button
                 onClick={() => setShowBackModal(false)}
@@ -960,7 +958,6 @@ export default function PdfViewer({
             <div className="w-16 h-16 bg-[#38bdf8]/10 rounded-full flex items-center justify-center mb-6 shadow-inner">
               <Hash size={32} className="text-[#38bdf8]" />
             </div>
-
             <Typography
               variant="pageTitle"
               as="h2"
@@ -968,7 +965,6 @@ export default function PdfViewer({
             >
               Go to Page
             </Typography>
-
             <Typography
               variant="body"
               as="p"
@@ -976,7 +972,6 @@ export default function PdfViewer({
             >
               Enter the page number you want to jump to.
             </Typography>
-
             <div className="w-full flex items-center bg-[#18181b] border-2 border-[#27272a] focus-within:border-[#38bdf8]/50 rounded-xl transition-all shadow-sm overflow-hidden mb-8">
               <input
                 ref={goToPageInputRef}
@@ -1000,9 +995,8 @@ export default function PdfViewer({
                   setGoToPageValue(num.toString());
                 }}
                 onBlur={() => {
-                  if (goToPageValue === "") {
+                  if (goToPageValue === "")
                     setGoToPageValue(currentPage.toString());
-                  }
                 }}
                 onKeyDown={(e) => {
                   e.stopPropagation();
@@ -1012,7 +1006,6 @@ export default function PdfViewer({
                 autoFocus
                 className="flex-1 w-full px-5 py-4 bg-transparent outline-none text-center text-xl font-mono tracking-widest text-[#fafafa] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               />
-
               <div className="flex flex-col h-full border-l border-[#27272a] shrink-0 bg-black/10">
                 <button
                   onMouseDown={() => startContinuousChange("up")}
@@ -1038,7 +1031,6 @@ export default function PdfViewer({
                 </button>
               </div>
             </div>
-
             <div className="flex gap-4 w-full">
               <button
                 onClick={() => setShowGoToPageModal(false)}
@@ -1049,11 +1041,7 @@ export default function PdfViewer({
               <button
                 onClick={handleGoToPage}
                 disabled={isNavigationLocked}
-                className={`flex-1 px-4 py-3.5 rounded-xl transition-all font-medium active:scale-[0.98] ${
-                  isNavigationLocked
-                    ? "bg-[#38bdf8]/50 text-black/50 cursor-not-allowed shadow-none"
-                    : "bg-[#38bdf8] text-black hover:bg-[#38bdf8]/90 shadow-[0_0_15px_rgba(56,189,248,0.3)]"
-                }`}
+                className={`flex-1 px-4 py-3.5 rounded-xl transition-all font-medium active:scale-[0.98] ${isNavigationLocked ? "bg-[#38bdf8]/50 text-black/50 cursor-not-allowed shadow-none" : "bg-[#38bdf8] text-black hover:bg-[#38bdf8]/90 shadow-[0_0_15px_rgba(56,189,248,0.3)]"}`}
               >
                 Go
               </button>
