@@ -7,13 +7,14 @@ import { useInkCanvas } from "./useInkCanvas";
 
 const identity = (x: number, y: number): [number, number] => [x, y];
 
-export default function MarginCanvas() {
+export default function MarginCanvas({ filePath }: { filePath?: string }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const { currentPage } = useSession();
   const { tool } = useTool();
 
   const { staticRef, dynamicRef, resize, handlers } = useInkCanvas({
     kind: "margin",
+    filePath: filePath || "",
     page: currentPage,
     toStored: identity,
     toScreen: identity,

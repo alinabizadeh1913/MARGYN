@@ -18,12 +18,15 @@ declare global {
         libraryPath: string;
       } | null>;
 
-      // ✅ NEW: اضافه شدن توابع PDF
       readPdfPath: (path: string) => Promise<{
         data: Uint8Array;
         name: string;
         libraryPath: string;
       } | null>;
+
+      // ✅ تایپ جدید برای خواندن مسیر فایل درگ شده
+      getPathForFile: (file: File) => string;
+
       onOpenPdfFile: (callback: (filePath: string) => void) => () => void;
 
       loadLibraryFile: (filePath: string) => Promise<Uint8Array | null>;
@@ -48,6 +51,9 @@ declare global {
       forceCloseApp: () => void;
 
       onOpenMargynFile: (callback: (filePath: string) => void) => () => void;
+
+      setRecordingShortcut: (isRecording: boolean) => void;
+      onShortcutTriggered: (callback: (shortcut: string) => void) => () => void;
     };
   }
 }

@@ -1,6 +1,12 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import * as pdfjsLib from "pdfjs-dist";
 import { useSession } from "@/providers/SessionProvider";
 import { useTool } from "@/providers/ToolProvider";
@@ -17,14 +23,17 @@ import {
   ShieldAlert,
   Lock,
   Hash,
+  FileDown,
 } from "lucide-react";
 import Typography from "@/typography";
 import PdfDrawingLayer from "./PdfDrawingLayer";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+pdfjsLib.GlobalWorkerOptions.workerSrc = "pdf.worker.min.mjs";
 
 const REQUIRED_PHRASE = "I AM BREAKING MY FOCUS";
 const DEFAULT_SCALE = 1.3;
+const PREFETCH_WINDOW = 5;
+const MAX_CACHE_SIZE = 20;
 
 interface LoadedDoc {
   id: number;
@@ -38,13 +47,27 @@ interface DisplayedPage {
   height: number;
 }
 
+interface CachedPage {
+  canvas: HTMLCanvasElement;
+  cssWidth: number;
+  cssHeight: number;
+}
+
+interface PdfViewerProps {
+  fileData: Uint8Array | null;
+  filePath?: string;
+  onDocumentLoad?: (totalPages: number) => void;
+  onDropPdf?: (file: File) => void;
+  onOpenPdf?: () => void;
+}
+
 export default function PdfViewer({
   fileData,
+  filePath,
   onDocumentLoad,
-}: {
-  fileData: Uint8Array | null;
-  onDocumentLoad?: (totalPages: number) => void;
-}) {
+  onDropPdf,
+  onOpenPdf,
+}: PdfViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -56,10 +79,13 @@ export default function PdfViewer({
   const inflightRef = useRef<Promise<void>>(Promise.resolve());
   const displayedKeyRef = useRef<string | null>(null);
 
+  const cacheRef = useRef<Map<string, CachedPage>>(new Map());
+  const prefetchingRef = useRef<Set<string>>(new Set());
+
   const holdTimeout = useRef<NodeJS.Timeout | null>(null);
   const holdInterval = useRef<NodeJS.Timeout | null>(null);
 
-  const { isActive, currentPage, setCurrentPage } = useSession();
+  const { isActive, lastFocusPage, currentPage, setCurrentPage } = useSession();
   const { canvasBg, setCanvasBg } = useTool();
 
   const [loadedDoc, setLoadedDoc] = useState<LoadedDoc | null>(null);
@@ -69,6 +95,7 @@ export default function PdfViewer({
   const [displayed, setDisplayed] = useState<DisplayedPage | null>(null);
   const [revealedKey, setRevealedKey] = useState<string | null>(null);
   const [errorKey, setErrorKey] = useState<string | null>(null);
+  const [isRendering, setIsRendering] = useState(false);
 
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
 
@@ -79,14 +106,22 @@ export default function PdfViewer({
   const [showGoToPageModal, setShowGoToPageModal] = useState(false);
   const [goToPageValue, setGoToPageValue] = useState("");
 
+  const [isDragging, setIsDragging] = useState(false);
+
+  const isNavigationLocked = !isActive && lastFocusPage !== null;
+
   const requestKey = loadedDoc
     ? `${loadedDoc.id}:${currentPage}:${scale}`
     : null;
 
+  const isCacheHit = requestKey ? cacheRef.current.has(requestKey) : false;
+
   const isLoading =
-    requestKey === null ||
-    displayed?.key !== requestKey ||
-    revealedKey !== requestKey;
+    !isCacheHit &&
+    (isRendering ||
+      requestKey === null ||
+      displayed?.key !== requestKey ||
+      revealedKey !== requestKey);
 
   const latestRef = useRef({ onDocumentLoad, currentPage, setCurrentPage });
   useEffect(() => {
@@ -128,6 +163,15 @@ export default function PdfViewer({
   }, []);
 
   useEffect(() => {
+    cacheRef.current.forEach((cached) => {
+      cached.canvas.width = 0;
+      cached.canvas.height = 0;
+    });
+    cacheRef.current.clear();
+    prefetchingRef.current.clear();
+  }, [fileData, scale]);
+
+  useEffect(() => {
     setLoadedDoc(null);
     setDisplayed(null);
     setRevealedKey(null);
@@ -164,25 +208,137 @@ export default function PdfViewer({
     };
   }, [fileData]);
 
-  useEffect(() => {
+  const prefetchPages = useCallback(
+    (doc: LoadedDoc, current: number) => {
+      const start = Math.max(1, current - PREFETCH_WINDOW);
+      const end = Math.min(doc.doc.numPages, current + PREFETCH_WINDOW);
+
+      for (let i = start; i <= end; i++) {
+        if (i === current) continue;
+        const key = `${doc.id}:${i}:${scale}`;
+        if (cacheRef.current.has(key) || prefetchingRef.current.has(key))
+          continue;
+
+        prefetchingRef.current.add(key);
+
+        const delay = Math.abs(i - current) * 50;
+        setTimeout(async () => {
+          try {
+            const page = await doc.doc.getPage(i);
+            const viewport = page.getViewport({ scale });
+            const outputScale = window.devicePixelRatio || 1;
+
+            const offscreen = document.createElement("canvas");
+            offscreen.width = Math.floor(viewport.width * outputScale);
+            offscreen.height = Math.floor(viewport.height * outputScale);
+            const ctx = offscreen.getContext("2d", { alpha: false });
+            if (!ctx) return;
+
+            const task = page.render({
+              canvasContext: ctx,
+              viewport,
+              transform:
+                outputScale !== 1
+                  ? [outputScale, 0, 0, outputScale, 0, 0]
+                  : undefined,
+            });
+
+            await task.promise;
+
+            cacheRef.current.set(key, {
+              canvas: offscreen,
+              cssWidth: Math.floor(viewport.width),
+              cssHeight: Math.floor(viewport.height),
+            });
+
+            if (cacheRef.current.size > MAX_CACHE_SIZE) {
+              const oldestKey = cacheRef.current.keys().next().value;
+              if (oldestKey && oldestKey !== `${doc.id}:${current}:${scale}`) {
+                const c = cacheRef.current.get(oldestKey)?.canvas;
+                if (c) {
+                  c.width = 0;
+                  c.height = 0;
+                }
+                cacheRef.current.delete(oldestKey);
+              }
+            }
+          } catch (err: any) {
+            if (err.message !== "Transport destroyed") {
+              console.warn(`Prefetch failed for page ${i}`, err);
+            }
+          } finally {
+            prefetchingRef.current.delete(key);
+          }
+        }, delay);
+      }
+    },
+    [scale],
+  );
+
+  useLayoutEffect(() => {
     if (!loadedDoc || !requestKey) return;
     if (displayedKeyRef.current === requestKey) return;
 
     const { doc } = loadedDoc;
     const pageNumber = currentPage;
+    const currentKey = requestKey;
     let cancelled = false;
     let task: pdfjsLib.RenderTask | null = null;
+    let renderTimeout: NodeJS.Timeout | null = null;
+    let getPageTimeout: NodeJS.Timeout | null = null;
 
+    const cached = cacheRef.current.get(currentKey);
+    if (cached) {
+      const visible = canvasRef.current;
+      const visibleCtx = visible?.getContext("2d", { alpha: false });
+      if (visible && visibleCtx) {
+        visible.width = cached.canvas.width;
+        visible.height = cached.canvas.height;
+        visibleCtx.drawImage(cached.canvas, 0, 0);
+        displayedKeyRef.current = currentKey;
+        setDisplayed({
+          key: currentKey,
+          pageNumber,
+          width: cached.cssWidth,
+          height: cached.cssHeight,
+        });
+        setRevealedKey(currentKey);
+        setIsRendering(false);
+
+        prefetchPages(loadedDoc, pageNumber);
+        return;
+      }
+    }
+
+    setIsRendering(true);
     const previousRun = inflightRef.current;
 
     const run = async () => {
-      await previousRun;
+      await Promise.race([
+        previousRun,
+        new Promise((resolve) => setTimeout(resolve, 2000)),
+      ]);
       if (cancelled) return;
 
       let offscreen: HTMLCanvasElement | null = null;
+      let page: pdfjsLib.PDFPageProxy | null = null;
+
       try {
-        const page = await doc.getPage(pageNumber);
-        if (cancelled) return;
+        page = await Promise.race([
+          doc.getPage(pageNumber),
+          new Promise<never>((_, reject) => {
+            getPageTimeout = setTimeout(
+              () => reject(new Error("getPage timeout")),
+              8000,
+            );
+          }),
+        ]);
+        if (getPageTimeout) clearTimeout(getPageTimeout);
+
+        if (cancelled) {
+          page.cleanup();
+          return;
+        }
 
         const viewport = page.getViewport({ scale });
         const outputScale = window.devicePixelRatio || 1;
@@ -203,7 +359,20 @@ export default function PdfViewer({
               ? [outputScale, 0, 0, outputScale, 0, 0]
               : undefined,
         });
-        await task.promise;
+
+        const renderPromise = task.promise;
+        const timeoutPromise = new Promise<void>((_, reject) => {
+          renderTimeout = setTimeout(() => {
+            try {
+              task?.cancel();
+            } catch (e) {}
+            reject(new Error("Render timeout"));
+          }, 30000);
+        });
+
+        await Promise.race([renderPromise, timeoutPromise]);
+        if (renderTimeout) clearTimeout(renderTimeout);
+
         if (cancelled) return;
 
         const visible = canvasRef.current;
@@ -213,23 +382,45 @@ export default function PdfViewer({
         visible.width = offscreen.width;
         visible.height = offscreen.height;
         visibleCtx.drawImage(offscreen, 0, 0);
-        displayedKeyRef.current = requestKey;
+        displayedKeyRef.current = currentKey;
 
         setDisplayed({
-          key: requestKey,
+          key: currentKey,
           pageNumber,
           width: cssWidth,
           height: cssHeight,
         });
+
+        cacheRef.current.set(currentKey, {
+          canvas: offscreen,
+          cssWidth,
+          cssHeight,
+        });
+        offscreen = null;
+
+        prefetchPages(loadedDoc, pageNumber);
       } catch (error: any) {
+        if (renderTimeout) clearTimeout(renderTimeout);
+        if (getPageTimeout) clearTimeout(getPageTimeout);
+
+        if (error.message === "Transport destroyed") {
+          return;
+        }
+
         if (!cancelled && error?.name !== "RenderingCancelledException") {
           console.error("Render error:", error);
-          setErrorKey(requestKey);
+          setErrorKey(currentKey);
         }
       } finally {
+        setIsRendering(false);
+        if (renderTimeout) clearTimeout(renderTimeout);
+        if (getPageTimeout) clearTimeout(getPageTimeout);
         if (offscreen) {
           offscreen.width = 0;
           offscreen.height = 0;
+        }
+        if (page && cancelled) {
+          page.cleanup();
         }
       }
     };
@@ -238,9 +429,15 @@ export default function PdfViewer({
 
     return () => {
       cancelled = true;
-      task?.cancel();
+      if (renderTimeout) clearTimeout(renderTimeout);
+      if (getPageTimeout) clearTimeout(getPageTimeout);
+      if (task) {
+        try {
+          task.cancel();
+        } catch (e) {}
+      }
     };
-  }, [loadedDoc, requestKey, currentPage, scale]);
+  }, [loadedDoc, requestKey, currentPage, scale, prefetchPages]);
 
   useEffect(() => {
     if (
@@ -261,12 +458,14 @@ export default function PdfViewer({
   }, [displayed, requestKey, revealedKey]);
 
   const handleNextPage = useCallback(() => {
+    if (isNavigationLocked) return;
     if (loadedDoc && currentPage < loadedDoc.doc.numPages) {
       setCurrentPage(currentPage + 1);
     }
-  }, [loadedDoc, currentPage, setCurrentPage]);
+  }, [loadedDoc, currentPage, setCurrentPage, isNavigationLocked]);
 
   const handlePrevPage = useCallback(() => {
+    if (isNavigationLocked) return;
     if (currentPage <= 1) return;
 
     if (isActive) {
@@ -277,7 +476,7 @@ export default function PdfViewer({
     } else {
       setCurrentPage(currentPage - 1);
     }
-  }, [currentPage, isActive, setCurrentPage]);
+  }, [currentPage, isActive, setCurrentPage, isNavigationLocked]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -287,6 +486,7 @@ export default function PdfViewer({
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
 
+      if (isNavigationLocked) return;
       if (isActive) return;
       if (isScrolling) return;
 
@@ -304,7 +504,7 @@ export default function PdfViewer({
 
     container.addEventListener("wheel", handleWheel, { passive: false });
     return () => container.removeEventListener("wheel", handleWheel);
-  }, [isActive, handleNextPage, handlePrevPage]);
+  }, [isActive, isNavigationLocked, handleNextPage, handlePrevPage]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -317,6 +517,8 @@ export default function PdfViewer({
       )
         return;
 
+      if (isNavigationLocked) return;
+
       if (e.key === "ArrowDown") {
         e.preventDefault();
         handleNextPage();
@@ -327,7 +529,13 @@ export default function PdfViewer({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleNextPage, handlePrevPage, showBackModal, showGoToPageModal]);
+  }, [
+    handleNextPage,
+    handlePrevPage,
+    showBackModal,
+    showGoToPageModal,
+    isNavigationLocked,
+  ]);
 
   const handleConfirmBack = () => {
     if (confirmText === REQUIRED_PHRASE) {
@@ -388,8 +596,9 @@ export default function PdfViewer({
   }, [showGoToPageModal, stopContinuousChange]);
 
   const handleGoToPage = () => {
-    if (!loadedDoc) return;
-    let page = parseInt(goToPageValue, 10);
+    if (!loadedDoc || isNavigationLocked) return;
+    const inputVal = goToPageInputRef.current?.value;
+    let page = parseInt(inputVal || goToPageValue, 10);
 
     if (isNaN(page) || page < 1) page = 1;
     if (page > loadedDoc.doc.numPages) page = loadedDoc.doc.numPages;
@@ -406,28 +615,94 @@ export default function PdfViewer({
     }
   }, [showGoToPageModal, currentPage]);
 
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (!fileData && !isDragging) setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (!fileData && onDropPdf) {
+      const file = e.dataTransfer.files?.[0];
+      if (file) onDropPdf(file);
+    }
+  };
+
   if (!fileData) {
     return (
-      <div className="w-full h-full flex flex-col items-center justify-center text-center px-6 bg-[#09090b] relative overflow-hidden">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-[#38bdf8]/5 rounded-full blur-[100px] pointer-events-none" />
-        <div className="w-24 h-24 rounded-3xl bg-[#121214] border border-white/5 shadow-2xl flex items-center justify-center mb-8 relative group">
-          <div className="absolute inset-0 bg-[#38bdf8]/10 blur-md rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity" />
-          <Upload
-            size={36}
-            className="text-[#52525b] group-hover:text-[#38bdf8] transition-colors relative z-10"
-          />
+      <div
+        // ✅ حذف کلاس ring-4 و ring-inset
+        className={`w-full h-full flex flex-col items-center justify-center text-center px-6 bg-[#09090b] relative overflow-hidden transition-all duration-300 ${
+          isDragging ? "bg-[#38bdf8]/5" : ""
+        }`}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        <div
+          className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full blur-[120px] pointer-events-none transition-all duration-500 ${isDragging ? "bg-[#38bdf8]/20 scale-110" : "bg-[#38bdf8]/5"}`}
+        />
+        <div className="absolute top-0 left-0 w-[500px] h-[500px] bg-[#a855f7]/5 rounded-full blur-[100px] -translate-x-1/2 -translate-y-1/2 pointer-events-none" />
+        <div className="absolute bottom-0 right-0 w-[500px] h-[500px] bg-[#10b981]/5 rounded-full blur-[100px] translate-x-1/2 translate-y-1/2 pointer-events-none" />
+
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#27272a_1px,transparent_1px),linear-gradient(to_bottom,#27272a_1px,transparent_1px)] bg-[size:64px_64px] opacity-[0.02] pointer-events-none" />
+
+        <div className="relative z-10 flex flex-col items-center animate-in fade-in zoom-in-95 duration-700 ease-out">
+          <button
+            onClick={onOpenPdf}
+            className={`relative group mb-10 outline-none transition-all duration-500 ${isDragging ? "-translate-y-4 scale-110 pointer-events-none" : "cursor-pointer"}`}
+            disabled={isDragging}
+          >
+            <div
+              className={`absolute inset-0 blur-xl rounded-3xl transition-all duration-500 ${isDragging ? "bg-[#38bdf8]/40" : "bg-[#38bdf8]/0 group-hover:bg-[#38bdf8]/20"}`}
+            />
+
+            <div
+              className={`w-24 h-24 rounded-3xl bg-[#121214] border shadow-[0_0_40px_rgba(0,0,0,0.5)] flex items-center justify-center relative z-10 transition-all duration-500 ${
+                isDragging
+                  ? "border-[#38bdf8] bg-[#18181b]"
+                  : "border-white/10 group-hover:-translate-y-2 group-hover:border-[#38bdf8]/40 group-hover:bg-[#18181b]"
+              }`}
+            >
+              {isDragging ? (
+                <FileDown size={36} className="text-[#38bdf8] animate-bounce" />
+              ) : (
+                <Upload
+                  size={36}
+                  className="text-[#71717a] group-hover:text-[#38bdf8] transition-colors duration-300"
+                />
+              )}
+            </div>
+          </button>
+
+          <div className="flex flex-col items-center max-w-md pointer-events-none">
+            <Typography
+              variant="pageTitle"
+              as="h1"
+              className={`text-transparent bg-clip-text bg-gradient-to-br from-white via-white to-white/50 mb-3 tracking-tight text-3xl font-bold transition-all duration-500 ${
+                isDragging ? "scale-105" : ""
+              }`}
+            >
+              {isDragging ? "Drop your PDF here" : "Read, don't count."}
+            </Typography>
+            <Typography
+              variant="body"
+              as="p"
+              className="text-[#a1a1aa] leading-relaxed text-sm transition-all duration-300"
+            >
+              {isDragging
+                ? "Release to start your focus session."
+                : "Open a PDF to begin your session. Drag & drop anywhere, or click the icon above."}
+            </Typography>
+          </div>
         </div>
-        <Typography
-          variant="pageTitle"
-          as="h1"
-          className="text-transparent bg-clip-text bg-gradient-to-br from-white to-white/50 mb-4 tracking-tight"
-        >
-          Read, don't count.
-        </Typography>
-        <Typography variant="body" as="p" className="text-[#a1a1aa] max-w-md">
-          Open a PDF to begin your session. No page numbers. No pressure. Just
-          you and the text.
-        </Typography>
       </div>
     );
   }
@@ -440,7 +715,6 @@ export default function PdfViewer({
       className="w-full h-full flex flex-col relative overflow-hidden transition-colors duration-500 ease-in-out"
       style={{ backgroundColor: canvasBg }}
     >
-      {/* Floating Toolbars */}
       <div className="absolute top-8 right-8 flex flex-col gap-4 z-50">
         <div className="bg-white/95 backdrop-blur-xl border border-zinc-200 p-2 rounded-2xl flex flex-col gap-1.5 shadow-sm">
           <button
@@ -490,9 +764,9 @@ export default function PdfViewer({
             <div className="bg-white/95 backdrop-blur-xl border border-zinc-200 p-2 rounded-2xl flex flex-col gap-1.5 shadow-sm items-center">
               <button
                 onClick={handlePrevPage}
-                disabled={currentPage === 1}
+                disabled={currentPage === 1 || isNavigationLocked}
                 className={`p-2.5 rounded-xl transition-all duration-200 flex items-center justify-center ${
-                  currentPage === 1
+                  currentPage === 1 || isNavigationLocked
                     ? "text-zinc-300 cursor-not-allowed"
                     : "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 active:scale-95"
                 }`}
@@ -503,9 +777,11 @@ export default function PdfViewer({
               <div className="h-px w-full bg-zinc-200 my-0.5" />
               <button
                 onClick={handleNextPage}
-                disabled={currentPage === loadedDoc.doc.numPages}
+                disabled={
+                  currentPage === loadedDoc.doc.numPages || isNavigationLocked
+                }
                 className={`p-2.5 rounded-xl transition-all duration-200 flex items-center justify-center ${
-                  currentPage === loadedDoc.doc.numPages
+                  currentPage === loadedDoc.doc.numPages || isNavigationLocked
                     ? "text-zinc-300 cursor-not-allowed"
                     : "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 active:scale-95"
                 }`}
@@ -517,7 +793,12 @@ export default function PdfViewer({
 
             <button
               onClick={() => setShowGoToPageModal(true)}
-              className="bg-white/95 backdrop-blur-xl border border-zinc-200 p-3 rounded-2xl shadow-sm text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 transition-all duration-200 flex items-center justify-center"
+              disabled={isNavigationLocked}
+              className={`bg-white/95 backdrop-blur-xl border border-zinc-200 p-3 rounded-2xl shadow-sm transition-all duration-200 flex items-center justify-center ${
+                isNavigationLocked
+                  ? "text-zinc-300 cursor-not-allowed"
+                  : "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100"
+              }`}
               title="Go to Page"
             >
               <Hash size={20} className="block" />
@@ -526,7 +807,6 @@ export default function PdfViewer({
         )}
       </div>
 
-      {/* Main PDF Container */}
       <div
         ref={containerRef}
         className="flex-1 w-full h-full relative flex items-center justify-center overflow-hidden"
@@ -553,6 +833,7 @@ export default function PdfViewer({
         {displayed && containerSize.width > 0 && (
           <div className="absolute inset-0 z-10">
             <PdfDrawingLayer
+              filePath={filePath || ""}
               pageNumber={displayed.pageNumber}
               width={containerSize.width}
               height={containerSize.height}
@@ -563,7 +844,6 @@ export default function PdfViewer({
         )}
       </div>
 
-      {/* Solid Overlay */}
       {isLoading && (
         <div className="absolute inset-0 z-[999] flex flex-col items-center justify-center bg-[#121214]">
           {hasRenderError ? (
@@ -709,7 +989,10 @@ export default function PdfViewer({
                     return;
                   }
                   let num = parseInt(val, 10);
-                  if (isNaN(num)) return;
+                  if (isNaN(num)) {
+                    setGoToPageValue("");
+                    return;
+                  }
                   if (num < 1) num = 1;
                   if (loadedDoc && num > loadedDoc.doc.numPages) {
                     num = loadedDoc.doc.numPages;
@@ -765,7 +1048,12 @@ export default function PdfViewer({
               </button>
               <button
                 onClick={handleGoToPage}
-                className="flex-1 px-4 py-3.5 rounded-xl bg-[#38bdf8] text-black hover:bg-[#38bdf8]/90 transition-all font-medium shadow-[0_0_15px_rgba(56,189,248,0.3)] active:scale-[0.98]"
+                disabled={isNavigationLocked}
+                className={`flex-1 px-4 py-3.5 rounded-xl transition-all font-medium active:scale-[0.98] ${
+                  isNavigationLocked
+                    ? "bg-[#38bdf8]/50 text-black/50 cursor-not-allowed shadow-none"
+                    : "bg-[#38bdf8] text-black hover:bg-[#38bdf8]/90 shadow-[0_0_15px_rgba(56,189,248,0.3)]"
+                }`}
               >
                 Go
               </button>

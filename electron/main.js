@@ -14,6 +14,7 @@ const { pathToFileURL } = require("url");
 let mainWindow;
 let forceQuit = false;
 let pendingFilePath = null;
+let isRecordingShortcut = false; // ✅ استیت جدید برای زمان ضبط شورت‌کات
 
 const isDev = process.env.NODE_ENV === "development";
 const devUrl = process.env.ELECTRON_START_URL || "http://localhost:3000";
@@ -66,6 +67,11 @@ if (!fs.existsSync(getLibraryPath())) {
     fs.mkdirSync(getLibraryPath(), { recursive: true });
   } catch (e) {}
 }
+
+// ✅ گوش دادن به وضعیت ضبط شورت‌کات
+ipcMain.on("set-recording-shortcut", (event, isRecording) => {
+  isRecordingShortcut = isRecording;
+});
 
 // Window Controls
 ipcMain.on("window-minimize", () => {
@@ -158,7 +164,7 @@ ipcMain.handle("dialog:openPdf", async () => {
   }
 });
 
-// ✅ NEW: Read PDF from Windows Command Line Path
+// Read PDF from Windows Command Line Path
 ipcMain.handle("pdf:read-path", async (event, filePath) => {
   try {
     if (!fs.existsSync(filePath)) return null;
@@ -220,9 +226,18 @@ ipcMain.handle("dialog:selectDirectory", async () => {
 
 ipcMain.handle("project:export", async (event, { data, defaultDir }) => {
   try {
+    let defaultName = "Untitled Project.margyn";
+    if (data && data.fileName) {
+      defaultName = data.fileName.replace(/\.[^/.]+$/, "") + ".margyn";
+    }
+
+    const defaultPath = defaultDir
+      ? path.join(defaultDir, defaultName)
+      : path.join(app.getPath("documents"), defaultName);
+
     const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
       title: "Export Margyn Project",
-      defaultPath: defaultDir || app.getPath("documents"),
+      defaultPath: defaultPath,
       filters: [{ name: "Margyn Project", extensions: ["margyn"] }],
     });
     if (canceled || !filePath) return null;
@@ -321,10 +336,21 @@ function createWindow() {
   mainWindow.maximize();
 
   mainWindow.webContents.on("before-input-event", (event, input) => {
-    if ((input.control || input.meta) && input.key.toLowerCase() === "w") {
-      event.preventDefault();
+    // ✅ مهار کامل Ctrl+W برای جلوگیری از بسته شدن نرم‌افزار
+    if (
+      input.type === "keyDown" &&
+      (input.control || input.meta) &&
+      input.key.toLowerCase() === "w"
+    ) {
+      // اگر در حال ضبط شورت‌کات در تنظیمات هستیم، اجازه بده به React برسه
+      if (!isRecordingShortcut) {
+        event.preventDefault();
+        mainWindow.webContents.send("shortcut-triggered", "ctrl+w");
+      }
       return;
     }
+
+    // بلاک کردن دکمه‌های DevTools
     if (
       input.key === "F12" ||
       (input.control &&
@@ -369,17 +395,21 @@ function registerCustomProtocol() {
   protocol.handle("app", (request) => {
     const url = request.url.replace("app://", "");
     const [host, ...rest] = url.split("/");
-    let filePath = path.join(__dirname, "..", "out", ...rest);
-    if (
-      host === "bundle" &&
-      (rest.length === 0 || rest[rest.length - 1] === "")
-    ) {
-      filePath = path.join(__dirname, "..", "out", "index.html");
+
+    let filePath = path.join(__dirname, "..", "out", host, ...rest);
+
+    if (host === "bundle") {
+      filePath = path.join(__dirname, "..", "out", ...rest);
+      if (rest.length === 0 || rest[rest.length - 1] === "") {
+        filePath = path.join(__dirname, "..", "out", "index.html");
+      }
     }
+
     if (!path.extname(filePath) && !filePath.endsWith("index.html")) {
       const indexCheck = path.join(filePath, "index.html");
       if (fs.existsSync(indexCheck)) filePath = indexCheck;
     }
+
     return net.fetch(pathToFileURL(filePath).toString());
   });
 }

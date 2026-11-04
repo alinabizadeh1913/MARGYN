@@ -4,12 +4,8 @@ import { useCallback, useEffect, useRef } from "react";
 import { useTool } from "@/providers/ToolProvider";
 import { saveDrawing, loadDrawing } from "@/db";
 
-/* ------------------------------------------------------------------ */
-/* Types — the stored format is IDENTICAL to your old one, so existing */
-/* drawings in IndexedDB keep working with no migration.               */
-/* ------------------------------------------------------------------ */
 export interface Stroke {
-  points: number[][]; // [[x, y], ...]
+  points: number[][];
   color: string;
   size: number;
   isEraser: boolean;
@@ -20,21 +16,17 @@ type Mapper = (x: number, y: number) => [number, number];
 
 interface Options {
   kind: Kind;
+  filePath: string;
   page: number;
-  /** screen px (relative to canvas) -> stored coordinates */
   toStored: Mapper;
-  /** stored coordinates -> screen px (relative to canvas) */
   toScreen: Mapper;
 }
 
-const SAVE_DELAY_MS = 350; // debounce for IndexedDB writes
-const MIN_DIST_SQ = 0.4 * 0.4; // ignore sub-0.4px jitter
-const SMOOTHING = 0.6; // 1 = raw input, lower = smoother (but more lag)
+const SAVE_DELAY_MS = 350;
+const MIN_DIST_SQ = 0.4 * 0.4;
+const SMOOTHING = 0.6;
 const MAX_PREDICTED = 3;
 
-/* ------------------------------------------------------------------ */
-/* Pure drawing helpers (flat arrays: [x0, y0, x1, y1, ...])           */
-/* ------------------------------------------------------------------ */
 function flatten(points: number[][], map: Mapper): number[] {
   const out = new Array<number>(points.length * 2);
   for (let i = 0; i < points.length; i++) {
@@ -65,11 +57,10 @@ function paint(
   ctx.moveTo(p[0], p[1]);
 
   if (n === 1) {
-    ctx.lineTo(p[0] + 0.01, p[1]); // a dot
+    ctx.lineTo(p[0] + 0.01, p[1]);
   } else if (eraser || n === 2) {
     for (let i = 1; i < n; i++) ctx.lineTo(p[i * 2], p[i * 2 + 1]);
   } else {
-    // quadratic curves through midpoints = silky smooth, very cheap
     for (let i = 1; i < n - 1; i++) {
       const cx = p[i * 2];
       const cy = p[i * 2 + 1];
@@ -85,7 +76,6 @@ function paint(
   ctx.stroke();
 }
 
-/** Incrementally erase only the new tail of a stroke. Returns new "drawn" count. */
 function eraseTail(
   ctx: CanvasRenderingContext2D,
   p: number[],
@@ -109,10 +99,13 @@ function eraseTail(
   return n;
 }
 
-/* ------------------------------------------------------------------ */
-/* The hook                                                             */
-/* ------------------------------------------------------------------ */
-export function useInkCanvas({ kind, page, toStored, toScreen }: Options) {
+export function useInkCanvas({
+  kind,
+  filePath,
+  page,
+  toStored,
+  toScreen,
+}: Options) {
   const staticRef = useRef<HTMLCanvasElement>(null);
   const dynamicRef = useRef<HTMLCanvasElement>(null);
   const staticCtxRef = useRef<CanvasRenderingContext2D | null>(null);
@@ -120,15 +113,21 @@ export function useInkCanvas({ kind, page, toStored, toScreen }: Options) {
 
   const { tool, color, size } = useTool();
 
-  // Latest props/tool state, readable from stable handlers (no re-binding)
-  const cfg = useRef({ tool, color, size, kind, page, toStored, toScreen });
-  cfg.current = { tool, color, size, kind, page, toStored, toScreen };
+  const cfg = useRef({
+    tool,
+    color,
+    size,
+    kind,
+    filePath,
+    page,
+    toStored,
+    toScreen,
+  });
+  cfg.current = { tool, color, size, kind, filePath, page, toStored, toScreen };
 
-  // Data lives in refs: drawing never triggers a React re-render
   const linesRef = useRef<Stroke[]>([]);
   const loadedRef = useRef(false);
 
-  // Active stroke state
   const strokeRef = useRef<Stroke | null>(null);
   const livePts = useRef<number[]>([]);
   const predRef = useRef<number[]>([]);
@@ -136,20 +135,18 @@ export function useInkCanvas({ kind, page, toStored, toScreen }: Options) {
   const activeId = useRef<number | null>(null);
   const rectRef = useRef<DOMRect | null>(null);
   const rafRef = useRef(0);
-  const penUntil = useRef(0); // palm rejection
+  const penUntil = useRef(0);
 
-  // Saving
   const pendingRef = useRef<{
     page: number;
     kind: Kind;
+    filePath: string;
     lines: Stroke[];
   } | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const dpr = () => window.devicePixelRatio || 1;
 
-  // IMPORTANT: `desynchronized` must be requested on the FIRST getContext call,
-  // and each context is created exactly once and cached.
   const getStaticCtx = useCallback(() => {
     if (!staticCtxRef.current)
       staticCtxRef.current = staticRef.current?.getContext("2d") ?? null;
@@ -184,7 +181,6 @@ export function useInkCanvas({ kind, page, toStored, toScreen }: Options) {
     }
   }, [getStaticCtx]);
 
-  /** Only touches the canvas when the size really changed (old code reset it every stroke). */
   const resize = useCallback(
     (w: number, h: number, force = false) => {
       const s = staticRef.current;
@@ -210,7 +206,6 @@ export function useInkCanvas({ kind, page, toStored, toScreen }: Options) {
     [redraw],
   );
 
-  /* ---------------------------- saving ---------------------------- */
   const flush = useCallback(() => {
     if (timerRef.current) {
       clearTimeout(timerRef.current);
@@ -219,14 +214,20 @@ export function useInkCanvas({ kind, page, toStored, toScreen }: Options) {
     const p = pendingRef.current;
     pendingRef.current = null;
     if (!p) return;
-    Promise.resolve(saveDrawing(p.page, p.kind, p.lines))
+    Promise.resolve(saveDrawing(p.filePath, p.page, p.kind, p.lines))
       .then(() => window.dispatchEvent(new Event("margyn-data-changed")))
       .catch((err) => console.error("saveDrawing failed:", err));
   }, []);
 
   const scheduleSave = useCallback(() => {
-    const { page, kind } = cfg.current;
-    pendingRef.current = { page, kind, lines: linesRef.current.slice() };
+    const { page, kind, filePath } = cfg.current;
+    if (!filePath) return;
+    pendingRef.current = {
+      page,
+      kind,
+      filePath,
+      lines: linesRef.current.slice(),
+    };
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(flush, SAVE_DELAY_MS);
   }, [flush]);
@@ -239,7 +240,6 @@ export function useInkCanvas({ kind, page, toStored, toScreen }: Options) {
     }
   }, []);
 
-  /* ---------------------------- load / events ---------------------------- */
   useEffect(() => {
     let alive = true;
     loadedRef.current = false;
@@ -248,9 +248,9 @@ export function useInkCanvas({ kind, page, toStored, toScreen }: Options) {
     livePts.current = [];
     linesRef.current = [];
     clearDynamic();
-    redraw(); // instantly wipe the previous page's ink (no ghost flash)
+    redraw();
 
-    Promise.resolve(loadDrawing(page, kind))
+    Promise.resolve(loadDrawing(filePath, page, kind))
       .then((saved) => {
         if (!alive) return;
         linesRef.current = Array.isArray(saved) ? saved : [];
@@ -264,9 +264,9 @@ export function useInkCanvas({ kind, page, toStored, toScreen }: Options) {
 
     return () => {
       alive = false;
-      flush(); // saves the OLD page's pending strokes before switching
+      flush();
     };
-  }, [page, kind, redraw, clearDynamic, flush]);
+  }, [filePath, page, kind, redraw, clearDynamic, flush]);
 
   useEffect(() => {
     const handleClear = () => {
@@ -277,7 +277,7 @@ export function useInkCanvas({ kind, page, toStored, toScreen }: Options) {
     };
     const handleReload = () => {
       dropPendingSave();
-      Promise.resolve(loadDrawing(page, kind))
+      Promise.resolve(loadDrawing(filePath, page, kind))
         .then((saved) => {
           linesRef.current = Array.isArray(saved) ? saved : [];
           redraw();
@@ -300,7 +300,7 @@ export function useInkCanvas({ kind, page, toStored, toScreen }: Options) {
       window.removeEventListener("pagehide", flush);
       document.removeEventListener("visibilitychange", handleHide);
     };
-  }, [page, kind, redraw, clearDynamic, flush, dropPendingSave]);
+  }, [page, kind, filePath, redraw, clearDynamic, flush, dropPendingSave]);
 
   useEffect(
     () => () => {
@@ -309,7 +309,6 @@ export function useInkCanvas({ kind, page, toStored, toScreen }: Options) {
     [],
   );
 
-  /* ---------------------------- input pipeline ---------------------------- */
   const addPoint = useCallback((x: number, y: number, smooth = true) => {
     const p = livePts.current;
     const n = p.length;
@@ -335,7 +334,6 @@ export function useInkCanvas({ kind, page, toStored, toScreen }: Options) {
     const d = dpr();
 
     if (s.isEraser) {
-      // erase directly on the static layer, only the new tail
       const ctx = getStaticCtx();
       if (!ctx) return;
       ctx.setTransform(d, 0, 0, d, 0, 0);
@@ -350,7 +348,6 @@ export function useInkCanvas({ kind, page, toStored, toScreen }: Options) {
     ctx.clearRect(0, 0, c.width, c.height);
     ctx.setTransform(d, 0, 0, d, 0, 0);
 
-    // draw predicted points temporarily (not stored) to hide latency
     const base = p.length;
     const pr = predRef.current;
     for (let i = 0; i < pr.length; i++) p.push(pr[i]);
@@ -383,7 +380,7 @@ export function useInkCanvas({ kind, page, toStored, toScreen }: Options) {
       linesRef.current.push(s);
       scheduleSave();
     }
-    clearDynamic(); // same task as the static paint -> no flicker
+    clearDynamic();
 
     strokeRef.current = null;
     livePts.current = [];
@@ -392,10 +389,10 @@ export function useInkCanvas({ kind, page, toStored, toScreen }: Options) {
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent<HTMLCanvasElement>) => {
-      if (!loadedRef.current || activeId.current !== null) return; // 2nd finger etc.
+      if (!loadedRef.current || activeId.current !== null) return;
       if (e.pointerType === "mouse" && e.button !== 0) return;
       if (e.pointerType === "touch" && performance.now() < penUntil.current)
-        return; // palm
+        return;
       const c = dynamicRef.current;
       if (!c) return;
 
@@ -403,7 +400,7 @@ export function useInkCanvas({ kind, page, toStored, toScreen }: Options) {
       activeId.current = e.pointerId;
       if (e.pointerType === "pen") penUntil.current = Infinity;
 
-      rectRef.current = c.getBoundingClientRect(); // cached: no layout per move
+      rectRef.current = c.getBoundingClientRect();
       const { tool, color, size } = cfg.current;
       const isEraser = tool === "eraser";
       strokeRef.current = {

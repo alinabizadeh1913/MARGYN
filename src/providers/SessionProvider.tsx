@@ -47,7 +47,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const syncSessionWithFile = useCallback(async (filePath: string) => {
-    // ✅ FIX: اگر فایل پاس داده نشد، لودینگ باید متوقف شود
     if (!filePath) {
       setIsSessionSyncing(false);
       return;
@@ -57,7 +56,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     try {
       const db = await getDb();
 
-      // آیا سشن فعالی وجود دارد؟
       const openSessions = await db
         .select()
         .from(sessions)
@@ -73,7 +71,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setCurrentPageState(targetPage);
         await setSetting("lastPage", targetPage.toString());
       } else {
-        // سشن بسته است، آخرین سشن را برای Resume پیدا می‌کنیم
         setIsActive(false);
         setSessionId(null);
         setStartPage(null);
@@ -87,18 +84,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
         if (latestSessions.length > 0) {
           const latest = latestSessions[0];
-          // ✅ FIX: Get the absolute last page from DB
           const lastKnownPage =
             latest.endPage || latest.lastPage || latest.startPage;
 
           setLastFocusPage(lastKnownPage);
-
-          // ✅ CRITICAL FIX: Sync currentPage so UI shows the correct page
           setCurrentPageState(lastKnownPage);
           await setSetting("lastPage", lastKnownPage.toString());
         } else {
           setLastFocusPage(null);
-          setCurrentPageState(1);
+          // ✅ فیکس: حذف ریست کردن صفحه در پس‌زمینه برای جلوگیری از پرش به صفحه ۱
           await setSetting("lastPage", "1");
         }
       }
@@ -140,11 +134,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         const newId = uuidv4();
         setSessionId(newId);
 
-        // ✅ محاسبه دقیق صفحه شروع
         let targetPage = currentPage;
         if (lastFocusPage !== null) {
           targetPage = lastFocusPage + 1;
-          // اگر به انتهای فایل رسیده بودیم، از خود صفحه آخر شروع کن
           if (totalPages && targetPage > totalPages) {
             targetPage = totalPages;
           }
@@ -178,7 +170,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setIsActive(false);
       setSessionId(null);
       setStartPage(null);
-      // ✅ آپدیت کردن lastFocusPage با صفحه فعلی
       setLastFocusPage(currentPage);
 
       const db = await getDb();

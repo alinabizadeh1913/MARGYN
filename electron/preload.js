@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require("electron");
+const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 contextBridge.exposeInMainWorld("electronAPI", {
   minimize: () => ipcRenderer.send("window-minimize"),
@@ -16,8 +16,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
   clearActivePdf: () => ipcRenderer.invoke("pdf-clear-active"),
   openPdf: () => ipcRenderer.invoke("dialog:openPdf"),
 
-  // ✅ NEW: Expose path reader and listener
   readPdfPath: (path) => ipcRenderer.invoke("pdf:read-path", path),
+
+  // ✅ API جدید برای گرفتن مسیر فایل درگ شده
+  getPathForFile: (file) => webUtils.getPathForFile(file),
+
   onOpenPdfFile: (callback) => {
     const listener = (event, filePath) => callback(filePath);
     ipcRenderer.on("open-pdf-file", listener);
@@ -48,5 +51,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
     const listener = (event, filePath) => callback(filePath);
     ipcRenderer.on("open-margyn-file", listener);
     return () => ipcRenderer.removeListener("open-margyn-file", listener);
+  },
+
+  setRecordingShortcut: (isRecording) =>
+    ipcRenderer.send("set-recording-shortcut", isRecording),
+  onShortcutTriggered: (callback) => {
+    const listener = (event, shortcut) => callback(shortcut);
+    ipcRenderer.on("shortcut-triggered", listener);
+    return () => ipcRenderer.removeListener("shortcut-triggered", listener);
   },
 });

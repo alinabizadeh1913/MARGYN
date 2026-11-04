@@ -30,7 +30,11 @@ import {
 } from "lucide-react";
 import { SessionProvider, useSession } from "@/providers/SessionProvider";
 import { ToolProvider, useTool } from "@/providers/ToolProvider";
-import { ShortcutProvider, useShortcut } from "@/providers/ShortcutProvider";
+import {
+  ShortcutProvider,
+  useShortcut,
+  useShortcuts,
+} from "@/providers/ShortcutProvider"; // ✅ useShortcuts اضافه شد
 import Typography from "@/typography";
 import {
   clearPageDrawings,
@@ -57,13 +61,18 @@ function AppContent() {
     isActive,
     lastFocusPage,
     sessionId,
+    startPage,
     startSession,
     endSession,
     currentPage,
+    setCurrentPage,
     syncSessionWithFile,
     isSessionSyncing,
   } = useSession();
   const { setTool } = useTool();
+
+  // ✅ گرفتن تابع فعال/غیرفعال کردن شورت‌کات‌ها
+  const { setShortcutsEnabled } = useShortcuts();
 
   const [view, setView] = useState<
     "reader" | "library" | "history" | "settings"
@@ -83,6 +92,7 @@ function AppContent() {
   const [isDirty, setIsDirty] = useState(false);
   const [showEndModal, setShowEndModal] = useState(false);
   const [showCloseModal, setShowCloseModal] = useState(false);
+  const [showBackwardErrorModal, setShowBackwardErrorModal] = useState(false);
   const [endText, setEndText] = useState("");
   const [endError, setEndError] = useState(false);
   const endInputRef = useRef<HTMLInputElement>(null);
@@ -92,11 +102,27 @@ function AppContent() {
     type: "success" | "error";
   } | null>(null);
 
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
+
   const undoStack = useRef<any[][]>([]);
+
+  // ✅ فعال/غیرفعال کردن شورت‌کات‌ها بر اساس صفحه فعلی
+  useEffect(() => {
+    setShortcutsEnabled(view === "reader");
+  }, [view, setShortcutsEnabled]);
 
   const showToast = (message: string, type: "success" | "error") => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
+  };
+
+  const requestSafeAction = (action: () => void) => {
+    if (isDirty || (!activeProjectPath && pdfData)) {
+      setPendingAction(() => action);
+      setShowCloseModal(true);
+    } else {
+      action();
+    }
   };
 
   const loadPdfFile = async (
@@ -117,15 +143,12 @@ function AppContent() {
       } catch (e) {}
     }
 
-    // ✅ ۱) همه state updateهای مهم رو قبل از اولین await صف می‌کنیم
+    setCurrentPage(1);
     setPdfData(uint8Data);
     setActiveFileName(name);
     setActiveFilePath(path);
     setIsCurrentPdfCompleted(completed === 1);
 
-    // ✅ ۲) sync رو همین‌جا (قبل از await) شروع می‌کنیم.
-    // setIsSessionSyncing(true) همگام اجرا و صف میشه، پس با
-    // setPdfData در همون فریم render میشه => دکمه "Checking..." نشون میده
     const syncPromise = syncSessionWithFile(path);
 
     await window.electronAPI?.saveActivePdf(uint8Data);
@@ -152,65 +175,116 @@ function AppContent() {
     }
 
     await setSetting("activeFilePath", path);
-
     await syncPromise;
 
     setView("reader");
     setIsDirty(false);
   };
 
-  const handleOpenPdf = useCallback(async () => {
-    if (window.electronAPI) {
-      try {
-        const result = await window.electronAPI.openPdf();
-        if (result && result.data) {
-          const record = await addRecentFile(result.name, result.libraryPath);
-          if (record)
-            await loadPdfFile(
-              new Uint8Array(result.data),
-              record.name,
-              record.filePath,
-              record.completed || 0,
-            );
-        }
-      } catch (e) {}
-    }
-  }, [syncSessionWithFile, isActive, sessionId, currentPage]);
-
-  const handleSelectLibraryFile = useCallback(
-    async (filePath: string) => {
+  const handleOpenPdf = useCallback(() => {
+    requestSafeAction(async () => {
       if (window.electronAPI) {
         try {
-          const data = await window.electronAPI.loadLibraryFile(filePath);
-          if (data) {
-            const db = await getDb();
-            const record = (
-              await db
-                .select()
-                .from(recentFiles)
-                .where(eq(recentFiles.filePath, filePath))
-            )[0];
-
-            let finalName = record?.name;
-            if (!finalName) {
-              const baseName = filePath.split(/[/\\]/).pop() || "";
-              finalName =
-                baseName.split("-").slice(1).join("-") || "Untitled Document";
-            }
-
-            await loadPdfFile(
-              new Uint8Array(data),
-              finalName,
-              filePath,
-              record?.completed || 0,
-              record?.projectPath || null,
-            );
+          const result = await window.electronAPI.openPdf();
+          if (result && result.data) {
+            const record = await addRecentFile(result.name, result.libraryPath);
+            if (record)
+              await loadPdfFile(
+                new Uint8Array(result.data),
+                record.name,
+                record.filePath,
+                record.completed || 0,
+                null,
+              );
           }
         } catch (e) {}
       }
+    });
+  }, [
+    isDirty,
+    activeProjectPath,
+    syncSessionWithFile,
+    isActive,
+    sessionId,
+    currentPage,
+  ]);
+
+  const handleSelectLibraryFile = useCallback(
+    (filePath: string) => {
+      requestSafeAction(async () => {
+        if (window.electronAPI) {
+          try {
+            const data = await window.electronAPI.loadLibraryFile(filePath);
+            if (data) {
+              const db = await getDb();
+              const record = (
+                await db
+                  .select()
+                  .from(recentFiles)
+                  .where(eq(recentFiles.filePath, filePath))
+              )[0];
+
+              let finalName = record?.name;
+              if (!finalName) {
+                const baseName = filePath.split(/[/\\]/).pop() || "";
+                finalName =
+                  baseName.split("-").slice(1).join("-") || "Untitled Document";
+              }
+
+              await loadPdfFile(
+                new Uint8Array(data),
+                finalName,
+                filePath,
+                record?.completed || 0,
+                record?.projectPath || null,
+              );
+            }
+          } catch (e) {}
+        }
+      });
     },
-    [syncSessionWithFile, isActive, sessionId, currentPage],
+    [
+      isDirty,
+      activeProjectPath,
+      syncSessionWithFile,
+      isActive,
+      sessionId,
+      currentPage,
+    ],
   );
+
+  const handleClosePdf = useCallback(() => {
+    if (!pdfData) return;
+    requestSafeAction(async () => {
+      setPdfData(null);
+      setActiveFileName("");
+      setActiveFilePath("");
+      setActiveProjectPath(null);
+      setIsDirty(false);
+      setTotalPages(0);
+      setIsCurrentPdfCompleted(false);
+      setCurrentPage(1);
+      setView("reader");
+
+      try {
+        if (window.electronAPI) {
+          await window.electronAPI.clearActivePdf();
+        }
+        await setSetting("activeFilePath", "");
+        await syncSessionWithFile("");
+      } catch (error) {
+        console.error("Failed to close PDF:", error);
+      }
+    });
+  }, [
+    pdfData,
+    isDirty,
+    activeProjectPath,
+    syncSessionWithFile,
+    setCurrentPage,
+  ]);
+
+  useShortcut("closePdf", handleClosePdf);
 
   const loadProjectFromPath = useCallback(
     async (filePath: string) => {
@@ -282,6 +356,9 @@ function AppContent() {
           await db
             .delete(sessions)
             .where(eq(sessions.filePath, record.filePath));
+          await db
+            .delete(drawings)
+            .where(eq(drawings.filePath, record.filePath));
 
           const sessionIdMap: Record<string, string> = {};
           if (projectData.sessions?.length > 0) {
@@ -300,6 +377,7 @@ function AppContent() {
               id:
                 Date.now().toString() +
                 Math.random().toString(36).substring(2, 9),
+              filePath: record.filePath,
               sessionId:
                 d.sessionId && sessionIdMap[d.sessionId]
                   ? sessionIdMap[d.sessionId]
@@ -365,25 +443,28 @@ function AppContent() {
     let cleanupFileOpen: (() => void) | undefined;
     if (window.electronAPI?.onOpenMargynFile) {
       cleanupFileOpen = window.electronAPI.onOpenMargynFile((filePath) => {
-        loadProjectFromPath(filePath);
+        requestSafeAction(() => loadProjectFromPath(filePath));
       });
     }
 
     let cleanupPdfOpen: (() => void) | undefined;
     if (window.electronAPI?.onOpenPdfFile) {
-      cleanupPdfOpen = window.electronAPI.onOpenPdfFile(async (filePath) => {
-        const result = await window.electronAPI?.readPdfPath(filePath);
-        if (result && result.data) {
-          const record = await addRecentFile(result.name, result.libraryPath);
-          if (record) {
-            await loadPdfFile(
-              new Uint8Array(result.data),
-              record.name,
-              record.filePath,
-              record.completed || 0,
-            );
+      cleanupPdfOpen = window.electronAPI.onOpenPdfFile((filePath) => {
+        requestSafeAction(async () => {
+          const result = await window.electronAPI?.readPdfPath(filePath);
+          if (result && result.data) {
+            const record = await addRecentFile(result.name, result.libraryPath);
+            if (record) {
+              await loadPdfFile(
+                new Uint8Array(result.data),
+                record.name,
+                record.filePath,
+                record.completed || 0,
+                null,
+              );
+            }
           }
-        }
+        });
       });
     }
 
@@ -398,11 +479,12 @@ function AppContent() {
   useEffect(() => {
     if (!window.electronAPI) return;
     const cleanup = window.electronAPI.onAppCloseRequest(() => {
-      if (isDirty) setShowCloseModal(true);
-      else window.electronAPI?.forceCloseApp();
+      requestSafeAction(() => {
+        window.electronAPI?.forceCloseApp();
+      });
     });
     return cleanup;
-  }, [isDirty]);
+  }, [isDirty, activeProjectPath, pdfData]);
 
   useEffect(() => {
     if (showEndModal) {
@@ -418,7 +500,10 @@ function AppContent() {
       .select()
       .from(sessions)
       .where(eq(sessions.filePath, activeFilePath));
-    const allDrawings = await db.select().from(drawings);
+    const allDrawings = await db
+      .select()
+      .from(drawings)
+      .where(eq(drawings.filePath, activeFilePath));
     const fileRecord = (
       await db
         .select()
@@ -436,11 +521,20 @@ function AppContent() {
     };
   };
 
-  const handleSaveProject = async () => {
-    if (!window.electronAPI) return;
+  const handleSaveProject = async (): Promise<boolean> => {
+    if (!window.electronAPI) return false;
+
+    if (!activeProjectPath) {
+      showToast(
+        "Please click 'Export' to save this project for the first time.",
+        "error",
+      );
+      return false;
+    }
+
     try {
       const projectData = await getProjectData();
-      if (!projectData) return;
+      if (!projectData) return false;
 
       const savedPath = await window.electronAPI.saveProject(
         projectData,
@@ -448,63 +542,88 @@ function AppContent() {
       );
 
       if (savedPath) {
-        setActiveProjectPath(savedPath);
-        await updateRecentFileProjectPath(activeFilePath, savedPath);
         setIsDirty(false);
         showToast("Project saved successfully!", "success");
+        return true;
       }
+      return false;
     } catch (error) {
       showToast("Failed to save project.", "error");
+      return false;
     }
   };
 
-  const handleExportProject = async () => {
-    if (!window.electronAPI) return;
+  const handleExportProject = async (): Promise<boolean> => {
+    if (!window.electronAPI) return false;
     try {
       const projectData = await getProjectData();
-      if (!projectData) return;
+      if (!projectData) return false;
+
       const defaultDir = await getSetting("defaultExportDir");
       const savedPath = await window.electronAPI.exportProject(
         projectData,
         defaultDir,
       );
-      if (savedPath) showToast("Project exported successfully!", "success");
+
+      if (savedPath) {
+        setActiveProjectPath(savedPath);
+        await updateRecentFileProjectPath(activeFilePath, savedPath);
+        setIsDirty(false);
+        showToast("Project exported successfully!", "success");
+        return true;
+      }
+      return false;
     } catch (error) {
       showToast("Failed to export project.", "error");
+      return false;
     }
   };
 
-  const handleImportProject = async () => {
-    if (!window.electronAPI) return;
-    try {
-      const result = await window.electronAPI.importProject();
-      if (!result) return;
+  const handleImportProject = () => {
+    requestSafeAction(async () => {
+      if (!window.electronAPI) return;
+      try {
+        const result = await window.electronAPI.importProject();
+        if (!result) return;
 
-      const { data: projectData, filePath: margynPath } = result;
-      const db = await getDb();
-      const existing = await db
-        .select()
-        .from(recentFiles)
-        .where(eq(recentFiles.projectPath, margynPath));
+        const { data: projectData, filePath: margynPath } = result;
+        const db = await getDb();
+        const existing = await db
+          .select()
+          .from(recentFiles)
+          .where(eq(recentFiles.projectPath, margynPath));
 
-      const defaultName =
-        margynPath
-          .split(/[/\\]/)
-          .pop()
-          ?.replace(".margyn", "")
-          .replace(".pdf", "") || "Imported Project";
-      const displayName = projectData.fileName || defaultName;
+        const defaultName =
+          margynPath
+            .split(/[/\\]/)
+            .pop()
+            ?.replace(".margyn", "")
+            .replace(".pdf", "") || "Imported Project";
+        const displayName = projectData.fileName || defaultName;
 
-      let record;
-      let pdfBytes;
+        let record;
+        let pdfBytes;
 
-      if (existing.length > 0) {
-        record = existing[0];
-        const existingPdf = await window.electronAPI.loadLibraryFile(
-          record.filePath,
-        );
-        if (existingPdf) {
-          pdfBytes = new Uint8Array(existingPdf);
+        if (existing.length > 0) {
+          record = existing[0];
+          const existingPdf = await window.electronAPI.loadLibraryFile(
+            record.filePath,
+          );
+          if (existingPdf) {
+            pdfBytes = new Uint8Array(existingPdf);
+          } else {
+            pdfBytes = Uint8Array.from(
+              Buffer.from(projectData.fileBase64, "base64"),
+            );
+            await window.electronAPI.saveActivePdf(pdfBytes);
+            const newFakePath =
+              "imported-" + Date.now() + "-" + displayName + ".pdf";
+            record = await addRecentFile(displayName, newFakePath, margynPath);
+          }
+          await db
+            .update(recentFiles)
+            .set({ lastOpened: Date.now(), name: displayName })
+            .where(eq(recentFiles.id, record.id));
         } else {
           pdfBytes = Uint8Array.from(
             Buffer.from(projectData.fileBase64, "base64"),
@@ -514,93 +633,89 @@ function AppContent() {
             "imported-" + Date.now() + "-" + displayName + ".pdf";
           record = await addRecentFile(displayName, newFakePath, margynPath);
         }
-        await db
-          .update(recentFiles)
-          .set({ lastOpened: Date.now(), name: displayName })
-          .where(eq(recentFiles.id, record.id));
-      } else {
-        pdfBytes = Uint8Array.from(
-          Buffer.from(projectData.fileBase64, "base64"),
-        );
-        await window.electronAPI.saveActivePdf(pdfBytes);
-        const newFakePath =
-          "imported-" + Date.now() + "-" + displayName + ".pdf";
-        record = await addRecentFile(displayName, newFakePath, margynPath);
-      }
 
-      if (record && pdfBytes) {
-        await loadPdfFile(
-          pdfBytes,
-          record.name,
-          record.filePath,
-          projectData.completed,
-          margynPath,
-        );
+        if (record && pdfBytes) {
+          await loadPdfFile(
+            pdfBytes,
+            record.name,
+            record.filePath,
+            projectData.completed,
+            margynPath,
+          );
 
-        await db.delete(sessions).where(eq(sessions.filePath, record.filePath));
+          await db
+            .delete(sessions)
+            .where(eq(sessions.filePath, record.filePath));
+          await db
+            .delete(drawings)
+            .where(eq(drawings.filePath, record.filePath));
 
-        const sessionIdMap: Record<string, string> = {};
-        if (projectData.sessions?.length > 0) {
-          const newSessions = projectData.sessions.map((s: any) => {
-            const newId =
-              Date.now().toString() +
-              Math.random().toString(36).substring(2, 9);
-            sessionIdMap[s.id] = newId;
-            return { ...s, id: newId, filePath: record.filePath };
-          });
-          await db.insert(sessions).values(newSessions);
+          const sessionIdMap: Record<string, string> = {};
+          if (projectData.sessions?.length > 0) {
+            const newSessions = projectData.sessions.map((s: any) => {
+              const newId =
+                Date.now().toString() +
+                Math.random().toString(36).substring(2, 9);
+              sessionIdMap[s.id] = newId;
+              return { ...s, id: newId, filePath: record.filePath };
+            });
+            await db.insert(sessions).values(newSessions);
+          }
+          if (projectData.drawings?.length > 0) {
+            const newDrawings = projectData.drawings.map((d: any) => ({
+              ...d,
+              id:
+                Date.now().toString() +
+                Math.random().toString(36).substring(2, 9),
+              filePath: record.filePath,
+              sessionId:
+                d.sessionId && sessionIdMap[d.sessionId]
+                  ? sessionIdMap[d.sessionId]
+                  : null,
+            }));
+            await db.insert(drawings).values(newDrawings);
+          }
+          await saveDb(true);
+          setIsDirty(false);
+          showToast("Project imported successfully!", "success");
         }
-        if (projectData.drawings?.length > 0) {
-          const newDrawings = projectData.drawings.map((d: any) => ({
-            ...d,
-            id:
-              Date.now().toString() +
-              Math.random().toString(36).substring(2, 9),
-            sessionId:
-              d.sessionId && sessionIdMap[d.sessionId]
-                ? sessionIdMap[d.sessionId]
-                : null,
-          }));
-          await db.insert(drawings).values(newDrawings);
-        }
-        await saveDb(true);
-        setIsDirty(false);
-        showToast("Project imported successfully!", "success");
+      } catch (error) {
+        showToast("Failed to import project.", "error");
       }
-    } catch (error) {
-      showToast("Failed to import project.", "error");
-    }
+    });
   };
 
   const handleClearCurrentPage = useCallback(async () => {
-    await clearPageDrawings(currentPage);
+    if (!activeFilePath) return;
+    await clearPageDrawings(activeFilePath, currentPage);
     window.dispatchEvent(new CustomEvent(`margyn-clear-page-${currentPage}`));
     setIsDirty(true);
-  }, [currentPage]);
+  }, [currentPage, activeFilePath]);
 
   const handleClearAllPages = useCallback(async () => {
+    if (!activeFilePath) return;
     try {
-      const allDrawings = await getAllDrawings();
+      const allDrawings = await getAllDrawings(activeFilePath);
       if (allDrawings.length > 0) {
         undoStack.current.push(allDrawings);
         if (undoStack.current.length > 50) undoStack.current.shift();
       }
-      await clearAllDrawings();
+      await clearAllDrawings(activeFilePath);
       window.dispatchEvent(new CustomEvent("margyn-clear-all"));
       setIsDirty(true);
     } catch (error) {}
-  }, []);
+  }, [activeFilePath]);
 
   const handleRedo = useCallback(async () => {
-    if (undoStack.current.length > 0) {
+    if (undoStack.current.length > 0 && activeFilePath) {
       const lastState = undoStack.current.pop();
       if (lastState && lastState.length > 0) {
-        await restoreDrawings(lastState);
+        await restoreDrawings(lastState, activeFilePath);
         window.dispatchEvent(new CustomEvent("margyn-reload-all"));
         setIsDirty(true);
       }
     }
-  }, []);
+  }, [activeFilePath]);
 
   useEffect(() => {
     const handleGlobalKeys = async (e: KeyboardEvent) => {
@@ -640,15 +755,33 @@ function AppContent() {
       startSession(activeFilePath, totalPages);
   });
 
+  const handleTryEndSession = () => {
+    if (isActive) {
+      if (startPage !== null && currentPage < startPage) {
+        setShowBackwardErrorModal(true);
+      } else {
+        setShowEndModal(true);
+      }
+    } else {
+      startSession(activeFilePath, totalPages);
+    }
+  };
+
   useShortcut("endSession", () => {
-    if (isActive && !showEndModal) setShowEndModal(true);
+    if (isActive && !showEndModal && !showBackwardErrorModal) {
+      if (startPage !== null && currentPage < startPage) {
+        setShowBackwardErrorModal(true);
+      } else {
+        setShowEndModal(true);
+      }
+    }
   });
+
   useShortcut("openPdf", handleOpenPdf);
   useShortcut("clearPage", handleClearCurrentPage);
   useShortcut("clearAll", handleClearAllPages);
   useShortcut("toggleMargin", () => setIsMarginOpen((prev) => !prev));
   useShortcut("saveProject", handleSaveProject);
-
   useShortcut("importProject", handleImportProject);
   useShortcut("exportProject", handleExportProject);
 
@@ -672,9 +805,35 @@ function AppContent() {
     }
   };
 
-  const handleCloseApp = async (saveFirst: boolean) => {
-    if (saveFirst) await handleSaveProject();
-    window.electronAPI?.forceCloseApp();
+  const handleModalSave = async () => {
+    let success = false;
+    if (activeProjectPath) {
+      success = await handleSaveProject();
+    } else {
+      success = await handleExportProject();
+    }
+
+    if (success) {
+      setShowCloseModal(false);
+      if (pendingAction) {
+        pendingAction();
+        setPendingAction(null);
+      }
+    }
+  };
+
+  const handleModalDiscard = () => {
+    setShowCloseModal(false);
+    setIsDirty(false);
+    if (pendingAction) {
+      pendingAction();
+      setPendingAction(null);
+    }
+  };
+
+  const handleModalCancel = () => {
+    setShowCloseModal(false);
+    setPendingAction(null);
   };
 
   const showResumeButton = !isActive && lastFocusPage !== null;
@@ -782,21 +941,23 @@ function AppContent() {
                     <span className="hidden 2xl:inline">Export</span>
                   </button>
 
-                  <button
-                    onClick={handleSaveProject}
-                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all duration-300 text-xs font-medium border ${
-                      isDirty
-                        ? "text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.2)]"
-                        : "text-[#52525b] border-transparent cursor-default"
-                    }`}
-                    disabled={!isDirty}
-                  >
-                    <Save
-                      size={15}
-                      className={isDirty ? "animate-pulse" : ""}
-                    />
-                    <span className="hidden 2xl:inline">Save</span>
-                  </button>
+                  {activeProjectPath && (
+                    <button
+                      onClick={handleSaveProject}
+                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all duration-300 text-xs font-medium border ${
+                        isDirty
+                          ? "text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.2)]"
+                          : "text-[#52525b] border-transparent cursor-default"
+                      }`}
+                      disabled={!isDirty}
+                    >
+                      <Save
+                        size={15}
+                        className={isDirty ? "animate-pulse" : ""}
+                      />
+                      <span className="hidden 2xl:inline">Save</span>
+                    </button>
+                  )}
 
                   <div className="w-px h-6 bg-white/10 mx-0.5" />
 
@@ -816,10 +977,7 @@ function AppContent() {
                     </div>
                   ) : (
                     <button
-                      onClick={() => {
-                        if (isActive) setShowEndModal(true);
-                        else startSession(activeFilePath, totalPages);
-                      }}
+                      onClick={handleTryEndSession}
                       className={`group relative flex items-center gap-1.5 px-4 py-1.5 rounded-full transition-all duration-500 overflow-hidden ${
                         isActive
                           ? "bg-rose-500/10 text-rose-400 border border-rose-500/30"
@@ -893,7 +1051,7 @@ function AppContent() {
                         className={`w-full h-full min-w-[300px] flex flex-col ${isMarginOpen ? "opacity-100" : "opacity-0 pointer-events-none"}`}
                       >
                         <div className="flex-1 relative overflow-hidden">
-                          <MarginCanvas />
+                          <MarginCanvas filePath={activeFilePath} />
                         </div>
                       </div>
                     </div>
@@ -915,6 +1073,7 @@ function AppContent() {
                 <div className="flex-1 h-full relative overflow-hidden flex items-center justify-center">
                   <PdfViewer
                     fileData={pdfData}
+                    filePath={activeFilePath}
                     onDocumentLoad={setTotalPages}
                   />
                 </div>
@@ -932,7 +1091,11 @@ function AppContent() {
 
             {view === "history" && (
               <div className="flex-1 h-full overflow-hidden bg-[#09090b]">
-                <HistoryView />
+                <HistoryView
+                  filePath={activeFilePath}
+                  fileName={activeFileName}
+                  onSessionDeleted={() => syncSessionWithFile(activeFilePath)}
+                />
               </div>
             )}
             {view === "settings" && (
@@ -1026,6 +1189,43 @@ function AppContent() {
             </div>
           )}
 
+          {showBackwardErrorModal && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-md transition-all duration-300">
+              <div className="bg-[#121214] border border-amber-500/30 p-8 rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] w-full max-w-md flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">
+                <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mb-6 shadow-inner">
+                  <AlertTriangle size={32} className="text-amber-500" />
+                </div>
+
+                <Typography
+                  variant="pageTitle"
+                  as="h2"
+                  className="text-[#fafafa] mb-2 font-semibold tracking-tight"
+                >
+                  Cannot End Session
+                </Typography>
+
+                <Typography
+                  variant="body"
+                  as="p"
+                  className="text-[#a1a1aa] mb-8 leading-relaxed"
+                >
+                  You have navigated behind your session's starting page (Page{" "}
+                  {startPage}). To ensure your progress is recorded correctly,
+                  you must advance to{" "}
+                  <strong>Page {startPage} or beyond</strong> before ending the
+                  session.
+                </Typography>
+
+                <button
+                  onClick={() => setShowBackwardErrorModal(false)}
+                  className="w-full px-4 py-3.5 rounded-xl bg-amber-500 text-black hover:bg-amber-400 transition-all font-medium shadow-[0_0_15px_rgba(245,158,11,0.3)] active:scale-[0.98]"
+                >
+                  Understood
+                </button>
+              </div>
+            </div>
+          )}
+
           {showCongratsModal && (
             <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-lg transition-all duration-500">
               <div className="bg-[#121214] border border-emerald-500/30 p-10 rounded-3xl shadow-[0_20px_80px_-15px_rgba(16,185,129,0.2)] w-full max-w-lg flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-300">
@@ -1095,25 +1295,24 @@ function AppContent() {
                   as="p"
                   className="text-[#a1a1aa] mb-8 leading-relaxed"
                 >
-                  You have unsaved changes in your current project. If you close
-                  now, your progress might be lost. Do you want to save before
-                  closing?
+                  You have unsaved changes in your current project. Do you want
+                  to save your progress before leaving?
                 </Typography>
                 <div className="flex flex-col gap-3 w-full">
                   <button
-                    onClick={() => handleCloseApp(true)}
+                    onClick={handleModalSave}
                     className="w-full px-4 py-3 rounded-xl bg-emerald-500 text-white hover:bg-emerald-600 transition-all font-medium shadow-[0_0_15px_rgba(16,185,129,0.3)] active:scale-[0.98]"
                   >
-                    Save & Close
+                    Yes, Save
                   </button>
                   <button
-                    onClick={() => handleCloseApp(false)}
+                    onClick={handleModalDiscard}
                     className="w-full px-4 py-3 rounded-xl bg-rose-500/10 text-rose-400 border border-rose-500/20 hover:bg-rose-500/20 transition-all font-medium active:scale-[0.98]"
                   >
-                    Discard & Close
+                    No, Don't Save
                   </button>
                   <button
-                    onClick={() => setShowCloseModal(false)}
+                    onClick={handleModalCancel}
                     className="w-full px-4 py-3 rounded-xl bg-[#18181b] text-[#a1a1aa] hover:text-[#fafafa] hover:bg-[#27272a] border border-[#27272a] transition-all font-medium active:scale-[0.98]"
                   >
                     Cancel
@@ -1155,11 +1354,11 @@ function AppContent() {
 export default function MainComponent() {
   return (
     <SessionProvider>
-      <ToolProvider>
-        <ShortcutProvider>
+      <ShortcutProvider>
+        <ToolProvider>
           <AppContent />
-        </ShortcutProvider>
-      </ToolProvider>
+        </ToolProvider>
+      </ShortcutProvider>
     </SessionProvider>
   );
 }

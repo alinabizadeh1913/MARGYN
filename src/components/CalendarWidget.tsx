@@ -1,7 +1,11 @@
 "use client";
 
 import React, { useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Calendar as CalendarIcon,
+} from "lucide-react";
 import Typography from "@/typography";
 
 interface CalendarWidgetProps {
@@ -19,7 +23,9 @@ export default function CalendarWidget({
   onSelectDate,
   viewedDays,
 }: CalendarWidgetProps) {
-  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [currentMonth, setCurrentMonth] = useState(
+    new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1),
+  );
 
   const getDaysInMonth = (year: number, month: number) => {
     return new Date(year, month + 1, 0).getDate();
@@ -39,6 +45,13 @@ export default function CalendarWidget({
     setCurrentMonth(
       new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1),
     );
+  };
+
+  // ✅ تابع رفتن به امروز
+  const goToToday = () => {
+    const today = new Date();
+    setCurrentMonth(new Date(today.getFullYear(), today.getMonth(), 1));
+    onSelectDate(today);
   };
 
   const year = currentMonth.getFullYear();
@@ -120,6 +133,15 @@ export default function CalendarWidget({
           })}
         </Typography>
         <div className="flex gap-2">
+          {/* ✅ دکمه Today */}
+          <button
+            onClick={goToToday}
+            className="px-3 py-2 rounded-xl bg-[#18181b] border border-[#27272a] text-[#a1a1aa] hover:text-[#fafafa] hover:bg-[#27272a] transition-all flex items-center justify-center"
+            title="Go to Today"
+          >
+            <CalendarIcon size={16} />
+          </button>
+
           <button
             onClick={prevMonth}
             className="p-2 rounded-xl bg-[#18181b] border border-[#27272a] text-[#a1a1aa] hover:text-[#fafafa] hover:bg-[#27272a] transition-all"
@@ -147,27 +169,6 @@ export default function CalendarWidget({
 
       <div className="grid grid-cols-7 gap-1 place-items-center">
         {renderCells()}
-      </div>
-
-      <div className="mt-6 pt-4 border-t border-[#27272a] flex items-center justify-center gap-6">
-        <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-rose-500" />
-          <Typography variant="caption" className="text-[#a1a1aa]">
-            New (Unseen)
-          </Typography>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-emerald-500" />
-          <Typography variant="caption" className="text-[#a1a1aa]">
-            Unlocked
-          </Typography>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-[#52525b]" />
-          <Typography variant="caption" className="text-[#a1a1aa]">
-            Locked
-          </Typography>
-        </div>
       </div>
     </div>
   );

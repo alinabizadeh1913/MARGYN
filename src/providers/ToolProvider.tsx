@@ -5,20 +5,22 @@ import React, {
   useContext,
   useState,
   useEffect,
+  useRef,
   ReactNode,
 } from "react";
 import { getSetting, setSetting } from "@/db";
+import { useShortcuts } from "./ShortcutProvider"; // ✅ ایمپورت شد
 
 type ToolType = "pen" | "eraser";
 
 export const DEFAULT_COLORS = [
-  "#ffffff", // 1 - White
-  "#000000", // 2 - Black
-  "#38bdf8", // 3 - Sky Blue
-  "#f43f5e", // 4 - Rose
-  "#10b981", // 5 - Emerald
-  "#f59e0b", // 6 - Amber
-  "#a855f7", // 7 - Purple
+  "#ffffff",
+  "#000000",
+  "#38bdf8",
+  "#f43f5e",
+  "#10b981",
+  "#f59e0b",
+  "#a855f7",
 ];
 
 interface ToolContextType {
@@ -43,9 +45,19 @@ export function ToolProvider({ children }: { children: ReactNode }) {
   const [size, setSize] = useState(12);
   const [canvasBg, setCanvasBgState] = useState("#ffffff");
 
-  // رنگ‌ها با کلیدهای 1 تا 7
+  // ✅ گرفتن استیت فعال بودن شورت‌کات‌ها
+  const { isShortcutsEnabled } = useShortcuts();
+  const isShortcutsEnabledRef = useRef(isShortcutsEnabled);
+
+  useEffect(() => {
+    isShortcutsEnabledRef.current = isShortcutsEnabled;
+  }, [isShortcutsEnabled]);
+
   useEffect(() => {
     const handleColorKeys = (e: KeyboardEvent) => {
+      // ✅ اگر شورت‌کات‌ها غیرفعال باشن، تغییر رنگ با اعداد کار نکنه
+      if (!isShortcutsEnabledRef.current) return;
+
       const target = e.target as HTMLElement;
       if (
         target.tagName === "INPUT" ||

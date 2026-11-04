@@ -15,8 +15,12 @@ export default function ShortcutInput({ value, onChange }: ShortcutInputProps) {
   useEffect(() => {
     if (!isRecording) return;
 
+    // ✅ به الکترون میگیم که ما در حال ضبط هستیم تا Ctrl+W رو بلاک نکنه
+    window.electronAPI?.setRecordingShortcut(true);
+
     const handleKeyDown = (e: KeyboardEvent) => {
       e.preventDefault();
+      e.stopPropagation();
 
       const keys = [];
       if (e.ctrlKey || e.metaKey) keys.push("ctrl");
@@ -54,17 +58,24 @@ export default function ShortcutInput({ value, onChange }: ShortcutInputProps) {
       keys.push(key);
       onChange(keys.join("+"));
       setIsRecording(false);
+      window.electronAPI?.setRecordingShortcut(false);
     };
 
     window.addEventListener("keydown", handleKeyDown, true);
-    return () => window.removeEventListener("keydown", handleKeyDown, true);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, true);
+      window.electronAPI?.setRecordingShortcut(false);
+    };
   }, [isRecording, onChange]);
 
   return (
     <button
       ref={inputRef}
       onClick={() => setIsRecording(true)}
-      onBlur={() => setIsRecording(false)}
+      onBlur={() => {
+        setIsRecording(false);
+        window.electronAPI?.setRecordingShortcut(false);
+      }}
       className={`min-w-[100px] px-3 py-1.5 rounded-md border text-sm font-mono transition-colors ${
         isRecording
           ? "bg-emerald-500/20 border-emerald-500 text-emerald-500 animate-pulse"

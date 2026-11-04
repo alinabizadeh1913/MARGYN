@@ -113,6 +113,7 @@ export default function SettingsView() {
     startSession: "Start Session",
     endSession: "End Session",
     openPdf: "Open PDF File",
+    closePdf: "Close Current PDF/Project", // ✅ اضافه شد
     clearPage: "Clear Current Page Drawings",
     clearAll: "Clear All Pages Drawings",
     toggleMargin: "Toggle Margin Sidebar",
@@ -361,9 +362,7 @@ export default function SettingsView() {
             </div>
           </section>
 
-          {/* ===== DEV SECTION ===== */}
           <DevSessionInspector />
-          {/* ======================= */}
         </div>
       </div>
 

@@ -5,6 +5,7 @@ import React, {
   useContext,
   useState,
   useEffect,
+  useRef,
   ReactNode,
 } from "react";
 import { getSetting, setSetting } from "@/db";
@@ -15,6 +16,7 @@ export type ShortcutAction =
   | "startSession"
   | "endSession"
   | "openPdf"
+  | "closePdf"
   | "clearPage"
   | "clearAll"
   | "toggleMargin"
@@ -28,6 +30,7 @@ export const DEFAULT_SHORTCUTS: Record<ShortcutAction, string> = {
   startSession: "ctrl+enter",
   endSession: "ctrl+shift+enter",
   openPdf: "ctrl+o",
+  closePdf: "ctrl+w",
   clearPage: "delete",
   clearAll: "shift+delete",
   toggleMargin: "ctrl+b",
@@ -40,6 +43,8 @@ interface ShortcutContextType {
   shortcuts: Record<ShortcutAction, string>;
   updateShortcut: (action: ShortcutAction, keys: string) => Promise<void>;
   resetShortcuts: () => Promise<void>;
+  isShortcutsEnabled: boolean;
+  setShortcutsEnabled: (enabled: boolean) => void;
 }
 
 const ShortcutContext = createContext<ShortcutContextType | undefined>(
@@ -50,6 +55,14 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
   const [shortcuts, setShortcuts] =
     useState<Record<ShortcutAction, string>>(DEFAULT_SHORTCUTS);
   const [isLoaded, setIsLoaded] = useState(false);
+
+  // ✅ استیت جدید برای کنترل فعال بودن شورت‌کات‌ها
+  const [isShortcutsEnabled, setIsShortcutsEnabled] = useState(true);
+  const isShortcutsEnabledRef = useRef(isShortcutsEnabled);
+
+  useEffect(() => {
+    isShortcutsEnabledRef.current = isShortcutsEnabled;
+  }, [isShortcutsEnabled]);
 
   useEffect(() => {
     const loadShortcuts = async () => {
@@ -112,15 +125,30 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!isLoaded) return;
 
+    const cleanup = window.electronAPI?.onShortcutTriggered((shortcut) => {
+      if (!isShortcutsEnabledRef.current) return; // ✅
+      window.dispatchEvent(
+        new CustomEvent("margyn-shortcut", { detail: shortcut }),
+      );
+    });
+
+    return () => {
+      if (cleanup) cleanup();
+    };
+  }, [isLoaded]);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+
     const handleKeyDown = (e: KeyboardEvent) => {
+      // ✅ اگر شورت‌کات‌ها غیرفعال باشن، هیچ کاری نکن
+      if (!isShortcutsEnabledRef.current) return;
+
       const target = e.target as HTMLElement;
-      if (
+      const isInput =
         target.tagName === "INPUT" ||
         target.tagName === "TEXTAREA" ||
-        target.isContentEditable
-      ) {
-        return;
-      }
+        target.isContentEditable;
 
       const keys = [];
       if (e.ctrlKey || e.metaKey) keys.push("ctrl");
@@ -158,8 +186,13 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
 
       const pressedString = keys.join("+");
 
+      if (isInput && pressedString.toLowerCase() !== "ctrl+w") {
+        return;
+      }
+
       if (
         pressedString === "ctrl+o" ||
+        pressedString === "ctrl+w" ||
         pressedString === "ctrl+enter" ||
         pressedString === "ctrl+shift+enter" ||
         pressedString === "ctrl+b" ||
@@ -182,7 +215,13 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
 
   return (
     <ShortcutContext.Provider
-      value={{ shortcuts, updateShortcut, resetShortcuts }}
+      value={{
+        shortcuts,
+        updateShortcut,
+        resetShortcuts,
+        isShortcutsEnabled,
+        setShortcutsEnabled: setIsShortcutsEnabled,
+      }}
     >
       {children}
     </ShortcutContext.Provider>

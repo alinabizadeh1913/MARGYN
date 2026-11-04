@@ -1,7 +1,7 @@
 import initSqlJs, { Database as SqlJsDatabase } from "sql.js";
 import { drizzle } from "drizzle-orm/sql-js";
 import * as schema from "./schema";
-import { drawings, settings, recentFiles } from "./schema";
+import { sessions, drawings, settings, recentFiles } from "./schema";
 import { and, eq, desc } from "drizzle-orm";
 
 let db: any = null;
@@ -35,11 +35,12 @@ export async function getDb() {
 
       sqliteInstance.run(`
         CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, file_path TEXT, start_time INTEGER NOT NULL, end_time INTEGER, start_page INTEGER NOT NULL, end_page INTEGER, last_page INTEGER, pages_read INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
-        CREATE TABLE IF NOT EXISTS drawings (id TEXT PRIMARY KEY, session_id TEXT, page_number INTEGER NOT NULL, target TEXT NOT NULL DEFAULT 'margin', data TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS drawings (id TEXT PRIMARY KEY, session_id TEXT, file_path TEXT, page_number INTEGER NOT NULL, target TEXT NOT NULL DEFAULT 'margin', data TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
         CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS recent_files (id TEXT PRIMARY KEY, name TEXT NOT NULL, file_path TEXT NOT NULL, last_opened INTEGER NOT NULL, completed INTEGER DEFAULT 0, project_path TEXT);
       `);
 
+      // مایگریشن‌ها برای دیتابیس‌های قدیمی
       try {
         sqliteInstance.run("SELECT file_path FROM sessions LIMIT 1");
       } catch (e) {
@@ -58,6 +59,12 @@ export async function getDb() {
         sqliteInstance.run(
           "ALTER TABLE drawings ADD COLUMN target TEXT NOT NULL DEFAULT 'margin'",
         );
+      }
+
+      try {
+        sqliteInstance.run("SELECT file_path FROM drawings LIMIT 1");
+      } catch (e) {
+        sqliteInstance.run("ALTER TABLE drawings ADD COLUMN file_path TEXT");
       }
 
       try {
@@ -113,17 +120,23 @@ export async function saveDb(immediate = false) {
 }
 
 export async function saveDrawing(
+  filePath: string,
   pageNumber: number,
   target: "margin" | "pdf",
   lines: any[],
 ) {
+  if (!filePath) return;
   try {
     const database = await getDb();
     const existing = await database
       .select()
       .from(drawings)
       .where(
-        and(eq(drawings.pageNumber, pageNumber), eq(drawings.target, target)),
+        and(
+          eq(drawings.filePath, filePath),
+          eq(drawings.pageNumber, pageNumber),
+          eq(drawings.target, target),
+        ),
       );
     const dataString = JSON.stringify(lines);
     if (existing.length > 0) {
@@ -131,14 +144,22 @@ export async function saveDrawing(
         .update(drawings)
         .set({ data: dataString })
         .where(
-          and(eq(drawings.pageNumber, pageNumber), eq(drawings.target, target)),
+          and(
+            eq(drawings.filePath, filePath),
+            eq(drawings.pageNumber, pageNumber),
+            eq(drawings.target, target),
+          ),
         );
     } else {
       const uniqueId =
         Date.now().toString() + Math.random().toString(36).substring(2, 9);
-      await database
-        .insert(drawings)
-        .values({ id: uniqueId, pageNumber, target, data: dataString });
+      await database.insert(drawings).values({
+        id: uniqueId,
+        filePath,
+        pageNumber,
+        target,
+        data: dataString,
+      });
     }
     await saveDb();
   } catch (err) {
@@ -147,16 +168,22 @@ export async function saveDrawing(
 }
 
 export async function loadDrawing(
+  filePath: string,
   pageNumber: number,
   target: "margin" | "pdf",
 ): Promise<any[]> {
+  if (!filePath) return [];
   try {
     const database = await getDb();
     const result = await database
       .select()
       .from(drawings)
       .where(
-        and(eq(drawings.pageNumber, pageNumber), eq(drawings.target, target)),
+        and(
+          eq(drawings.filePath, filePath),
+          eq(drawings.pageNumber, pageNumber),
+          eq(drawings.target, target),
+        ),
       );
 
     if (result.length > 0 && result[0].data) {
@@ -174,33 +201,44 @@ export async function loadDrawing(
   return [];
 }
 
-export async function clearPageDrawings(pageNumber: number) {
+export async function clearPageDrawings(filePath: string, pageNumber: number) {
+  if (!filePath) return;
   const database = await getDb();
-  await database.delete(drawings).where(eq(drawings.pageNumber, pageNumber));
+  await database
+    .delete(drawings)
+    .where(
+      and(eq(drawings.filePath, filePath), eq(drawings.pageNumber, pageNumber)),
+    );
   await saveDb(true);
 }
 
-export async function clearAllDrawings() {
+export async function clearAllDrawings(filePath: string) {
+  if (!filePath) return;
   const database = await getDb();
-  await database.delete(drawings);
+  await database.delete(drawings).where(eq(drawings.filePath, filePath));
   await saveDb(true);
 }
 
-export async function getAllDrawings() {
+export async function getAllDrawings(filePath: string) {
+  if (!filePath) return [];
   try {
     const database = await getDb();
-    return await database.select().from(drawings);
+    return await database
+      .select()
+      .from(drawings)
+      .where(eq(drawings.filePath, filePath));
   } catch (e) {
     return [];
   }
 }
 
-export async function restoreDrawings(data: any[]) {
+export async function restoreDrawings(data: any[], filePath: string) {
   try {
     const database = await getDb();
-    if (!data || data.length === 0) return;
-    await database.delete(drawings);
-    await database.insert(drawings).values(data);
+    if (!data || data.length === 0 || !filePath) return;
+    await database.delete(drawings).where(eq(drawings.filePath, filePath));
+    const newData = data.map((d) => ({ ...d, filePath }));
+    await database.insert(drawings).values(newData);
     await saveDb(true);
   } catch (e) {}
 }
@@ -242,14 +280,13 @@ export async function resetDatabase() {
   );
   sqliteInstance.run(`
     CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, file_path TEXT, start_time INTEGER NOT NULL, end_time INTEGER, start_page INTEGER NOT NULL, end_page INTEGER, last_page INTEGER, pages_read INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
-    CREATE TABLE IF NOT EXISTS drawings (id TEXT PRIMARY KEY, session_id TEXT, page_number INTEGER NOT NULL, target TEXT NOT NULL DEFAULT 'margin', data TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS drawings (id TEXT PRIMARY KEY, session_id TEXT, file_path TEXT, page_number INTEGER NOT NULL, target TEXT NOT NULL DEFAULT 'margin', data TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS recent_files (id TEXT PRIMARY KEY, name TEXT NOT NULL, file_path TEXT NOT NULL, last_opened INTEGER NOT NULL, completed INTEGER DEFAULT 0, project_path TEXT);
   `);
   await saveDb(true);
 }
 
-// ✅ FIXED: Now accepts projectPath and checks for duplicates
 export async function addRecentFile(
   name: string,
   filePath: string,
@@ -258,7 +295,6 @@ export async function addRecentFile(
   try {
     const database = await getDb();
 
-    // 1. Check by projectPath first (for .margyn imports)
     if (projectPath) {
       const existingProject = await database
         .select()
@@ -277,7 +313,21 @@ export async function addRecentFile(
       }
     }
 
-    // 2. Check by filePath (for standard PDFs)
+    if (!projectPath) {
+      const existingName = await database
+        .select()
+        .from(recentFiles)
+        .where(eq(recentFiles.name, name));
+      if (existingName.length > 0) {
+        await database
+          .update(recentFiles)
+          .set({ lastOpened: Date.now(), filePath })
+          .where(eq(recentFiles.id, existingName[0].id));
+        await saveDb();
+        return { ...existingName[0], filePath };
+      }
+    }
+
     const existing = await database
       .select()
       .from(recentFiles)
@@ -369,4 +419,14 @@ export async function updateRecentFileProjectPath(
       .where(eq(recentFiles.filePath, filePath));
     await saveDb();
   } catch (e) {}
+}
+
+export async function deleteSessionById(id: string) {
+  try {
+    const database = await getDb();
+    await database.delete(sessions).where(eq(sessions.id, id));
+    await saveDb(true);
+  } catch (e) {
+    console.error("Failed to delete session:", e);
+  }
 }

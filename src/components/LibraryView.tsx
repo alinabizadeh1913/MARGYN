@@ -9,6 +9,7 @@ import {
   FileText,
   AlertTriangle,
   Download,
+  FolderArchive,
 } from "lucide-react";
 import Typography from "@/typography";
 
@@ -32,16 +33,19 @@ export default function LibraryView({
   const [isLoading, setIsLoading] = useState(true);
   const [showConfirmClear, setShowConfirmClear] = useState(false);
 
+  // ✅ تب‌بندی جدید: PDF و پروژه‌ها
+  const [activeTab, setActiveTab] = useState<"pdfs" | "projects">("pdfs");
+
   const loadFiles = async () => {
     setIsLoading(true);
     const data = await getRecentFiles();
 
-    // ✅ Deduplicate based on projectPath or filePath
     const uniqueFiles: RecentFile[] = [];
     const seen = new Set();
 
     for (const file of data as RecentFile[]) {
-      const key = file.projectPath || file.filePath;
+      // ✅ فیکس باگ: برای PDF ها بر اساس اسم فایل چک میکنیم نه مسیر یکتا
+      const key = file.projectPath ? file.projectPath : file.name;
       if (!seen.has(key)) {
         seen.add(key);
         uniqueFiles.push(file);
@@ -81,10 +85,16 @@ export default function LibraryView({
     });
   };
 
+  // ✅ فیلتر کردن فایل‌ها بر اساس تب انتخاب شده
+  const filteredFiles = files.filter((file) => {
+    if (activeTab === "projects") return !!file.projectPath;
+    return !file.projectPath;
+  });
+
   return (
     <div className="flex flex-col h-full w-full bg-[#09090b] p-10 overflow-y-auto relative">
       <div className="max-w-4xl w-full mx-auto">
-        <header className="mb-10 flex flex-wrap items-center justify-between gap-4">
+        <header className="mb-6 flex flex-wrap items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-3 mb-3">
               <BookOpen className="text-[#38bdf8]" size={28} />
@@ -126,26 +136,58 @@ export default function LibraryView({
           </div>
         </header>
 
+        {/* ✅ تب‌های PDFs و Projects */}
+        <div className="flex items-center gap-2 mb-6 bg-[#121214] p-1.5 rounded-2xl w-fit border border-[#27272a]">
+          <button
+            onClick={() => setActiveTab("pdfs")}
+            className={`flex items-center gap-2 px-6 py-2.5 rounded-xl transition-all duration-300 font-medium text-sm ${
+              activeTab === "pdfs"
+                ? "bg-[#27272a] text-white shadow-md border border-white/10"
+                : "text-[#a1a1aa] hover:text-white hover:bg-white/5"
+            }`}
+          >
+            <FileText size={16} />
+            PDF Documents
+          </button>
+          <button
+            onClick={() => setActiveTab("projects")}
+            className={`flex items-center gap-2 px-6 py-2.5 rounded-xl transition-all duration-300 font-medium text-sm ${
+              activeTab === "projects"
+                ? "bg-[#27272a] text-white shadow-md border border-white/10"
+                : "text-[#a1a1aa] hover:text-white hover:bg-white/5"
+            }`}
+          >
+            <FolderArchive size={16} />
+            Projects
+          </button>
+        </div>
+
         {isLoading ? (
           <div className="flex justify-center py-20">
             <div className="w-8 h-8 border-4 border-white/10 border-t-[#38bdf8] rounded-full animate-spin"></div>
           </div>
-        ) : files.length === 0 ? (
+        ) : filteredFiles.length === 0 ? (
           <div className="flex flex-col items-center justify-center text-center py-24 bg-[#121214] border border-[#27272a] rounded-3xl">
-            <FileText size={48} className="text-[#3f3f46] mb-4" />
+            {activeTab === "pdfs" ? (
+              <FileText size={48} className="text-[#3f3f46] mb-4" />
+            ) : (
+              <FolderArchive size={48} className="text-[#3f3f46] mb-4" />
+            )}
             <Typography
               variant="cardTitle"
               className="text-[#fafafa] mb-2 block"
             >
-              No recent files
+              No recent {activeTab === "pdfs" ? "PDFs" : "Projects"}
             </Typography>
             <Typography variant="body" className="text-[#a1a1aa] block">
-              Open a PDF to see it appear here.
+              {activeTab === "pdfs"
+                ? "Open a PDF to see it appear here."
+                : "Export or Import a project to see it here."}
             </Typography>
           </div>
         ) : (
           <div className="grid gap-3">
-            {files.map((file) => (
+            {filteredFiles.map((file) => (
               <div
                 key={file.id}
                 onClick={() => onSelectFile(file.filePath)}
@@ -155,10 +197,17 @@ export default function LibraryView({
 
                 <div className="flex items-center gap-5 relative z-10">
                   <div className="w-12 h-12 rounded-xl bg-[#09090b] border border-[#27272a] flex items-center justify-center group-hover:border-[#38bdf8]/30 transition-colors shrink-0">
-                    <FileText
-                      size={20}
-                      className="text-[#a1a1aa] group-hover:text-[#38bdf8] transition-colors"
-                    />
+                    {activeTab === "projects" ? (
+                      <FolderArchive
+                        size={20}
+                        className="text-[#a1a1aa] group-hover:text-[#38bdf8] transition-colors"
+                      />
+                    ) : (
+                      <FileText
+                        size={20}
+                        className="text-[#a1a1aa] group-hover:text-[#38bdf8] transition-colors"
+                      />
+                    )}
                   </div>
                   <div>
                     <div className="flex items-center gap-2 mb-1">
@@ -166,7 +215,6 @@ export default function LibraryView({
                         variant="cardTitle"
                         className="text-[#fafafa] group-hover:text-[#38bdf8] transition-colors line-clamp-1"
                       >
-                        {/* ✅ Fallback to "Untitled Project" if name is empty */}
                         {file.name || "Untitled Project"}
                       </Typography>
                       {file.completed === 1 && (

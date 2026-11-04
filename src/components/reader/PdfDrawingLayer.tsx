@@ -5,6 +5,7 @@ import { useTool } from "@/providers/ToolProvider";
 import { useInkCanvas } from "./useInkCanvas";
 
 interface PdfDrawingLayerProps {
+  filePath: string;
   pageNumber: number;
   width: number;
   height: number;
@@ -13,6 +14,7 @@ interface PdfDrawingLayerProps {
 }
 
 export default function PdfDrawingLayer({
+  filePath,
   pageNumber,
   width,
   height,
@@ -24,15 +26,14 @@ export default function PdfDrawingLayer({
   const pdfLeft = (width - pdfWidth) / 2;
   const pdfTop = (height - pdfHeight) / 2;
 
-  // Points are stored normalized (0..1) relative to the PDF page, exactly like before.
   const { staticRef, dynamicRef, resize, handlers } = useInkCanvas({
     kind: "pdf",
+    filePath,
     page: pageNumber,
     toStored: (x, y) => [(x - pdfLeft) / pdfWidth, (y - pdfTop) / pdfHeight],
     toScreen: (x, y) => [x * pdfWidth + pdfLeft, y * pdfHeight + pdfTop],
   });
 
-  // Layout effect = resize + redraw happen before paint, so zoom never flashes.
   useLayoutEffect(() => {
     resize(width, height, true);
   }, [width, height, pdfWidth, pdfHeight, resize]);
