@@ -34,17 +34,37 @@ export async function getDb() {
       sqliteInstance = dbData ? new SQL.Database(dbData) : new SQL.Database();
 
       sqliteInstance.run(`
-        CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, start_time INTEGER NOT NULL, end_time INTEGER, start_page INTEGER NOT NULL, end_page INTEGER, pages_read INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, file_path TEXT, start_time INTEGER NOT NULL, end_time INTEGER, start_page INTEGER NOT NULL, end_page INTEGER, last_page INTEGER, pages_read INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
         CREATE TABLE IF NOT EXISTS drawings (id TEXT PRIMARY KEY, session_id TEXT, page_number INTEGER NOT NULL, target TEXT NOT NULL DEFAULT 'margin', data TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
         CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-        CREATE TABLE IF NOT EXISTS recent_files (id TEXT PRIMARY KEY, name TEXT NOT NULL, file_path TEXT NOT NULL, last_opened INTEGER NOT NULL);
+        CREATE TABLE IF NOT EXISTS recent_files (id TEXT PRIMARY KEY, name TEXT NOT NULL, file_path TEXT NOT NULL, last_opened INTEGER NOT NULL, completed INTEGER DEFAULT 0);
       `);
+
+      try {
+        sqliteInstance.run("SELECT file_path FROM sessions LIMIT 1");
+      } catch (e) {
+        sqliteInstance.run("ALTER TABLE sessions ADD COLUMN file_path TEXT");
+      }
+
+      try {
+        sqliteInstance.run("SELECT last_page FROM sessions LIMIT 1");
+      } catch (e) {
+        sqliteInstance.run("ALTER TABLE sessions ADD COLUMN last_page INTEGER");
+      }
 
       try {
         sqliteInstance.run("SELECT target FROM drawings LIMIT 1");
       } catch (e) {
         sqliteInstance.run(
           "ALTER TABLE drawings ADD COLUMN target TEXT NOT NULL DEFAULT 'margin'",
+        );
+      }
+
+      try {
+        sqliteInstance.run("SELECT completed FROM recent_files LIMIT 1");
+      } catch (e) {
+        sqliteInstance.run(
+          "ALTER TABLE recent_files ADD COLUMN completed INTEGER DEFAULT 0",
         );
       }
 
@@ -130,8 +150,19 @@ export async function loadDrawing(
       .where(
         and(eq(drawings.pageNumber, pageNumber), eq(drawings.target, target)),
       );
-    if (result.length > 0 && result[0].data) return JSON.parse(result[0].data);
-  } catch (e) {}
+
+    if (result.length > 0 && result[0].data) {
+      try {
+        const parsed = JSON.parse(result[0].data);
+        if (Array.isArray(parsed)) return parsed;
+      } catch (e) {
+        console.error("Corrupted drawing data found, resetting this page.");
+        return [];
+      }
+    }
+  } catch (e) {
+    console.error("DB load error", e);
+  }
   return [];
 }
 
@@ -167,24 +198,33 @@ export async function restoreDrawings(data: any[]) {
 }
 
 export async function getSetting(key: string): Promise<string | null> {
-  const database = await getDb();
-  const result = await database
-    .select()
-    .from(settings)
-    .where(eq(settings.key, key));
-  return result.length > 0 ? result[0].value : null;
+  try {
+    const database = await getDb();
+    const result = await database
+      .select()
+      .from(settings)
+      .where(eq(settings.key, key));
+    return result.length > 0 ? result[0].value : null;
+  } catch (e) {
+    return null;
+  }
 }
 
 export async function setSetting(key: string, value: string) {
-  const database = await getDb();
-  const existing = await database
-    .select()
-    .from(settings)
-    .where(eq(settings.key, key));
-  if (existing.length > 0)
-    await database.update(settings).set({ value }).where(eq(settings.key, key));
-  else await database.insert(settings).values({ key, value });
-  await saveDb();
+  try {
+    const database = await getDb();
+    const existing = await database
+      .select()
+      .from(settings)
+      .where(eq(settings.key, key));
+    if (existing.length > 0)
+      await database
+        .update(settings)
+        .set({ value })
+        .where(eq(settings.key, key));
+    else await database.insert(settings).values({ key, value });
+    await saveDb();
+  } catch (e) {}
 }
 
 export async function resetDatabase() {
@@ -193,10 +233,10 @@ export async function resetDatabase() {
     `DROP TABLE IF EXISTS sessions; DROP TABLE IF EXISTS drawings; DROP TABLE IF EXISTS settings; DROP TABLE IF EXISTS recent_files;`,
   );
   sqliteInstance.run(`
-    CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, start_time INTEGER NOT NULL, end_time INTEGER, start_page INTEGER NOT NULL, end_page INTEGER, pages_read INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, file_path TEXT, start_time INTEGER NOT NULL, end_time INTEGER, start_page INTEGER NOT NULL, end_page INTEGER, last_page INTEGER, pages_read INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS drawings (id TEXT PRIMARY KEY, session_id TEXT, page_number INTEGER NOT NULL, target TEXT NOT NULL DEFAULT 'margin', data TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS recent_files (id TEXT PRIMARY KEY, name TEXT NOT NULL, file_path TEXT NOT NULL, last_opened INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS recent_files (id TEXT PRIMARY KEY, name TEXT NOT NULL, file_path TEXT NOT NULL, last_opened INTEGER NOT NULL, completed INTEGER DEFAULT 0);
   `);
   await saveDb(true);
 }
@@ -208,25 +248,29 @@ export async function addRecentFile(name: string, filePath: string) {
       .select()
       .from(recentFiles)
       .where(eq(recentFiles.filePath, filePath));
-
     if (existing.length > 0) {
       await database
         .update(recentFiles)
         .set({ lastOpened: Date.now() })
         .where(eq(recentFiles.filePath, filePath));
+      return existing[0];
     } else {
       const uniqueId =
         Date.now().toString() + Math.random().toString(36).substring(2, 9);
-      await database.insert(recentFiles).values({
-        id: uniqueId,
-        name,
-        filePath,
-        lastOpened: Date.now(),
-      });
+      await database
+        .insert(recentFiles)
+        .values({
+          id: uniqueId,
+          name,
+          filePath,
+          lastOpened: Date.now(),
+          completed: 0,
+        });
+      await saveDb();
+      return { id: uniqueId, name, filePath, completed: 0 };
     }
-    await saveDb();
   } catch (e) {
-    console.error("Failed to add recent file", e);
+    return null;
   }
 }
 
@@ -247,12 +291,9 @@ export async function deleteRecentFile(id: string, filePath: string) {
     const database = await getDb();
     await database.delete(recentFiles).where(eq(recentFiles.id, id));
     await saveDb(true);
-    if (window.electronAPI) {
+    if (window.electronAPI)
       await window.electronAPI.deleteLibraryFile(filePath);
-    }
-  } catch (e) {
-    console.error("Failed to delete recent file", e);
-  }
+  } catch (e) {}
 }
 
 export async function clearRecentFiles() {
@@ -260,10 +301,17 @@ export async function clearRecentFiles() {
     const database = await getDb();
     await database.delete(recentFiles);
     await saveDb(true);
-    if (window.electronAPI) {
-      await window.electronAPI.clearLibraryFolder();
-    }
-  } catch (e) {
-    console.error("Failed to clear recent files", e);
-  }
+    if (window.electronAPI) await window.electronAPI.clearLibraryFolder();
+  } catch (e) {}
+}
+
+export async function markFileCompleted(filePath: string) {
+  try {
+    const database = await getDb();
+    await database
+      .update(recentFiles)
+      .set({ completed: 1 })
+      .where(eq(recentFiles.filePath, filePath));
+    await saveDb(true);
+  } catch (e) {}
 }

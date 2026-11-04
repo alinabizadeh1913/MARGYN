@@ -10,19 +10,23 @@ import {
   RotateCcw,
   AlertTriangle,
   Lock,
+  FolderOpen,
 } from "lucide-react";
 import Typography from "@/typography";
 import { resetDatabase, getSetting, setSetting } from "@/db";
 import { useShortcuts, ShortcutAction } from "@/providers/ShortcutProvider";
 import { setAudioEnabled } from "@/lib/audio";
 import ShortcutInput from "./ShortcutInput";
+import DevSessionInspector from "./DevSessionInspector";
 
 const REQUIRED_RESET_PHRASE = "DELETE ALL MY DATA";
 
 export default function SettingsView() {
   const { shortcuts, updateShortcut, resetShortcuts } = useShortcuts();
   const [audioEnabled, setAudioEnabledState] = useState(true);
+  const [exportDir, setExportDir] = useState<string | null>(null);
 
+  // Reset Modal States
   const [showResetModal, setShowResetModal] = useState(false);
   const [resetText, setResetText] = useState("");
   const [resetError, setResetError] = useState(false);
@@ -30,15 +34,18 @@ export default function SettingsView() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const loadAudioSetting = async () => {
-      const saved = await getSetting("audioEnabled");
-      if (saved !== null) {
-        const isEnabled = saved === "true";
+    const loadSettings = async () => {
+      const savedAudio = await getSetting("audioEnabled");
+      if (savedAudio !== null) {
+        const isEnabled = savedAudio === "true";
         setAudioEnabledState(isEnabled);
         setAudioEnabled(isEnabled);
       }
+
+      const savedDir = await getSetting("defaultExportDir");
+      if (savedDir) setExportDir(savedDir);
     };
-    loadAudioSetting();
+    loadSettings();
   }, []);
 
   useEffect(() => {
@@ -55,6 +62,16 @@ export default function SettingsView() {
     setAudioEnabledState(newValue);
     setAudioEnabled(newValue);
     await setSetting("audioEnabled", newValue.toString());
+  };
+
+  const handleSelectExportDir = async () => {
+    if (window.electronAPI) {
+      const dir = await window.electronAPI.selectDirectory();
+      if (dir) {
+        setExportDir(dir);
+        await setSetting("defaultExportDir", dir);
+      }
+    }
   };
 
   const handleOpenResetModal = () => {
@@ -86,7 +103,6 @@ export default function SettingsView() {
     }
   };
 
-  // لیبل‌های دقیق برای شرت‌کیبوردها
   const shortcutLabels: Record<ShortcutAction, string> = {
     pen: "Select Pen Tool",
     eraser: "Select Eraser Tool",
@@ -95,11 +111,12 @@ export default function SettingsView() {
     openPdf: "Open PDF File",
     clearPage: "Clear Current Page Drawings",
     clearAll: "Clear All Pages Drawings",
+    toggleMargin: "Toggle Margin Sidebar",
   };
 
   return (
     <div className="flex flex-col h-full w-full bg-[#09090b] p-10 overflow-y-auto relative">
-      <div className="max-w-3xl w-full mx-auto">
+      <div className="max-w-4xl w-full mx-auto pb-20">
         <header className="mb-10">
           <Typography
             variant="pageTitle"
@@ -114,7 +131,7 @@ export default function SettingsView() {
         </header>
 
         <div className="space-y-6">
-          {/* Preferences */}
+          {/* Preferences (Audio) */}
           <section className="bg-[#121214] border border-[#27272a] rounded-2xl p-6">
             <div className="flex items-center gap-3 mb-4">
               <Volume2 size={20} className="text-[#a1a1aa]" />
@@ -158,6 +175,44 @@ export default function SettingsView() {
                       : "left-1 bg-[#71717a]"
                   }`}
                 />
+              </button>
+            </div>
+          </section>
+
+          {/* NEW: Storage Preferences */}
+          <section className="bg-[#121214] border border-[#27272a] rounded-2xl p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <FolderOpen size={20} className="text-[#a1a1aa]" />
+              <Typography
+                variant="cardTitle"
+                as="h2"
+                className="text-[#fafafa]"
+              >
+                Storage & Export
+              </Typography>
+            </div>
+            <div className="flex items-center justify-between py-3">
+              <div>
+                <Typography
+                  variant="label"
+                  as="span"
+                  className="text-[#fafafa] block mb-1"
+                >
+                  Default Export Directory
+                </Typography>
+                <Typography
+                  variant="caption"
+                  as="span"
+                  className="text-[#52525b] block max-w-[400px] truncate"
+                >
+                  {exportDir || "Documents folder (Default)"}
+                </Typography>
+              </div>
+              <button
+                onClick={handleSelectExportDir}
+                className="flex items-center gap-2 px-4 py-2 bg-[#18181b] hover:bg-[#27272a] text-[#fafafa] border border-[#3f3f46] rounded-lg transition-colors text-sm font-medium"
+              >
+                Browse...
               </button>
             </div>
           </section>
@@ -259,6 +314,10 @@ export default function SettingsView() {
               </Typography>
             </div>
           </section>
+
+          {/* ===== DEV SECTION ===== */}
+          <DevSessionInspector />
+          {/* ======================= */}
         </div>
       </div>
 

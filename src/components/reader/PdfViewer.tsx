@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import * as pdfjsLib from "pdfjs-dist";
 import { useSession } from "@/providers/SessionProvider";
 import { useTool } from "@/providers/ToolProvider";
@@ -23,32 +23,66 @@ import PdfDrawingLayer from "./PdfDrawingLayer";
 pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 
 const REQUIRED_PHRASE = "I AM BREAKING MY FOCUS";
+const DEFAULT_SCALE = 1.3;
+
+interface LoadedDoc {
+  id: number;
+  doc: pdfjsLib.PDFDocumentProxy;
+}
+
+interface DisplayedPage {
+  key: string;
+  pageNumber: number;
+  width: number;
+  height: number;
+}
 
 export default function PdfViewer({
   fileData,
+  onDocumentLoad,
 }: {
   fileData: Uint8Array | null;
+  onDocumentLoad?: (totalPages: number) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const renderTaskRef = useRef<pdfjsLib.RenderTask | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const docIdRef = useRef(0);
+  const inflightRef = useRef<Promise<void>>(Promise.resolve());
+  const displayedKeyRef = useRef<string | null>(null);
 
   const { isActive, currentPage, setCurrentPage } = useSession();
   const { canvasBg, setCanvasBg } = useTool();
 
-  const [pdfDoc, setPdfDoc] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
-  const [scale, setScale] = useState(1.6); // زوم اولیه به 1.6 تغییر کرد
+  const [loadedDoc, setLoadedDoc] = useState<LoadedDoc | null>(null);
+  const [scale, setScale] = useState(DEFAULT_SCALE);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
 
-  const [pageSize, setPageSize] = useState({ width: 0, height: 0 });
+  const [displayed, setDisplayed] = useState<DisplayedPage | null>(null);
+  const [revealedKey, setRevealedKey] = useState<string | null>(null);
+  const [errorKey, setErrorKey] = useState<string | null>(null);
+
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
 
   const [showBackModal, setShowBackModal] = useState(false);
   const [confirmText, setConfirmText] = useState("");
   const [confirmError, setConfirmError] = useState(false);
+
+  const requestKey = loadedDoc
+    ? `${loadedDoc.id}:${currentPage}:${scale}`
+    : null;
+
+  const isLoading =
+    requestKey === null ||
+    displayed?.key !== requestKey ||
+    revealedKey !== requestKey;
+
+  const latestRef = useRef({ onDocumentLoad, currentPage, setCurrentPage });
+  useEffect(() => {
+    latestRef.current = { onDocumentLoad, currentPage, setCurrentPage };
+  });
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement)
@@ -69,12 +103,15 @@ export default function PdfViewer({
     if (!container) return;
 
     const resizeObserver = new ResizeObserver((entries) => {
-      for (let entry of entries) {
-        setContainerSize({
-          width: entry.contentRect.width,
-          height: entry.contentRect.height,
-        });
-      }
+      const entry = entries[entries.length - 1];
+      if (!entry) return;
+      const width = Math.round(entry.contentRect.width);
+      const height = Math.round(entry.contentRect.height);
+      setContainerSize((prev) =>
+        prev.width === width && prev.height === height
+          ? prev
+          : { width, height },
+      );
     });
 
     resizeObserver.observe(container);
@@ -82,94 +119,143 @@ export default function PdfViewer({
   }, []);
 
   useEffect(() => {
+    setLoadedDoc(null);
+    setDisplayed(null);
+    setRevealedKey(null);
+    setErrorKey(null);
+    displayedKeyRef.current = null;
+
     if (!fileData) {
-      setPdfDoc(null);
+      latestRef.current.onDocumentLoad?.(0);
       return;
     }
-    const loadPdf = async () => {
-      try {
-        const safeData = new Uint8Array(fileData);
-        const loadingTask = pdfjsLib.getDocument({ data: safeData });
-        const doc = await loadingTask.promise;
-        setPdfDoc(doc);
-        if (currentPage > doc.numPages) setCurrentPage(1);
-      } catch (error) {
-        console.error("Failed to load PDF:", error);
-      }
+
+    let cancelled = false;
+    const loadingTask = pdfjsLib.getDocument({
+      data: new Uint8Array(fileData),
+    });
+
+    loadingTask.promise
+      .then((doc) => {
+        if (cancelled) return;
+        docIdRef.current += 1;
+        setLoadedDoc({ id: docIdRef.current, doc });
+        latestRef.current.onDocumentLoad?.(doc.numPages);
+        if (latestRef.current.currentPage > doc.numPages) {
+          latestRef.current.setCurrentPage(1);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) console.error("Failed to load PDF:", error);
+      });
+
+    return () => {
+      cancelled = true;
+      loadingTask.destroy();
     };
-    loadPdf();
   }, [fileData]);
 
   useEffect(() => {
-    if (!pdfDoc || !canvasRef.current) return;
+    if (!loadedDoc || !requestKey) return;
+    if (displayedKeyRef.current === requestKey) return;
 
-    let isCancelled = false;
+    const { doc } = loadedDoc;
+    const pageNumber = currentPage;
+    let cancelled = false;
+    let task: pdfjsLib.RenderTask | null = null;
 
-    const renderPage = async () => {
-      setIsLoading(true);
+    const previousRun = inflightRef.current;
 
-      if (renderTaskRef.current) {
-        renderTaskRef.current.cancel();
-        try {
-          await renderTaskRef.current.promise;
-        } catch (e) {}
-        renderTaskRef.current = null;
-      }
+    const run = async () => {
+      await previousRun;
+      if (cancelled) return;
 
-      if (isCancelled) return;
-
+      let offscreen: HTMLCanvasElement | null = null;
       try {
-        const page = await pdfDoc.getPage(currentPage);
-        if (isCancelled) return;
+        const page = await doc.getPage(pageNumber);
+        if (cancelled) return;
 
         const viewport = page.getViewport({ scale });
-        const canvas = canvasRef.current;
-        const context = canvas?.getContext("2d", { alpha: false });
+        const outputScale = window.devicePixelRatio || 1;
+        const cssWidth = Math.floor(viewport.width);
+        const cssHeight = Math.floor(viewport.height);
 
-        if (canvas && context) {
-          canvas.height = viewport.height;
-          canvas.width = viewport.width;
-          canvas.style.width = `${viewport.width}px`;
-          canvas.style.height = `${viewport.height}px`;
+        offscreen = document.createElement("canvas");
+        offscreen.width = Math.floor(viewport.width * outputScale);
+        offscreen.height = Math.floor(viewport.height * outputScale);
+        const offCtx = offscreen.getContext("2d", { alpha: false });
+        if (!offCtx) throw new Error("2D canvas context unavailable");
 
-          setPageSize({ width: viewport.width, height: viewport.height });
+        task = page.render({
+          canvasContext: offCtx,
+          viewport,
+          transform:
+            outputScale !== 1
+              ? [outputScale, 0, 0, outputScale, 0, 0]
+              : undefined,
+        });
+        await task.promise;
+        if (cancelled) return;
 
-          const renderContext = { canvasContext: context, viewport };
-          renderTaskRef.current = page.render(renderContext);
-          await renderTaskRef.current.promise;
-        }
+        const visible = canvasRef.current;
+        const visibleCtx = visible?.getContext("2d", { alpha: false });
+        if (!visible || !visibleCtx) return;
+
+        visible.width = offscreen.width;
+        visible.height = offscreen.height;
+        visibleCtx.drawImage(offscreen, 0, 0);
+        displayedKeyRef.current = requestKey;
+
+        setDisplayed({
+          key: requestKey,
+          pageNumber,
+          width: cssWidth,
+          height: cssHeight,
+        });
       } catch (error: any) {
-        if (error?.name !== "RenderingCancelledException") {
+        if (!cancelled && error?.name !== "RenderingCancelledException") {
           console.error("Render error:", error);
+          setErrorKey(requestKey);
         }
       } finally {
-        if (!isCancelled) setIsLoading(false);
+        if (offscreen) {
+          offscreen.width = 0;
+          offscreen.height = 0;
+        }
       }
     };
 
-    renderPage();
+    inflightRef.current = run();
 
     return () => {
-      isCancelled = true;
-      if (renderTaskRef.current) renderTaskRef.current.cancel();
+      cancelled = true;
+      task?.cancel();
     };
-  }, [pdfDoc, currentPage, scale]);
+  }, [loadedDoc, requestKey, currentPage, scale]);
 
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    const handleWheel = (e: WheelEvent) => {
-      e.preventDefault();
+    if (
+      !requestKey ||
+      displayed?.key !== requestKey ||
+      revealedKey === requestKey
+    )
+      return;
+
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setRevealedKey(requestKey));
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
     };
-    container.addEventListener("wheel", handleWheel, { passive: false });
-    return () => container.removeEventListener("wheel", handleWheel);
-  }, []);
+  }, [displayed, requestKey, revealedKey]);
 
   const handleNextPage = useCallback(() => {
-    if (pdfDoc && currentPage < pdfDoc.numPages) {
+    if (loadedDoc && currentPage < loadedDoc.doc.numPages) {
       setCurrentPage(currentPage + 1);
     }
-  }, [pdfDoc, currentPage, setCurrentPage]);
+  }, [loadedDoc, currentPage, setCurrentPage]);
 
   const handlePrevPage = useCallback(() => {
     if (currentPage <= 1) return;
@@ -178,11 +264,38 @@ export default function PdfViewer({
       setShowBackModal(true);
       setConfirmText("");
       setConfirmError(false);
-      setTimeout(() => inputRef.current?.focus(), 100);
+      setTimeout(() => inputRef.current?.focus(), 150);
     } else {
       setCurrentPage(currentPage - 1);
     }
   }, [currentPage, isActive, setCurrentPage]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    let isScrolling = false;
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+
+      if (isActive) return;
+      if (isScrolling) return;
+
+      if (e.deltaY > 0) {
+        handleNextPage();
+      } else if (e.deltaY < 0) {
+        handlePrevPage();
+      }
+
+      isScrolling = true;
+      setTimeout(() => {
+        isScrolling = false;
+      }, 400);
+    };
+
+    container.addEventListener("wheel", handleWheel, { passive: false });
+    return () => container.removeEventListener("wheel", handleWheel);
+  }, [isActive, handleNextPage, handlePrevPage]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -244,12 +357,15 @@ export default function PdfViewer({
     );
   }
 
+  const hasRenderError = errorKey !== null && errorKey === requestKey;
+
   return (
     <div
       ref={viewerRef}
       className="w-full h-full flex flex-col relative overflow-hidden transition-colors duration-500 ease-in-out"
       style={{ backgroundColor: canvasBg }}
     >
+      {/* Floating Toolbars */}
       <div className="absolute top-8 right-8 flex flex-col gap-4 z-50">
         <div className="bg-white/95 backdrop-blur-xl border border-zinc-200 p-2 rounded-2xl flex flex-col gap-1.5 shadow-sm">
           <button
@@ -287,14 +403,14 @@ export default function PdfViewer({
             <ZoomOut size={18} />
           </button>
           <button
-            onClick={() => setScale(1.6)} // ریست به زوم 1.6
+            onClick={() => setScale(DEFAULT_SCALE)}
             className="p-2.5 rounded-xl text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 transition-all duration-200"
           >
             <RotateCcw size={18} />
           </button>
         </div>
 
-        {pdfDoc && (
+        {loadedDoc && (
           <div className="bg-white/95 backdrop-blur-xl border border-zinc-200 p-2 rounded-2xl flex flex-col gap-1.5 shadow-sm items-center">
             <button
               onClick={handlePrevPage}
@@ -311,9 +427,9 @@ export default function PdfViewer({
             <div className="h-px w-full bg-zinc-200 my-0.5" />
             <button
               onClick={handleNextPage}
-              disabled={currentPage === pdfDoc.numPages}
+              disabled={currentPage === loadedDoc.doc.numPages}
               className={`p-2.5 rounded-xl transition-all duration-200 ${
-                currentPage === pdfDoc.numPages
+                currentPage === loadedDoc.doc.numPages
                   ? "text-zinc-300 cursor-not-allowed"
                   : "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 active:scale-95"
               }`}
@@ -325,48 +441,79 @@ export default function PdfViewer({
         )}
       </div>
 
+      {/* Main PDF Container - Removed 'isolate' so z-index applies globally */}
       <div
         ref={containerRef}
         className="flex-1 w-full h-full relative flex items-center justify-center overflow-hidden p-8"
       >
-        {isLoading && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/40 backdrop-blur-sm z-40 transition-opacity duration-300">
-            <div className="relative w-12 h-12">
-              <div className="absolute inset-0 border-[3px] border-zinc-200 rounded-full"></div>
-              <div className="absolute inset-0 border-[3px] border-t-zinc-500 rounded-full animate-spin"></div>
-            </div>
-          </div>
-        )}
-
         <div
-          className="relative bg-white border border-black/5"
-          style={{ width: pageSize.width, height: pageSize.height }}
+          className="relative bg-white ring-1 ring-black/5"
+          style={{
+            width: displayed?.width ?? 0,
+            height: displayed?.height ?? 0,
+          }}
         >
-          <canvas ref={canvasRef} className="block" />
+          <canvas
+            ref={canvasRef}
+            className="block"
+            style={{
+              width: displayed?.width ?? 0,
+              height: displayed?.height ?? 0,
+            }}
+          />
         </div>
 
-        {containerSize.width > 0 && pageSize.width > 0 && (
-          <PdfDrawingLayer
-            pageNumber={currentPage}
-            width={containerSize.width}
-            height={containerSize.height}
-            pdfWidth={pageSize.width}
-            pdfHeight={pageSize.height}
-          />
+        {displayed && containerSize.width > 0 && (
+          <div className="absolute inset-0">
+            <PdfDrawingLayer
+              pageNumber={displayed.pageNumber}
+              width={containerSize.width}
+              height={containerSize.height}
+              pdfWidth={displayed.width}
+              pdfHeight={displayed.height}
+            />
+          </div>
         )}
       </div>
 
+      {/* Solid Overlay - Moved out of container and given a massive z-index */}
+      {isLoading && (
+        <div className="absolute inset-0 z-[999] flex flex-col items-center justify-center bg-[#121214]">
+          {hasRenderError ? (
+            <Typography
+              variant="microLabel"
+              className="text-rose-400 tracking-widest"
+            >
+              Failed to render page
+            </Typography>
+          ) : (
+            <>
+              <div className="relative w-16 h-16">
+                <div className="absolute inset-0 border-[4px] border-white/5 rounded-full"></div>
+                <div className="absolute inset-0 border-[4px] border-t-[#38bdf8] rounded-full animate-spin shadow-[0_0_15px_rgba(56,189,248,0.5)]"></div>
+              </div>
+              <Typography
+                variant="microLabel"
+                className="text-[#38bdf8] mt-6 tracking-widest animate-pulse"
+              >
+                Rendering Page
+              </Typography>
+            </>
+          )}
+        </div>
+      )}
+
       {showBackModal && (
-        <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/30 backdrop-blur-md transition-all duration-300">
-          <div className="bg-white/95 backdrop-blur-3xl p-8 rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.4)] border border-white/60 w-full max-w-lg flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">
-            <div className="w-16 h-16 bg-rose-100 rounded-full flex items-center justify-center mb-6 shadow-inner">
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40 backdrop-blur-md transition-all duration-300">
+          <div className="bg-[#121214] border border-rose-500/30 p-8 rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] w-full max-w-lg flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">
+            <div className="w-16 h-16 bg-rose-500/10 rounded-full flex items-center justify-center mb-6 shadow-inner">
               <ShieldAlert size={32} className="text-rose-500" />
             </div>
 
             <Typography
               variant="pageTitle"
               as="h2"
-              className="text-zinc-900 mb-2 font-semibold tracking-tight"
+              className="text-[#fafafa] mb-2 font-semibold tracking-tight"
             >
               Break Your Focus?
             </Typography>
@@ -374,15 +521,15 @@ export default function PdfViewer({
             <Typography
               variant="body"
               as="p"
-              className="text-zinc-500 mb-8 max-w-sm leading-relaxed"
+              className="text-[#a1a1aa] mb-8 max-w-sm leading-relaxed"
             >
               Going back breaks your flow. If you absolutely must, type the
               following phrase in <strong>ALL CAPITAL LETTERS</strong>:
             </Typography>
 
-            <div className="w-full bg-zinc-100/80 border border-zinc-200 rounded-2xl p-4 mb-6 flex items-center justify-center gap-3 select-none">
-              <Lock size={16} className="text-zinc-400" />
-              <span className="text-zinc-800 font-mono text-base font-bold tracking-widest">
+            <div className="w-full bg-[#09090b] border border-[#27272a] rounded-2xl p-4 mb-6 flex items-center justify-center gap-3 select-none">
+              <Lock size={16} className="text-[#52525b]" />
+              <span className="text-[#fafafa] font-mono text-base font-bold tracking-widest">
                 {REQUIRED_PHRASE}
               </span>
             </div>
@@ -395,7 +542,10 @@ export default function PdfViewer({
                 setConfirmText(e.target.value);
                 setConfirmError(false);
               }}
-              onKeyDown={(e) => e.key === "Enter" && handleConfirmBack()}
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                if (e.key === "Enter") handleConfirmBack();
+              }}
               onPaste={(e) => e.preventDefault()}
               onCopy={(e) => e.preventDefault()}
               onCut={(e) => e.preventDefault()}
@@ -404,10 +554,10 @@ export default function PdfViewer({
               autoComplete="off"
               spellCheck="false"
               placeholder="TYPE HERE (UPPERCASE ONLY)"
-              className={`w-full px-5 py-4 rounded-xl bg-white border-2 outline-none transition-all text-center text-lg font-mono tracking-widest shadow-sm ${
+              className={`w-full px-5 py-4 rounded-xl bg-[#18181b] border-2 outline-none transition-all text-center text-lg font-mono tracking-widest shadow-sm ${
                 confirmError
                   ? "border-rose-400 focus:border-rose-500 text-rose-600 placeholder-rose-300 animate-shake"
-                  : "border-zinc-200 focus:border-zinc-800 text-zinc-900 uppercase"
+                  : "border-[#27272a] focus:border-rose-500/50 text-[#fafafa] uppercase"
               }`}
             />
             {confirmError && (
@@ -422,13 +572,13 @@ export default function PdfViewer({
             <div className="flex gap-4 w-full mt-8">
               <button
                 onClick={() => setShowBackModal(false)}
-                className="flex-1 px-4 py-3.5 rounded-xl bg-zinc-100 text-zinc-600 hover:bg-zinc-200 hover:text-zinc-900 transition-all font-medium active:scale-[0.98]"
+                className="flex-1 px-4 py-3.5 rounded-xl bg-[#18181b] text-[#a1a1aa] hover:text-[#fafafa] hover:bg-[#27272a] border border-[#27272a] transition-all font-medium active:scale-[0.98]"
               >
                 Keep Focusing
               </button>
               <button
                 onClick={handleConfirmBack}
-                className="flex-1 px-4 py-3.5 rounded-xl bg-zinc-900 text-white hover:bg-zinc-800 transition-all font-medium shadow-md active:scale-[0.98]"
+                className="flex-1 px-4 py-3.5 rounded-xl bg-rose-500 text-white hover:bg-rose-600 transition-all font-medium shadow-[0_0_15px_rgba(244,63,94,0.3)] active:scale-[0.98]"
               >
                 Go Back
               </button>

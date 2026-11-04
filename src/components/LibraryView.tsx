@@ -2,7 +2,15 @@
 
 import React, { useState, useEffect } from "react";
 import { getRecentFiles, clearRecentFiles, deleteRecentFile } from "@/db";
-import { BookOpen, Trash2, Clock, FileText, AlertTriangle } from "lucide-react";
+import {
+  BookOpen,
+  Trash2,
+  Clock,
+  FileText,
+  AlertTriangle,
+  Download,
+  Upload,
+} from "lucide-react";
 import Typography from "@/typography";
 
 interface RecentFile {
@@ -10,12 +18,15 @@ interface RecentFile {
   name: string;
   filePath: string;
   lastOpened: number;
+  completed: number;
 }
 
 export default function LibraryView({
   onSelectFile,
+  onImportProject,
 }: {
   onSelectFile: (path: string) => void;
+  onImportProject: () => void;
 }) {
   const [files, setFiles] = useState<RecentFile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -24,7 +35,7 @@ export default function LibraryView({
   const loadFiles = async () => {
     setIsLoading(true);
     const data = await getRecentFiles();
-    setFiles(data);
+    setFiles(data as RecentFile[]);
     setIsLoading(false);
   };
 
@@ -60,7 +71,7 @@ export default function LibraryView({
   return (
     <div className="flex flex-col h-full w-full bg-[#09090b] p-10 overflow-y-auto relative">
       <div className="max-w-4xl w-full mx-auto">
-        <header className="mb-10 flex items-end justify-between">
+        <header className="mb-10 flex items-center justify-between">
           <div>
             <div className="flex items-center gap-3 mb-3">
               <BookOpen className="text-[#38bdf8]" size={28} />
@@ -82,15 +93,24 @@ export default function LibraryView({
             </Typography>
           </div>
 
-          {files.length > 0 && (
+          <div className="flex items-center gap-3">
             <button
-              onClick={() => setShowConfirmClear(true)}
-              className="flex items-center gap-2 px-4 py-2 text-sm text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-xl hover:bg-rose-500/20 transition-all font-medium"
+              onClick={onImportProject}
+              className="flex items-center gap-2 px-4 py-2 text-sm text-[#38bdf8] bg-[#38bdf8]/10 border border-[#38bdf8]/20 rounded-xl hover:bg-[#38bdf8]/20 transition-all font-medium"
             >
-              <Trash2 size={16} />
-              Clear History
+              <Upload size={16} />
+              Import Project
             </button>
-          )}
+            {files.length > 0 && (
+              <button
+                onClick={() => setShowConfirmClear(true)}
+                className="flex items-center gap-2 px-4 py-2 text-sm text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-xl hover:bg-rose-500/20 transition-all font-medium"
+              >
+                <Trash2 size={16} />
+                Clear History
+              </button>
+            )}
+          </div>
         </header>
 
         {isLoading ? (
@@ -128,12 +148,19 @@ export default function LibraryView({
                     />
                   </div>
                   <div>
-                    <Typography
-                      variant="cardTitle"
-                      className="text-[#fafafa] group-hover:text-[#38bdf8] transition-colors mb-1 line-clamp-1"
-                    >
-                      {file.name}
-                    </Typography>
+                    <div className="flex items-center gap-2 mb-1">
+                      <Typography
+                        variant="cardTitle"
+                        className="text-[#fafafa] group-hover:text-[#38bdf8] transition-colors line-clamp-1"
+                      >
+                        {file.name}
+                      </Typography>
+                      {file.completed === 1 && (
+                        <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-500 text-[10px] font-bold rounded-full border border-emerald-500/20">
+                          Completed
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2 text-[#52525b]">
                       <Clock size={12} />
                       <Typography variant="caption" className="text-[#52525b]">

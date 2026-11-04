@@ -16,7 +16,9 @@ export type ShortcutAction =
   | "endSession"
   | "openPdf"
   | "clearPage"
-  | "clearAll";
+  | "clearAll"
+  | "toggleMargin"
+  | "saveProject";
 
 export const DEFAULT_SHORTCUTS: Record<ShortcutAction, string> = {
   pen: "p",
@@ -26,6 +28,8 @@ export const DEFAULT_SHORTCUTS: Record<ShortcutAction, string> = {
   openPdf: "ctrl+o",
   clearPage: "delete",
   clearAll: "shift+delete",
+  toggleMargin: "ctrl+b",
+  saveProject: "ctrl+s",
 };
 
 interface ShortcutContextType {
@@ -48,18 +52,38 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
       try {
         const saved = await getSetting("shortcuts");
         if (saved) {
-          const parsed = JSON.parse(saved);
-          // فیلتر کردن کلیدهای قدیمی که دیگر در نوع جدید وجود ندارند
-          const validShortcuts = Object.keys(DEFAULT_SHORTCUTS).reduce(
-            (acc, key) => {
-              const k = key as ShortcutAction;
-              acc[k] = parsed[k] || DEFAULT_SHORTCUTS[k];
-              return acc;
-            },
-            {} as Record<ShortcutAction, string>,
-          );
+          try {
+            const parsed = JSON.parse(saved);
+            const validShortcuts = Object.keys(DEFAULT_SHORTCUTS).reduce(
+              (acc, key) => {
+                const k = key as ShortcutAction;
+                let val = parsed[k] || DEFAULT_SHORTCUTS[k];
 
-          setShortcuts(validShortcuts);
+                if (val.includes("shiftleft") || val.includes("shiftright")) {
+                  val = val
+                    .replace("shiftleft", "shift")
+                    .replace("shiftright", "shift");
+                }
+                if (
+                  val.includes("controlleft") ||
+                  val.includes("controlright")
+                ) {
+                  val = val
+                    .replace("controlleft", "ctrl")
+                    .replace("controlright", "ctrl");
+                }
+                acc[k] = val;
+                return acc;
+              },
+              {} as Record<ShortcutAction, string>,
+            );
+
+            setShortcuts(validShortcuts);
+            await setSetting("shortcuts", JSON.stringify(validShortcuts));
+          } catch (parseError) {
+            console.error("Corrupted shortcuts data, resetting to default.");
+            await setSetting("shortcuts", JSON.stringify(DEFAULT_SHORTCUTS));
+          }
         }
       } catch (err) {
         console.error("Failed to load shortcuts", err);
@@ -106,8 +130,7 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
       else if (key === "Delete") key = "delete";
       else if (key === "Backspace") key = "backspace";
       else if (key === "Space") key = "space";
-      else if (key === "Enter")
-        key = "enter"; // هندل کردن دکمه Enter
+      else if (key === "Enter") key = "enter";
       else key = key.toLowerCase();
 
       if (
@@ -131,11 +154,12 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
 
       const pressedString = keys.join("+");
 
-      // جلوگیری از رفتار پیش‌فرض مرورگر
       if (
         pressedString === "ctrl+o" ||
         pressedString === "ctrl+enter" ||
-        pressedString === "ctrl+shift+enter"
+        pressedString === "ctrl+shift+enter" ||
+        pressedString === "ctrl+b" ||
+        pressedString === "ctrl+s"
       ) {
         e.preventDefault();
       }

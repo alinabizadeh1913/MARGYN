@@ -21,6 +21,25 @@ declare global {
       loadLibraryFile: (filePath: string) => Promise<Uint8Array | null>;
       deleteLibraryFile: (filePath: string) => Promise<boolean>;
       clearLibraryFolder: () => Promise<boolean>;
+
+      selectDirectory: () => Promise<string | null>;
+      exportProject: (
+        data: any,
+        defaultDir: string | null,
+      ) => Promise<string | null>;
+      saveProject: (
+        data: any,
+        filePath: string | null,
+      ) => Promise<string | null>;
+      importProject: () => Promise<{ data: any; filePath: string } | null>;
+      readProjectFromPath: (
+        filePath: string,
+      ) => Promise<{ data: any; filePath: string } | null>; // NEW
+
+      onAppCloseRequest: (callback: () => void) => () => void;
+      forceCloseApp: () => void;
+
+      onOpenMargynFile: (callback: (filePath: string) => void) => () => void; // NEW
     };
   }
 }

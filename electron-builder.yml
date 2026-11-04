@@ -16,6 +16,15 @@ files:
   - "out/**/*"
   - "package.json"
 
+# ===== NEW: File Associations =====
+fileAssociations:
+  - ext: margyn
+    name: MARGYN Project
+    description: MARGYN Study Command Center Project
+    icon: build/icon.ico
+    role: Editor
+# ==================================
+
 win:
   target:
     - target: nsis

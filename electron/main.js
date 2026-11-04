@@ -5,14 +5,37 @@ const {
   net,
   ipcMain,
   dialog,
+  Menu,
 } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { pathToFileURL } = require("url");
 
 let mainWindow;
+let forceQuit = false;
+let pendingFilePath = null; // برای ذخیره مسیر فایلی که موقع اجرا کلیک شده
+
 const isDev = process.env.NODE_ENV === "development";
 const devUrl = process.env.ELECTRON_START_URL || "http://localhost:3000";
+
+// ===== Single Instance Lock =====
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on("second-instance", (event, commandLine) => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+
+      const filePath = commandLine.find((arg) => arg.endsWith(".margyn"));
+      if (filePath) {
+        mainWindow.webContents.send("open-margyn-file", filePath);
+      }
+    }
+  });
+}
+// ================================
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -35,53 +58,68 @@ const getLibraryPath = () => path.join(app.getPath("userData"), "library");
 if (!fs.existsSync(getLibraryPath())) {
   try {
     fs.mkdirSync(getLibraryPath(), { recursive: true });
-  } catch (e) {
-    console.error("Could not create library folder", e);
-  }
+  } catch (e) {}
 }
 
+// Window Controls
+ipcMain.on("window-minimize", () => {
+  if (mainWindow) mainWindow.minimize();
+});
+ipcMain.on("window-maximize", () => {
+  if (mainWindow) {
+    if (mainWindow.isMaximized()) mainWindow.unmaximize();
+    else mainWindow.maximize();
+  }
+});
+ipcMain.on("window-close", () => {
+  if (mainWindow) mainWindow.close();
+});
+ipcMain.handle("window-is-maximized", () =>
+  mainWindow ? mainWindow.isMaximized() : false,
+);
+
+ipcMain.on("app-force-close", () => {
+  forceQuit = true;
+  if (mainWindow) mainWindow.close();
+});
+
+// DB & PDF Core
 ipcMain.handle("db-load", async () => {
   const dbPath = getDbPath();
   return fs.existsSync(dbPath) ? new Uint8Array(fs.readFileSync(dbPath)) : null;
 });
-
 ipcMain.handle("db-save", async (event, dataBuffer) => {
   if (!dataBuffer) return false;
   fs.writeFileSync(getDbPath(), Buffer.from(dataBuffer));
   return true;
 });
-
 ipcMain.handle("db-load-wasm", async () => {
-  const possiblePaths = [
+  const paths = [
     path.join(__dirname, "..", "public", "sql-wasm.wasm"),
     path.join(__dirname, "..", "out", "sql-wasm.wasm"),
   ];
-  for (const wasmPath of possiblePaths) {
-    if (fs.existsSync(wasmPath))
-      return new Uint8Array(fs.readFileSync(wasmPath));
-  }
+  for (const p of paths)
+    if (fs.existsSync(p)) return new Uint8Array(fs.readFileSync(p));
   throw new Error("Could not find sql-wasm.wasm");
 });
-
 ipcMain.handle("pdf-load-active", async () => {
   const pdfPath = getPdfPath();
   return fs.existsSync(pdfPath)
     ? new Uint8Array(fs.readFileSync(pdfPath))
     : null;
 });
-
 ipcMain.handle("pdf-save-active", async (event, dataBuffer) => {
   if (!dataBuffer) return false;
   fs.writeFileSync(getPdfPath(), Buffer.from(dataBuffer));
   return true;
 });
-
 ipcMain.handle("pdf-clear-active", async () => {
   const pdfPath = getPdfPath();
   if (fs.existsSync(pdfPath)) fs.unlinkSync(pdfPath);
   return true;
 });
 
+// Open PDF Dialog
 ipcMain.handle("dialog:openPdf", async () => {
   try {
     const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
@@ -110,11 +148,11 @@ ipcMain.handle("dialog:openPdf", async () => {
       libraryPath: libraryFilePath,
     };
   } catch (error) {
-    console.error("Failed to open PDF:", error);
     return null;
   }
 });
 
+// Library
 ipcMain.handle("library-load-file", async (event, filePath) => {
   try {
     if (fs.existsSync(filePath))
@@ -124,31 +162,112 @@ ipcMain.handle("library-load-file", async (event, filePath) => {
     return null;
   }
 });
-
 ipcMain.handle("library-delete-file", async (event, filePath) => {
   if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
   return true;
 });
-
 ipcMain.handle("library-clear-all", async () => {
   const libPath = getLibraryPath();
   if (fs.existsSync(libPath)) {
     const files = fs.readdirSync(libPath);
-    for (const file of files) {
-      fs.unlinkSync(path.join(libPath, file));
-    }
+    for (const file of files) fs.unlinkSync(path.join(libPath, file));
   }
   return true;
 });
+
+// ===== PROJECT EXPORT/IMPORT =====
+ipcMain.handle("dialog:selectDirectory", async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+    properties: ["openDirectory", "createDirectory"],
+  });
+  if (canceled || filePaths.length === 0) return null;
+  return filePaths[0];
+});
+
+ipcMain.handle("project:export", async (event, { data, defaultDir }) => {
+  try {
+    const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+      title: "Export Margyn Project",
+      defaultPath: defaultDir || app.getPath("documents"),
+      filters: [{ name: "Margyn Project", extensions: ["margyn"] }],
+    });
+    if (canceled || !filePath) return null;
+
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+    return filePath;
+  } catch (error) {
+    return null;
+  }
+});
+
+ipcMain.handle("project:save", async (event, { data, filePath }) => {
+  try {
+    let targetPath = filePath;
+    if (!targetPath) {
+      const { canceled, filePath: savePath } = await dialog.showSaveDialog(
+        mainWindow,
+        {
+          title: "Save Margyn Project",
+          defaultPath: app.getPath("documents"),
+          filters: [{ name: "Margyn Project", extensions: ["margyn"] }],
+        },
+      );
+      if (canceled || !savePath) return null;
+      targetPath = savePath;
+    }
+    fs.writeFileSync(targetPath, JSON.stringify(data, null, 2));
+    return targetPath;
+  } catch (error) {
+    return null;
+  }
+});
+
+ipcMain.handle("project:import", async () => {
+  try {
+    const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+      properties: ["openFile"],
+      filters: [{ name: "Margyn Project", extensions: ["margyn"] }],
+    });
+    if (canceled || filePaths.length === 0) return null;
+
+    const rawData = fs.readFileSync(filePaths[0], "utf-8");
+    if (!rawData || rawData.trim() === "")
+      throw new Error("Empty project file.");
+
+    let parsedData;
+    try {
+      parsedData = JSON.parse(rawData);
+    } catch (parseError) {
+      return null;
+    }
+
+    return { data: parsedData, filePath: filePaths[0] };
+  } catch (error) {
+    return null;
+  }
+});
+
+ipcMain.handle("project:read-from-path", async (event, filePath) => {
+  try {
+    if (!fs.existsSync(filePath)) return null;
+    const rawData = fs.readFileSync(filePath, "utf-8");
+    if (!rawData || rawData.trim() === "") return null;
+    return { data: JSON.parse(rawData), filePath };
+  } catch (error) {
+    console.error("Failed to read project file:", error);
+    return null;
+  }
+});
+// ========================================================
 
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1600,
     height: 1000,
-    minWidth: 1440, // افزایش حداقل عرض از 1280 به 1440
-    minHeight: 900, // افزایش حداقل ارتفاع از 800 به 900
+    minWidth: 1440,
+    minHeight: 900,
     titleBarStyle: "hidden",
-    titleBarOverlay: { color: "#09090b", symbolColor: "#a1a1aa", height: 40 },
+    // titleBarOverlay حذف شد تا دکمه‌های ما هاور و کلیک‌پذیر بشن
     backgroundColor: "#09090b",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
@@ -156,29 +275,47 @@ function createWindow() {
       contextIsolation: true,
       sandbox: false,
       webSecurity: true,
+      devTools: false,
     },
     show: false,
   });
 
   mainWindow.maximize();
 
-  if (!isDev) {
-    mainWindow.webContents.on("before-input-event", (event, input) => {
-      if (
-        input.key === "F12" ||
-        (input.control && input.shift && input.key === "I") ||
-        (input.meta && input.alt && input.key === "I")
-      ) {
-        event.preventDefault();
-      }
-    });
-  }
+  mainWindow.webContents.on("before-input-event", (event, input) => {
+    if ((input.control || input.meta) && input.key.toLowerCase() === "w") {
+      event.preventDefault();
+      return;
+    }
+    if (
+      input.key === "F12" ||
+      (input.control &&
+        input.shift &&
+        ["i", "c", "j"].includes(input.key.toLowerCase()))
+    ) {
+      event.preventDefault();
+      return;
+    }
+  });
 
-  if (isDev) {
-    mainWindow.loadURL(devUrl);
-  } else {
-    mainWindow.loadURL("app://bundle/index.html");
-  }
+  mainWindow.webContents.on("context-menu", (e) => e.preventDefault());
+
+  mainWindow.on("close", (e) => {
+    if (!forceQuit) {
+      e.preventDefault();
+      mainWindow.webContents.send("app-close-request");
+    }
+  });
+
+  if (isDev) mainWindow.loadURL(devUrl);
+  else mainWindow.loadURL("app://bundle/index.html");
+
+  mainWindow.webContents.on("did-finish-load", () => {
+    if (pendingFilePath) {
+      mainWindow.webContents.send("open-margyn-file", pendingFilePath);
+      pendingFilePath = null;
+    }
+  });
 
   mainWindow.once("ready-to-show", () => mainWindow.show());
   mainWindow.on("closed", () => {
@@ -205,7 +342,14 @@ function registerCustomProtocol() {
   });
 }
 
+const args = process.argv.slice(1);
+const fileArg = args.find((arg) => arg.endsWith(".margyn"));
+if (fileArg && fs.existsSync(fileArg)) {
+  pendingFilePath = fileArg;
+}
+
 app.whenReady().then(() => {
+  Menu.setApplicationMenu(null);
   registerCustomProtocol();
   createWindow();
   app.on("activate", () => {

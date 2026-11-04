@@ -3,10 +3,12 @@ import { sql } from "drizzle-orm";
 
 export const sessions = sqliteTable("sessions", {
   id: text("id").primaryKey(),
+  filePath: text("file_path"), // NEW: لینک کردن سشن به فایل خاص
   startTime: integer("start_time").notNull(),
   endTime: integer("end_time"),
   startPage: integer("start_page").notNull(),
   endPage: integer("end_page"),
+  lastPage: integer("last_page"),
   pagesRead: integer("pages_read"),
   createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
@@ -25,10 +27,10 @@ export const settings = sqliteTable("settings", {
   value: text("value").notNull(),
 });
 
-// === NEW TABLE FOR RECENT FILES ===
 export const recentFiles = sqliteTable("recent_files", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   filePath: text("file_path").notNull(),
   lastOpened: integer("last_opened").notNull(),
+  completed: integer("completed").default(0),
 });
