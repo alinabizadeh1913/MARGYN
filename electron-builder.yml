@@ -16,13 +16,19 @@ files:
   - "out/**/*"
   - "package.json"
 
-# ===== NEW: File Associations =====
+# ===== File Associations =====
 fileAssociations:
   - ext: margyn
     name: MARGYN Project
     description: MARGYN Study Command Center Project
     icon: build/icon.ico
     role: Editor
+  # ✅ اضافه شدن فرمت PDF
+  - ext: pdf
+    name: PDF Document
+    description: PDF Document
+    icon: build/icon.ico
+    role: Viewer
 # ==================================
 
 win:

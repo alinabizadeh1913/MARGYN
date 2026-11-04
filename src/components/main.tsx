@@ -24,6 +24,7 @@ import {
   CheckCircle2,
   XCircle,
   Download,
+  Upload,
   Save,
   AlertTriangle,
 } from "lucide-react";
@@ -43,6 +44,7 @@ import {
   getSetting,
   setSetting,
   saveDb,
+  updateRecentFileProjectPath,
 } from "@/db";
 import { prewarmAudio } from "@/lib/audio";
 import { sessions, drawings, recentFiles } from "@/db/schema";
@@ -54,6 +56,7 @@ function AppContent() {
   const {
     isActive,
     lastFocusPage,
+    sessionId,
     startSession,
     endSession,
     currentPage,
@@ -103,13 +106,45 @@ function AppContent() {
     completed: number,
     projectPath: string | null = null,
   ) => {
+    if (isActive && sessionId) {
+      try {
+        const db = await getDb();
+        await db
+          .update(sessions)
+          .set({ lastPage: currentPage })
+          .where(eq(sessions.id, sessionId));
+        await saveDb(true);
+      } catch (e) {}
+    }
+
     setPdfData(uint8Data);
     await window.electronAPI?.saveActivePdf(uint8Data);
     setActiveFileName(name);
     setActiveFilePath(path);
-    setActiveProjectPath(projectPath);
+
+    let finalProjectPath = projectPath;
+
+    if (!finalProjectPath) {
+      const db = await getDb();
+      const fileRecord = (
+        await db
+          .select()
+          .from(recentFiles)
+          .where(eq(recentFiles.filePath, path))
+      )[0];
+      if (fileRecord && fileRecord.projectPath) {
+        finalProjectPath = fileRecord.projectPath;
+      }
+    }
+
+    setActiveProjectPath(finalProjectPath);
     setIsCurrentPdfCompleted(completed === 1);
     await setSetting("activeFilePath", path);
+
+    if (finalProjectPath) {
+      await updateRecentFileProjectPath(path, finalProjectPath);
+    }
+
     await syncSessionWithFile(path);
     setView("reader");
     setIsDirty(false);
@@ -131,7 +166,7 @@ function AppContent() {
         }
       } catch (e) {}
     }
-  }, [syncSessionWithFile]);
+  }, [syncSessionWithFile, isActive, sessionId, currentPage]);
 
   const handleSelectLibraryFile = useCallback(
     async (filePath: string) => {
@@ -153,7 +188,7 @@ function AppContent() {
         } catch (e) {}
       }
     },
-    [syncSessionWithFile],
+    [syncSessionWithFile, isActive, sessionId, currentPage],
   );
 
   const loadProjectFromPath = useCallback(
@@ -220,7 +255,7 @@ function AppContent() {
         showToast("Failed to load project.", "error");
       }
     },
-    [syncSessionWithFile],
+    [syncSessionWithFile, isActive, sessionId, currentPage],
   );
 
   useEffect(() => {
@@ -242,6 +277,9 @@ function AppContent() {
             if (currentFile) {
               setActiveFileName(currentFile.name);
               setIsCurrentPdfCompleted(currentFile.completed === 1);
+              if (currentFile.projectPath) {
+                setActiveProjectPath(currentFile.projectPath);
+              }
             }
             await syncSessionWithFile(savedPath);
           } else {
@@ -271,10 +309,30 @@ function AppContent() {
       });
     }
 
+    // ✅ NEW: Listen for PDFs opened via Windows
+    let cleanupPdfOpen: (() => void) | undefined;
+    if (window.electronAPI?.onOpenPdfFile) {
+      cleanupPdfOpen = window.electronAPI.onOpenPdfFile(async (filePath) => {
+        const result = await window.electronAPI?.readPdfPath(filePath);
+        if (result && result.data) {
+          const record = await addRecentFile(result.name, result.libraryPath);
+          if (record) {
+            await loadPdfFile(
+              new Uint8Array(result.data),
+              record.name,
+              record.filePath,
+              record.completed || 0,
+            );
+          }
+        }
+      });
+    }
+
     return () => {
       window.removeEventListener("click", handleFirstClick);
       window.removeEventListener("margyn-data-changed", handleDataChange);
       if (cleanupFileOpen) cleanupFileOpen();
+      if (cleanupPdfOpen) cleanupPdfOpen();
     };
   }, [syncSessionWithFile, loadProjectFromPath]);
 
@@ -324,12 +382,15 @@ function AppContent() {
     try {
       const projectData = await getProjectData();
       if (!projectData) return;
+
       const savedPath = await window.electronAPI.saveProject(
         projectData,
         activeProjectPath,
       );
+
       if (savedPath) {
         setActiveProjectPath(savedPath);
+        await updateRecentFileProjectPath(activeFilePath, savedPath);
         setIsDirty(false);
         showToast("Project saved successfully!", "success");
       }
@@ -468,6 +529,7 @@ function AppContent() {
 
   useShortcut("pen", () => setTool("pen"));
   useShortcut("eraser", () => setTool("eraser"));
+
   useShortcut("startSession", () => {
     if (
       !isActive &&
@@ -476,8 +538,9 @@ function AppContent() {
       activeFilePath &&
       !isSessionSyncing
     )
-      startSession(activeFilePath);
+      startSession(activeFilePath, totalPages);
   });
+
   useShortcut("endSession", () => {
     if (isActive && !showEndModal) setShowEndModal(true);
   });
@@ -486,6 +549,10 @@ function AppContent() {
   useShortcut("clearAll", handleClearAllPages);
   useShortcut("toggleMargin", () => setIsMarginOpen((prev) => !prev));
   useShortcut("saveProject", handleSaveProject);
+
+  // ✅ NEW SHORTCUTS
+  useShortcut("importProject", handleImportProject);
+  useShortcut("exportProject", handleExportProject);
 
   const handleConfirmEndSession = async () => {
     if (endText === REQUIRED_END_PHRASE) {
@@ -520,11 +587,8 @@ function AppContent() {
 
       {isAppReady && (
         <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#09090b]">
-          {/* Header: Improved responsive layout */}
-          <header className="h-16 flex items-center justify-between px-4 border-b border-white/5 bg-black/40 backdrop-blur-2xl shrink-0 z-50 shadow-[0_4px_30px_rgba(0,0,0,0.5)] gap-4">
-            {/* Left Area: Logo, Tabs, Toolbar */}
-            <div className="flex items-center gap-3 min-w-0 flex-1">
-              {/* Logo */}
+          <header className="h-16 flex items-center justify-between px-4 border-b border-white/5 bg-black/40 backdrop-blur-2xl shrink-0 z-50 shadow-[0_4px_30px_rgba(0,0,0,0.5)] gap-2">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
               <div className="flex items-center gap-2 shrink-0">
                 <div className="w-8 h-8 flex items-center justify-center shrink-0">
                   <img
@@ -542,49 +606,47 @@ function AppContent() {
                 </Typography>
               </div>
 
-              {/* Tabs */}
               <div className="flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/5 shrink-0">
                 <button
                   onClick={() => setView("reader")}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all duration-300 ${view === "reader" ? "bg-[#27272a] text-white shadow-[0_2px_10px_rgba(0,0,0,0.5)] border border-white/10" : "text-[#a1a1aa] hover:text-white hover:bg-white/5"}`}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all duration-300 ${view === "reader" ? "bg-[#27272a] text-white shadow-[0_2px_10px_rgba(0,0,0,0.5)] border border-white/10" : "text-[#a1a1aa] hover:text-white hover:bg-white/5"}`}
                 >
                   <BookOpen size={15} />
-                  <span className="hidden xl:inline">
+                  <span className="hidden 2xl:inline">
                     <Typography variant="button">Reader</Typography>
                   </span>
                 </button>
                 <button
                   onClick={() => setView("library")}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all duration-300 ${view === "library" ? "bg-[#27272a] text-white shadow-[0_2px_10px_rgba(0,0,0,0.5)] border border-white/10" : "text-[#a1a1aa] hover:text-white hover:bg-white/5"}`}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all duration-300 ${view === "library" ? "bg-[#27272a] text-white shadow-[0_2px_10px_rgba(0,0,0,0.5)] border border-white/10" : "text-[#a1a1aa] hover:text-white hover:bg-white/5"}`}
                 >
                   <FolderOpen size={15} />
-                  <span className="hidden xl:inline">
+                  <span className="hidden 2xl:inline">
                     <Typography variant="button">Library</Typography>
                   </span>
                 </button>
                 <button
                   onClick={() => setView("history")}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all duration-300 ${view === "history" ? "bg-[#27272a] text-white shadow-[0_2px_10px_rgba(0,0,0,0.5)] border border-white/10" : "text-[#a1a1aa] hover:text-white hover:bg-white/5"}`}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all duration-300 ${view === "history" ? "bg-[#27272a] text-white shadow-[0_2px_10px_rgba(0,0,0,0.5)] border border-white/10" : "text-[#a1a1aa] hover:text-white hover:bg-white/5"}`}
                 >
                   <Library size={15} />
-                  <span className="hidden xl:inline">
+                  <span className="hidden 2xl:inline">
                     <Typography variant="button">History</Typography>
                   </span>
                 </button>
                 <button
                   onClick={() => setView("settings")}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all duration-300 ${view === "settings" ? "bg-[#27272a] text-white shadow-[0_2px_10px_rgba(0,0,0,0.5)] border border-white/10" : "text-[#a1a1aa] hover:text-white hover:bg-white/5"}`}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all duration-300 ${view === "settings" ? "bg-[#27272a] text-white shadow-[0_2px_10px_rgba(0,0,0,0.5)] border border-white/10" : "text-[#a1a1aa] hover:text-white hover:bg-white/5"}`}
                 >
                   <Settings size={15} />
-                  <span className="hidden xl:inline">
+                  <span className="hidden 2xl:inline">
                     <Typography variant="button">Settings</Typography>
                   </span>
                 </button>
               </div>
 
-              {/* Toolbar - Flexibly handled */}
               {view === "reader" && pdfData && (
-                <div className="flex items-center animate-in fade-in slide-in-from-left-4 duration-300 border-l border-white/10 pl-3 shrink-0">
+                <div className="flex items-center animate-in fade-in slide-in-from-left-4 duration-300 border-l border-white/10 pl-2 shrink-0">
                   <Toolbar
                     onClearCurrentPage={handleClearCurrentPage}
                     onClearAllPages={handleClearAllPages}
@@ -593,31 +655,38 @@ function AppContent() {
               )}
             </div>
 
-            {/* Right Area: Actions & Session */}
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-1.5 shrink-0">
               {view === "reader" && (
                 <button
                   onClick={handleOpenPdf}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[#a1a1aa] hover:text-white hover:bg-white/10 transition-all duration-300 text-xs font-medium border border-transparent hover:border-white/10"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[#a1a1aa] hover:text-white hover:bg-white/10 transition-all duration-300 text-xs font-medium border border-transparent hover:border-white/10"
                 >
                   <FileText size={15} />
-                  <span className="hidden xl:inline">Open PDF</span>
+                  <span className="hidden 2xl:inline">Open PDF</span>
                 </button>
               )}
 
               {view === "reader" && pdfData && (
                 <>
                   <button
-                    onClick={handleExportProject}
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[#38bdf8] hover:text-white hover:bg-[#38bdf8]/20 transition-all duration-300 text-xs font-medium border border-[#38bdf8]/30"
+                    onClick={handleImportProject}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[#38bdf8] hover:text-white hover:bg-[#38bdf8]/20 transition-all duration-300 text-xs font-medium border border-[#38bdf8]/30"
                   >
                     <Download size={15} />
-                    <span className="hidden xl:inline">Export</span>
+                    <span className="hidden 2xl:inline">Import</span>
+                  </button>
+
+                  <button
+                    onClick={handleExportProject}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[#38bdf8] hover:text-white hover:bg-[#38bdf8]/20 transition-all duration-300 text-xs font-medium border border-[#38bdf8]/30"
+                  >
+                    <Upload size={15} />
+                    <span className="hidden 2xl:inline">Export</span>
                   </button>
 
                   <button
                     onClick={handleSaveProject}
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all duration-300 text-xs font-medium border ${
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all duration-300 text-xs font-medium border ${
                       isDirty
                         ? "text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.2)]"
                         : "text-[#52525b] border-transparent cursor-default"
@@ -628,22 +697,22 @@ function AppContent() {
                       size={15}
                       className={isDirty ? "animate-pulse" : ""}
                     />
-                    <span className="hidden xl:inline">Save</span>
+                    <span className="hidden 2xl:inline">Save</span>
                   </button>
 
-                  <div className="w-px h-6 bg-white/10 mx-1" />
+                  <div className="w-px h-6 bg-white/10 mx-0.5" />
 
                   {isSessionSyncing ? (
-                    <div className="flex items-center gap-2 px-5 py-1.5 rounded-full bg-[#18181b] text-[#52525b] border border-[#27272a] cursor-wait">
+                    <div className="flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-[#18181b] text-[#52525b] border border-[#27272a] cursor-wait">
                       <div className="w-3.5 h-3.5 border-2 border-[#52525b] border-t-transparent rounded-full animate-spin" />
-                      <span className="hidden xl:inline">
+                      <span className="hidden 2xl:inline">
                         <Typography variant="button">Checking...</Typography>
                       </span>
                     </div>
                   ) : isCurrentPdfCompleted ? (
-                    <div className="flex items-center gap-2 px-5 py-1.5 rounded-full bg-[#18181b] text-[#52525b] border border-[#27272a] cursor-not-allowed">
+                    <div className="flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-[#18181b] text-[#52525b] border border-[#27272a] cursor-not-allowed">
                       <CheckCircle2 size={14} />
-                      <span className="hidden xl:inline">
+                      <span className="hidden 2xl:inline">
                         <Typography variant="button">Completed</Typography>
                       </span>
                     </div>
@@ -651,9 +720,9 @@ function AppContent() {
                     <button
                       onClick={() => {
                         if (isActive) setShowEndModal(true);
-                        else startSession(activeFilePath);
+                        else startSession(activeFilePath, totalPages);
                       }}
-                      className={`group relative flex items-center gap-2 px-5 py-1.5 rounded-full transition-all duration-500 overflow-hidden ${
+                      className={`group relative flex items-center gap-1.5 px-4 py-1.5 rounded-full transition-all duration-500 overflow-hidden ${
                         isActive
                           ? "bg-rose-500/10 text-rose-400 border border-rose-500/30"
                           : showResumeButton
@@ -678,7 +747,7 @@ function AppContent() {
                             fill="currentColor"
                             className="relative z-10"
                           />
-                          <span className="hidden xl:inline relative z-10">
+                          <span className="hidden 2xl:inline relative z-10">
                             <Typography variant="button">
                               End Session
                             </Typography>
@@ -687,7 +756,7 @@ function AppContent() {
                       ) : showResumeButton ? (
                         <>
                           <Activity size={13} className="relative z-10" />
-                          <span className="hidden xl:inline relative z-10">
+                          <span className="hidden 2xl:inline relative z-10">
                             <Typography variant="button">
                               Resume Session
                             </Typography>
@@ -700,7 +769,7 @@ function AppContent() {
                             fill="currentColor"
                             className="relative z-10"
                           />
-                          <span className="hidden xl:inline relative z-10">
+                          <span className="hidden 2xl:inline relative z-10">
                             <Typography variant="button">
                               Start Session
                             </Typography>
@@ -775,8 +844,6 @@ function AppContent() {
             )}
           </main>
 
-          {/* Modals (End Session, Congrats, Close, Toast) - Same as before */}
-          {/* ... */}
           {showEndModal && (
             <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-md transition-all duration-300">
               <div className="bg-[#121214] border border-rose-500/30 p-8 rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] w-full max-w-lg flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">
@@ -832,7 +899,7 @@ function AppContent() {
                   className={`w-full px-5 py-4 rounded-xl bg-[#18181b] border-2 outline-none transition-all text-center text-lg font-mono tracking-widest shadow-sm ${
                     endError
                       ? "border-rose-400 focus:border-rose-500 text-rose-600 placeholder-rose-300 animate-shake"
-                      : "border-[#27272a] focus:border-rose-500/50 text-[#fafafa] uppercase"
+                      : "border-[#27272a] focus:border-rose-500/50 text-[#fafafa]"
                   }`}
                 />
                 {endError && (

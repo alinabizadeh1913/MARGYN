@@ -37,7 +37,7 @@ export async function getDb() {
         CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, file_path TEXT, start_time INTEGER NOT NULL, end_time INTEGER, start_page INTEGER NOT NULL, end_page INTEGER, last_page INTEGER, pages_read INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
         CREATE TABLE IF NOT EXISTS drawings (id TEXT PRIMARY KEY, session_id TEXT, page_number INTEGER NOT NULL, target TEXT NOT NULL DEFAULT 'margin', data TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
         CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-        CREATE TABLE IF NOT EXISTS recent_files (id TEXT PRIMARY KEY, name TEXT NOT NULL, file_path TEXT NOT NULL, last_opened INTEGER NOT NULL, completed INTEGER DEFAULT 0);
+        CREATE TABLE IF NOT EXISTS recent_files (id TEXT PRIMARY KEY, name TEXT NOT NULL, file_path TEXT NOT NULL, last_opened INTEGER NOT NULL, completed INTEGER DEFAULT 0, project_path TEXT);
       `);
 
       try {
@@ -65,6 +65,14 @@ export async function getDb() {
       } catch (e) {
         sqliteInstance.run(
           "ALTER TABLE recent_files ADD COLUMN completed INTEGER DEFAULT 0",
+        );
+      }
+
+      try {
+        sqliteInstance.run("SELECT project_path FROM recent_files LIMIT 1");
+      } catch (e) {
+        sqliteInstance.run(
+          "ALTER TABLE recent_files ADD COLUMN project_path TEXT",
         );
       }
 
@@ -236,7 +244,7 @@ export async function resetDatabase() {
     CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, file_path TEXT, start_time INTEGER NOT NULL, end_time INTEGER, start_page INTEGER NOT NULL, end_page INTEGER, last_page INTEGER, pages_read INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS drawings (id TEXT PRIMARY KEY, session_id TEXT, page_number INTEGER NOT NULL, target TEXT NOT NULL DEFAULT 'margin', data TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS recent_files (id TEXT PRIMARY KEY, name TEXT NOT NULL, file_path TEXT NOT NULL, last_opened INTEGER NOT NULL, completed INTEGER DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS recent_files (id TEXT PRIMARY KEY, name TEXT NOT NULL, file_path TEXT NOT NULL, last_opened INTEGER NOT NULL, completed INTEGER DEFAULT 0, project_path TEXT);
   `);
   await saveDb(true);
 }
@@ -257,17 +265,16 @@ export async function addRecentFile(name: string, filePath: string) {
     } else {
       const uniqueId =
         Date.now().toString() + Math.random().toString(36).substring(2, 9);
-      await database
-        .insert(recentFiles)
-        .values({
-          id: uniqueId,
-          name,
-          filePath,
-          lastOpened: Date.now(),
-          completed: 0,
-        });
+      await database.insert(recentFiles).values({
+        id: uniqueId,
+        name,
+        filePath,
+        lastOpened: Date.now(),
+        completed: 0,
+        projectPath: null,
+      });
       await saveDb();
-      return { id: uniqueId, name, filePath, completed: 0 };
+      return { id: uniqueId, name, filePath, completed: 0, projectPath: null };
     }
   } catch (e) {
     return null;
@@ -313,5 +320,20 @@ export async function markFileCompleted(filePath: string) {
       .set({ completed: 1 })
       .where(eq(recentFiles.filePath, filePath));
     await saveDb(true);
+  } catch (e) {}
+}
+
+// ✅ NEW: Update project path in DB
+export async function updateRecentFileProjectPath(
+  filePath: string,
+  projectPath: string | null,
+) {
+  try {
+    const database = await getDb();
+    await database
+      .update(recentFiles)
+      .set({ projectPath })
+      .where(eq(recentFiles.filePath, filePath));
+    await saveDb();
   } catch (e) {}
 }

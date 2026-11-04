@@ -11,6 +11,7 @@ import {
   AlertTriangle,
   Lock,
   FolderOpen,
+  RefreshCw,
 } from "lucide-react";
 import Typography from "@/typography";
 import { resetDatabase, getSetting, setSetting } from "@/db";
@@ -26,7 +27,6 @@ export default function SettingsView() {
   const [audioEnabled, setAudioEnabledState] = useState(true);
   const [exportDir, setExportDir] = useState<string | null>(null);
 
-  // Reset Modal States
   const [showResetModal, setShowResetModal] = useState(false);
   const [resetText, setResetText] = useState("");
   const [resetError, setResetError] = useState(false);
@@ -74,6 +74,10 @@ export default function SettingsView() {
     }
   };
 
+  const handleReloadApp = () => {
+    window.location.reload();
+  };
+
   const handleOpenResetModal = () => {
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
@@ -112,6 +116,9 @@ export default function SettingsView() {
     clearPage: "Clear Current Page Drawings",
     clearAll: "Clear All Pages Drawings",
     toggleMargin: "Toggle Margin Sidebar",
+    saveProject: "Save Project",
+    importProject: "Import Project",
+    exportProject: "Export Project",
   };
 
   return (
@@ -179,7 +186,7 @@ export default function SettingsView() {
             </div>
           </section>
 
-          {/* NEW: Storage Preferences */}
+          {/* Storage Preferences */}
           <section className="bg-[#121214] border border-[#27272a] rounded-2xl p-6">
             <div className="flex items-center gap-3 mb-4">
               <FolderOpen size={20} className="text-[#a1a1aa]" />
@@ -213,6 +220,45 @@ export default function SettingsView() {
                 className="flex items-center gap-2 px-4 py-2 bg-[#18181b] hover:bg-[#27272a] text-[#fafafa] border border-[#3f3f46] rounded-lg transition-colors text-sm font-medium"
               >
                 Browse...
+              </button>
+            </div>
+          </section>
+
+          {/* Application Control */}
+          <section className="bg-[#121214] border border-[#27272a] rounded-2xl p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <RefreshCw size={20} className="text-[#a1a1aa]" />
+              <Typography
+                variant="cardTitle"
+                as="h2"
+                className="text-[#fafafa]"
+              >
+                Application Control
+              </Typography>
+            </div>
+            <div className="flex items-center justify-between py-3">
+              <div>
+                <Typography
+                  variant="label"
+                  as="span"
+                  className="text-[#fafafa] block mb-1"
+                >
+                  Reload Application
+                </Typography>
+                <Typography
+                  variant="caption"
+                  as="span"
+                  className="text-[#52525b]"
+                >
+                  Restart the interface and refresh all loaded data.
+                </Typography>
+              </div>
+              <button
+                onClick={handleReloadApp}
+                className="flex items-center gap-2 px-4 py-2 bg-[#38bdf8]/10 hover:bg-[#38bdf8]/20 text-[#38bdf8] border border-[#38bdf8]/30 rounded-lg transition-colors text-sm font-medium"
+              >
+                <RefreshCw size={16} />
+                Reload Now
               </button>
             </div>
           </section>
@@ -383,7 +429,7 @@ export default function SettingsView() {
               className={`w-full px-5 py-4 rounded-xl bg-[#18181b] border-2 outline-none transition-all text-center text-lg font-mono tracking-widest shadow-sm ${
                 resetError
                   ? "border-rose-400 focus:border-rose-500 text-rose-600 placeholder-rose-300 animate-shake"
-                  : "border-[#27272a] focus:border-rose-500/50 text-[#fafafa] uppercase"
+                  : "border-[#27272a] focus:border-rose-500/50 text-[#fafafa]"
               }`}
             />
             {resetError && (

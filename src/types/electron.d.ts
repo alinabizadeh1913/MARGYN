@@ -18,6 +18,14 @@ declare global {
         libraryPath: string;
       } | null>;
 
+      // ✅ NEW: اضافه شدن توابع PDF
+      readPdfPath: (path: string) => Promise<{
+        data: Uint8Array;
+        name: string;
+        libraryPath: string;
+      } | null>;
+      onOpenPdfFile: (callback: (filePath: string) => void) => () => void;
+
       loadLibraryFile: (filePath: string) => Promise<Uint8Array | null>;
       deleteLibraryFile: (filePath: string) => Promise<boolean>;
       clearLibraryFolder: () => Promise<boolean>;
@@ -34,12 +42,12 @@ declare global {
       importProject: () => Promise<{ data: any; filePath: string } | null>;
       readProjectFromPath: (
         filePath: string,
-      ) => Promise<{ data: any; filePath: string } | null>; // NEW
+      ) => Promise<{ data: any; filePath: string } | null>;
 
       onAppCloseRequest: (callback: () => void) => () => void;
       forceCloseApp: () => void;
 
-      onOpenMargynFile: (callback: (filePath: string) => void) => () => void; // NEW
+      onOpenMargynFile: (callback: (filePath: string) => void) => () => void;
     };
   }
 }

@@ -16,6 +16,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
   clearActivePdf: () => ipcRenderer.invoke("pdf-clear-active"),
   openPdf: () => ipcRenderer.invoke("dialog:openPdf"),
 
+  // ✅ NEW: Expose path reader and listener
+  readPdfPath: (path) => ipcRenderer.invoke("pdf:read-path", path),
+  onOpenPdfFile: (callback) => {
+    const listener = (event, filePath) => callback(filePath);
+    ipcRenderer.on("open-pdf-file", listener);
+    return () => ipcRenderer.removeListener("open-pdf-file", listener);
+  },
+
   loadLibraryFile: (path) => ipcRenderer.invoke("library-load-file", path),
   deleteLibraryFile: (path) => ipcRenderer.invoke("library-delete-file", path),
   clearLibraryFolder: () => ipcRenderer.invoke("library-clear-all"),
@@ -27,7 +35,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("project:save", { data, filePath }),
   importProject: () => ipcRenderer.invoke("project:import"),
   readProjectFromPath: (filePath) =>
-    ipcRenderer.invoke("project:read-from-path", filePath), // NEW
+    ipcRenderer.invoke("project:read-from-path", filePath),
 
   onAppCloseRequest: (callback) => {
     const listener = () => callback();
@@ -36,7 +44,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
   forceCloseApp: () => ipcRenderer.send("app-force-close"),
 
-  // NEW: Listener for opening .margyn files from OS
   onOpenMargynFile: (callback) => {
     const listener = (event, filePath) => callback(filePath);
     ipcRenderer.on("open-margyn-file", listener);

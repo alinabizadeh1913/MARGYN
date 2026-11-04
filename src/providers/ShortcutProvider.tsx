@@ -18,7 +18,9 @@ export type ShortcutAction =
   | "clearPage"
   | "clearAll"
   | "toggleMargin"
-  | "saveProject";
+  | "saveProject"
+  | "importProject"
+  | "exportProject";
 
 export const DEFAULT_SHORTCUTS: Record<ShortcutAction, string> = {
   pen: "p",
@@ -30,6 +32,8 @@ export const DEFAULT_SHORTCUTS: Record<ShortcutAction, string> = {
   clearAll: "shift+delete",
   toggleMargin: "ctrl+b",
   saveProject: "ctrl+s",
+  importProject: "ctrl+i",
+  exportProject: "ctrl+e",
 };
 
 interface ShortcutContextType {
@@ -159,7 +163,9 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
         pressedString === "ctrl+enter" ||
         pressedString === "ctrl+shift+enter" ||
         pressedString === "ctrl+b" ||
-        pressedString === "ctrl+s"
+        pressedString === "ctrl+s" ||
+        pressedString === "ctrl+i" ||
+        pressedString === "ctrl+e"
       ) {
         e.preventDefault();
       }

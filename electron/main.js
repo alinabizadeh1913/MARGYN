@@ -13,7 +13,7 @@ const { pathToFileURL } = require("url");
 
 let mainWindow;
 let forceQuit = false;
-let pendingFilePath = null; // برای ذخیره مسیر فایلی که موقع اجرا کلیک شده
+let pendingFilePath = null;
 
 const isDev = process.env.NODE_ENV === "development";
 const devUrl = process.env.ELECTRON_START_URL || "http://localhost:3000";
@@ -28,9 +28,15 @@ if (!gotTheLock) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();
 
-      const filePath = commandLine.find((arg) => arg.endsWith(".margyn"));
+      const filePath = commandLine.find(
+        (arg) => arg.endsWith(".margyn") || arg.endsWith(".pdf"),
+      );
       if (filePath) {
-        mainWindow.webContents.send("open-margyn-file", filePath);
+        if (filePath.endsWith(".margyn")) {
+          mainWindow.webContents.send("open-margyn-file", filePath);
+        } else if (filePath.toLowerCase().endsWith(".pdf")) {
+          mainWindow.webContents.send("open-pdf-file", filePath);
+        }
       }
     }
   });
@@ -119,7 +125,7 @@ ipcMain.handle("pdf-clear-active", async () => {
   return true;
 });
 
-// Open PDF Dialog
+// Open PDF Dialog (Manual Open)
 ipcMain.handle("dialog:openPdf", async () => {
   try {
     const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
@@ -131,6 +137,34 @@ ipcMain.handle("dialog:openPdf", async () => {
     const originalPath = filePaths[0];
     const originalName = path.basename(originalPath);
     const dataBuffer = fs.readFileSync(originalPath);
+
+    const uniqueId =
+      Date.now().toString() + Math.random().toString(36).substring(2, 9);
+    const safeName = originalName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+    const libraryFilePath = path.join(
+      getLibraryPath(),
+      `${uniqueId}-${safeName}`,
+    );
+
+    fs.writeFileSync(libraryFilePath, dataBuffer);
+
+    return {
+      data: new Uint8Array(dataBuffer),
+      name: originalName,
+      libraryPath: libraryFilePath,
+    };
+  } catch (error) {
+    return null;
+  }
+});
+
+// ✅ NEW: Read PDF from Windows Command Line Path
+ipcMain.handle("pdf:read-path", async (event, filePath) => {
+  try {
+    if (!fs.existsSync(filePath)) return null;
+
+    const originalName = path.basename(filePath);
+    const dataBuffer = fs.readFileSync(filePath);
 
     const uniqueId =
       Date.now().toString() + Math.random().toString(36).substring(2, 9);
@@ -204,11 +238,16 @@ ipcMain.handle("project:save", async (event, { data, filePath }) => {
   try {
     let targetPath = filePath;
     if (!targetPath) {
+      let defaultName = "Untitled Project.margyn";
+      if (data && data.fileName) {
+        defaultName = data.fileName.replace(/\.[^/.]+$/, "") + ".margyn";
+      }
+
       const { canceled, filePath: savePath } = await dialog.showSaveDialog(
         mainWindow,
         {
           title: "Save Margyn Project",
-          defaultPath: app.getPath("documents"),
+          defaultPath: path.join(app.getPath("documents"), defaultName),
           filters: [{ name: "Margyn Project", extensions: ["margyn"] }],
         },
       );
@@ -267,7 +306,6 @@ function createWindow() {
     minWidth: 1440,
     minHeight: 900,
     titleBarStyle: "hidden",
-    // titleBarOverlay حذف شد تا دکمه‌های ما هاور و کلیک‌پذیر بشن
     backgroundColor: "#09090b",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
@@ -312,7 +350,11 @@ function createWindow() {
 
   mainWindow.webContents.on("did-finish-load", () => {
     if (pendingFilePath) {
-      mainWindow.webContents.send("open-margyn-file", pendingFilePath);
+      if (pendingFilePath.endsWith(".margyn")) {
+        mainWindow.webContents.send("open-margyn-file", pendingFilePath);
+      } else if (pendingFilePath.toLowerCase().endsWith(".pdf")) {
+        mainWindow.webContents.send("open-pdf-file", pendingFilePath);
+      }
       pendingFilePath = null;
     }
   });
@@ -343,7 +385,9 @@ function registerCustomProtocol() {
 }
 
 const args = process.argv.slice(1);
-const fileArg = args.find((arg) => arg.endsWith(".margyn"));
+const fileArg = args.find(
+  (arg) => arg.endsWith(".margyn") || arg.toLowerCase().endsWith(".pdf"),
+);
 if (fileArg && fs.existsSync(fileArg)) {
   pendingFilePath = fileArg;
 }

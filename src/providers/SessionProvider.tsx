@@ -21,11 +21,11 @@ interface SessionContextType {
   startPage: number | null;
   currentPage: number;
   setCurrentPage: (page: number) => void;
-  startSession: (filePath: string) => Promise<void>;
+  startSession: (filePath: string, totalPages?: number) => Promise<void>;
   endSession: () => Promise<void>;
   syncSessionWithFile: (filePath: string) => Promise<void>;
   clearSessionState: () => void;
-  isSessionSyncing: boolean; // NEW
+  isSessionSyncing: boolean;
 }
 
 const SessionContext = createContext<SessionContextType | undefined>(undefined);
@@ -37,7 +37,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [startPage, setStartPage] = useState<number | null>(null);
   const [currentPage, setCurrentPageState] = useState(1);
 
-  // NEW: State to track if we are currently checking the database for a session
   const [isSessionSyncing, setIsSessionSyncing] = useState(true);
 
   const setCurrentPage = async (page: number) => {
@@ -50,7 +49,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const syncSessionWithFile = async (filePath: string) => {
     if (!filePath) return;
 
-    // Start syncing
     setIsSessionSyncing(true);
 
     try {
@@ -81,10 +79,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           .where(eq(sessions.filePath, filePath))
           .orderBy(desc(sessions.startTime))
           .limit(1);
+          
         if (latestSessions.length > 0) {
           const latest = latestSessions[0];
+          // اولویت با endPage است چون نشان دهنده پایان قطعی سشن است
           setLastFocusPage(
-            latest.lastPage || latest.endPage || latest.startPage,
+            latest.endPage || latest.lastPage || latest.startPage,
           );
         } else {
           setLastFocusPage(null);
@@ -93,7 +93,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error("Failed to sync session:", error);
     } finally {
-      // Done syncing
       setIsSessionSyncing(false);
     }
   };
@@ -114,20 +113,31 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             .update(sessions)
             .set({ lastPage: currentPage })
             .where(eq(sessions.id, sessionId));
+          // ذخیره فوری روی دیسک
+          await saveDb(true); 
         } catch (e) {}
       };
       updateLastPage();
     }
   }, [currentPage, isActive, sessionId]);
 
-  const startSession = async (filePath: string) => {
+  const startSession = async (filePath: string, totalPages?: number) => {
     if (!filePath) return;
     try {
       playStartSound();
       const newId = uuidv4();
       setSessionId(newId);
 
-      const targetPage = lastFocusPage ? lastFocusPage : currentPage;
+      let targetPage = currentPage;
+
+      // ✅ FIXED: منطق داینامیک شروع صفحه بعدی
+      if (lastFocusPage !== null) {
+        targetPage = lastFocusPage + 1;
+        // اگر به انتهای کتاب رسیده بودیم، از خود صفحه آخر شروع کن (نه بیشتر)
+        if (totalPages && targetPage > totalPages) {
+          targetPage = totalPages;
+        }
+      }
 
       setStartPage(targetPage);
       setCurrentPageState(targetPage);
@@ -141,7 +151,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         startPage: targetPage,
         lastPage: targetPage,
       });
-      await saveDb();
+      await saveDb(true);
     } catch (error) {}
   };
 
@@ -160,9 +170,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const db = await getDb();
       await db
         .update(sessions)
-        .set({ endTime: Date.now(), endPage: currentPage, pagesRead })
+        .set({ 
+          endTime: Date.now(), 
+          endPage: currentPage, 
+          lastPage: currentPage,
+          pagesRead 
+        })
         .where(eq(sessions.id, sessionId));
-      await saveDb();
+      await saveDb(true);
     } catch (error) {}
   };
 

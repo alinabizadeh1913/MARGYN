@@ -54,10 +54,9 @@ export default function Toolbar({
   }, []);
 
   return (
-    // Changed: Removed flex-wrap, added flex-nowrap and shrink-0
-    <div className="flex flex-nowrap items-center gap-1.5 p-1.5 rounded-xl bg-black/40 backdrop-blur-xl border border-white/10 shadow-lg shrink-0">
+    <div className="flex flex-nowrap items-center gap-1 p-1 rounded-xl bg-black/40 backdrop-blur-xl border border-white/10 shadow-lg shrink-0">
       {/* Tools */}
-      <div className="flex items-center gap-1 pr-2 border-r border-white/10 shrink-0">
+      <div className="flex items-center gap-0.5 pr-1 border-r border-white/10 shrink-0">
         <button
           onClick={() => setTool("pen")}
           className={`relative p-1.5 rounded-lg transition-all duration-300 ${tool === "pen" ? "bg-[#38bdf8]/20 text-[#38bdf8]" : "text-[#a1a1aa] hover:text-white hover:bg-white/10"}`}
@@ -65,7 +64,7 @@ export default function Toolbar({
           {tool === "pen" && (
             <div className="absolute inset-0 bg-[#38bdf8]/30 blur-md rounded-lg" />
           )}
-          <Pen size={16} className="relative z-10" />
+          <Pen size={15} className="relative z-10" />
         </button>
         <button
           onClick={() => setTool("eraser")}
@@ -74,18 +73,18 @@ export default function Toolbar({
           {tool === "eraser" && (
             <div className="absolute inset-0 bg-rose-500/30 blur-md rounded-lg" />
           )}
-          <Eraser size={16} className="relative z-10" />
+          <Eraser size={15} className="relative z-10" />
         </button>
       </div>
 
       {/* Colors */}
       {tool === "pen" && (
-        <div className="flex items-center gap-2 px-2 border-r border-white/10 shrink-0">
+        <div className="flex items-center gap-1.5 px-1.5 border-r border-white/10 shrink-0">
           {DEFAULT_COLORS.map((c, i) => (
             <div key={c} className="relative group flex flex-col items-center">
               <button
                 onClick={() => setColor(c)}
-                className={`w-4 h-4 rounded-full transition-all duration-300 ${color === c ? "scale-125 ring-2 ring-white/80 ring-offset-1 ring-offset-[#09090b]" : "hover:scale-110 opacity-70 hover:opacity-100 border border-white/20"}`}
+                className={`w-3.5 h-3.5 rounded-full transition-all duration-300 ${color === c ? "scale-125 ring-2 ring-white/80 ring-offset-1 ring-offset-[#09090b]" : "hover:scale-110 opacity-70 hover:opacity-100 border border-white/20"}`}
                 style={{ backgroundColor: c }}
               />
               <span className="absolute -bottom-3.5 text-[8px] font-bold text-white/30 group-hover:text-white/80 transition-colors">
@@ -95,7 +94,7 @@ export default function Toolbar({
           ))}
 
           {/* Custom Color Picker */}
-          <div className="relative flex items-center justify-center w-4 h-4 ml-1 group">
+          <div className="relative flex items-center justify-center w-3.5 h-3.5 ml-0.5 group">
             <input
               ref={colorInputRef}
               type="color"
@@ -110,7 +109,7 @@ export default function Toolbar({
                 background: `conic-gradient(from 0deg, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)`,
               }}
             >
-              <div className="w-2 h-2 bg-[#09090b] rounded-full" />
+              <div className="w-1.5 h-1.5 bg-[#09090b] rounded-full" />
             </button>
           </div>
         </div>
@@ -118,17 +117,17 @@ export default function Toolbar({
 
       {/* Size Dropdown */}
       <div
-        className="relative px-1.5 border-r border-white/10 shrink-0"
+        className="relative px-1 border-r border-white/10 shrink-0"
         ref={sizeMenuRef}
       >
         <button
           onClick={() => setIsSizeMenuOpen(!isSizeMenuOpen)}
-          className="flex items-center gap-1.5 p-1 rounded-lg text-[#a1a1aa] hover:text-white hover:bg-white/10 transition-colors"
+          className="flex items-center gap-1 p-1 rounded-lg text-[#a1a1aa] hover:text-white hover:bg-white/10 transition-colors"
         >
-          <div className="w-5 h-5 flex items-center justify-center">
+          <div className="w-4 h-4 flex items-center justify-center">
             <div
               className="rounded-full bg-white transition-all"
-              style={{ width: Math.min(size, 16), height: Math.min(size, 16) }}
+              style={{ width: Math.min(size, 14), height: Math.min(size, 14) }}
             />
           </div>
           <ChevronDown
@@ -138,7 +137,7 @@ export default function Toolbar({
         </button>
 
         {isSizeMenuOpen && (
-          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-4 w-16 max-h-64 overflow-y-auto bg-black/60 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl flex flex-col z-50 py-2 scrollbar-hide">
+          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-4 w-16 max-h-64 overflow-y-auto bg-[#121214] border border-[#27272a] rounded-xl shadow-2xl flex flex-col z-50 py-2 scrollbar-hide">
             {sizes.map((s) => (
               <button
                 key={s}
@@ -169,22 +168,24 @@ export default function Toolbar({
         </button>
 
         {isDeleteMenuOpen && (
-          <div className="absolute top-full right-0 mt-4 w-48 bg-black/60 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl overflow-hidden flex flex-col z-50">
+          /* ✅ تغییرات اینجا اعمال شد: بک‌گراند کاملا توپر و حذف بلور */
+          <div className="absolute top-full right-0 mt-4 w-48 bg-[#121214] border border-[#27272a] rounded-xl shadow-2xl overflow-hidden flex flex-col z-50">
             <button
               onClick={() => {
                 onClearCurrentPage();
                 setIsDeleteMenuOpen(false);
               }}
-              className="px-4 py-3 text-left text-sm text-[#a1a1aa] hover:text-white hover:bg-white/10 transition-colors"
+              className="px-4 py-3 text-left text-sm text-[#a1a1aa] hover:text-white hover:bg-white/5 transition-colors"
             >
               Clear Current Page
             </button>
+            <div className="h-px w-full bg-[#27272a]" />
             <button
               onClick={() => {
                 onClearAllPages();
                 setIsDeleteMenuOpen(false);
               }}
-              className="px-4 py-3 text-left text-sm text-rose-400 hover:bg-rose-500/20 transition-colors"
+              className="px-4 py-3 text-left text-sm text-rose-400 hover:bg-rose-500/10 transition-colors"
             >
               Clear All Pages
             </button>

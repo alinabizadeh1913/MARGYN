@@ -16,6 +16,7 @@ import {
   Palette,
   ShieldAlert,
   Lock,
+  Hash,
 } from "lucide-react";
 import Typography from "@/typography";
 import PdfDrawingLayer from "./PdfDrawingLayer";
@@ -49,9 +50,14 @@ export default function PdfViewer({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const goToPageInputRef = useRef<HTMLInputElement>(null);
+
   const docIdRef = useRef(0);
   const inflightRef = useRef<Promise<void>>(Promise.resolve());
   const displayedKeyRef = useRef<string | null>(null);
+
+  const holdTimeout = useRef<NodeJS.Timeout | null>(null);
+  const holdInterval = useRef<NodeJS.Timeout | null>(null);
 
   const { isActive, currentPage, setCurrentPage } = useSession();
   const { canvasBg, setCanvasBg } = useTool();
@@ -69,6 +75,9 @@ export default function PdfViewer({
   const [showBackModal, setShowBackModal] = useState(false);
   const [confirmText, setConfirmText] = useState("");
   const [confirmError, setConfirmError] = useState(false);
+
+  const [showGoToPageModal, setShowGoToPageModal] = useState(false);
+  const [goToPageValue, setGoToPageValue] = useState("");
 
   const requestKey = loadedDoc
     ? `${loadedDoc.id}:${currentPage}:${scale}`
@@ -299,7 +308,7 @@ export default function PdfViewer({
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (showBackModal) return;
+      if (showBackModal || showGoToPageModal) return;
       const target = e.target as HTMLElement;
       if (
         target.tagName === "INPUT" ||
@@ -318,7 +327,7 @@ export default function PdfViewer({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleNextPage, handlePrevPage, showBackModal]);
+  }, [handleNextPage, handlePrevPage, showBackModal, showGoToPageModal]);
 
   const handleConfirmBack = () => {
     if (confirmText === REQUIRED_PHRASE) {
@@ -330,6 +339,72 @@ export default function PdfViewer({
       inputRef.current?.focus();
     }
   };
+
+  const handleIncrement = useCallback(() => {
+    if (!loadedDoc) return;
+    setGoToPageValue((prev) => {
+      const current = parseInt(prev, 10) || currentPage;
+      if (current < loadedDoc.doc.numPages) {
+        return (current + 1).toString();
+      }
+      return prev;
+    });
+  }, [loadedDoc, currentPage]);
+
+  const handleDecrement = useCallback(() => {
+    setGoToPageValue((prev) => {
+      const current = parseInt(prev, 10) || currentPage;
+      if (current > 1) {
+        return (current - 1).toString();
+      }
+      return prev;
+    });
+  }, [currentPage]);
+
+  const startContinuousChange = (dir: "up" | "down") => {
+    if (dir === "up") handleIncrement();
+    else handleDecrement();
+
+    holdTimeout.current = setTimeout(() => {
+      holdInterval.current = setInterval(() => {
+        if (dir === "up") handleIncrement();
+        else handleDecrement();
+      }, 80);
+    }, 400);
+  };
+
+  const stopContinuousChange = useCallback(() => {
+    if (holdTimeout.current) clearTimeout(holdTimeout.current);
+    if (holdInterval.current) clearInterval(holdInterval.current);
+    holdTimeout.current = null;
+    holdInterval.current = null;
+  }, []);
+
+  useEffect(() => {
+    if (!showGoToPageModal) {
+      stopContinuousChange();
+    }
+    return () => stopContinuousChange();
+  }, [showGoToPageModal, stopContinuousChange]);
+
+  const handleGoToPage = () => {
+    if (!loadedDoc) return;
+    let page = parseInt(goToPageValue, 10);
+
+    if (isNaN(page) || page < 1) page = 1;
+    if (page > loadedDoc.doc.numPages) page = loadedDoc.doc.numPages;
+
+    setCurrentPage(page);
+    setShowGoToPageModal(false);
+    stopContinuousChange();
+  };
+
+  useEffect(() => {
+    if (showGoToPageModal) {
+      setGoToPageValue(currentPage.toString());
+      setTimeout(() => goToPageInputRef.current?.focus(), 150);
+    }
+  }, [showGoToPageModal, currentPage]);
 
   if (!fileData) {
     return (
@@ -411,37 +486,47 @@ export default function PdfViewer({
         </div>
 
         {loadedDoc && (
-          <div className="bg-white/95 backdrop-blur-xl border border-zinc-200 p-2 rounded-2xl flex flex-col gap-1.5 shadow-sm items-center">
+          <>
+            <div className="bg-white/95 backdrop-blur-xl border border-zinc-200 p-2 rounded-2xl flex flex-col gap-1.5 shadow-sm items-center">
+              <button
+                onClick={handlePrevPage}
+                disabled={currentPage === 1}
+                className={`p-2.5 rounded-xl transition-all duration-200 flex items-center justify-center ${
+                  currentPage === 1
+                    ? "text-zinc-300 cursor-not-allowed"
+                    : "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 active:scale-95"
+                }`}
+                title="Previous Page (Arrow Up)"
+              >
+                <ChevronUp size={20} />
+              </button>
+              <div className="h-px w-full bg-zinc-200 my-0.5" />
+              <button
+                onClick={handleNextPage}
+                disabled={currentPage === loadedDoc.doc.numPages}
+                className={`p-2.5 rounded-xl transition-all duration-200 flex items-center justify-center ${
+                  currentPage === loadedDoc.doc.numPages
+                    ? "text-zinc-300 cursor-not-allowed"
+                    : "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 active:scale-95"
+                }`}
+                title="Next Page (Arrow Down)"
+              >
+                <ChevronDown size={20} />
+              </button>
+            </div>
+
             <button
-              onClick={handlePrevPage}
-              disabled={currentPage === 1}
-              className={`p-2.5 rounded-xl transition-all duration-200 ${
-                currentPage === 1
-                  ? "text-zinc-300 cursor-not-allowed"
-                  : "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 active:scale-95"
-              }`}
-              title="Previous Page (Arrow Up)"
+              onClick={() => setShowGoToPageModal(true)}
+              className="bg-white/95 backdrop-blur-xl border border-zinc-200 p-3 rounded-2xl shadow-sm text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 transition-all duration-200 flex items-center justify-center"
+              title="Go to Page"
             >
-              <ChevronUp size={20} />
+              <Hash size={20} className="block" />
             </button>
-            <div className="h-px w-full bg-zinc-200 my-0.5" />
-            <button
-              onClick={handleNextPage}
-              disabled={currentPage === loadedDoc.doc.numPages}
-              className={`p-2.5 rounded-xl transition-all duration-200 ${
-                currentPage === loadedDoc.doc.numPages
-                  ? "text-zinc-300 cursor-not-allowed"
-                  : "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 active:scale-95"
-              }`}
-              title="Next Page (Arrow Down)"
-            >
-              <ChevronDown size={20} />
-            </button>
-          </div>
+          </>
         )}
       </div>
 
-      {/* Main PDF Container - Removed 'isolate' so z-index applies globally */}
+      {/* Main PDF Container */}
       <div
         ref={containerRef}
         className="flex-1 w-full h-full relative flex items-center justify-center overflow-hidden p-8"
@@ -476,7 +561,7 @@ export default function PdfViewer({
         )}
       </div>
 
-      {/* Solid Overlay - Moved out of container and given a massive z-index */}
+      {/* Solid Overlay */}
       {isLoading && (
         <div className="absolute inset-0 z-[999] flex flex-col items-center justify-center bg-[#121214]">
           {hasRenderError ? (
@@ -557,7 +642,7 @@ export default function PdfViewer({
               className={`w-full px-5 py-4 rounded-xl bg-[#18181b] border-2 outline-none transition-all text-center text-lg font-mono tracking-widest shadow-sm ${
                 confirmError
                   ? "border-rose-400 focus:border-rose-500 text-rose-600 placeholder-rose-300 animate-shake"
-                  : "border-[#27272a] focus:border-rose-500/50 text-[#fafafa] uppercase"
+                  : "border-[#27272a] focus:border-rose-500/50 text-[#fafafa]"
               }`}
             />
             {confirmError && (
@@ -581,6 +666,106 @@ export default function PdfViewer({
                 className="flex-1 px-4 py-3.5 rounded-xl bg-rose-500 text-white hover:bg-rose-600 transition-all font-medium shadow-[0_0_15px_rgba(244,63,94,0.3)] active:scale-[0.98]"
               >
                 Go Back
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showGoToPageModal && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40 backdrop-blur-md transition-all duration-300">
+          <div className="bg-[#121214] border border-[#38bdf8]/30 p-8 rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] w-full max-w-sm flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">
+            <div className="w-16 h-16 bg-[#38bdf8]/10 rounded-full flex items-center justify-center mb-6 shadow-inner">
+              <Hash size={32} className="text-[#38bdf8]" />
+            </div>
+
+            <Typography
+              variant="pageTitle"
+              as="h2"
+              className="text-[#fafafa] mb-2 font-semibold tracking-tight"
+            >
+              Go to Page
+            </Typography>
+
+            <Typography
+              variant="body"
+              as="p"
+              className="text-[#a1a1aa] mb-8 leading-relaxed"
+            >
+              Enter the page number you want to jump to.
+            </Typography>
+
+            <div className="w-full flex items-center bg-[#18181b] border-2 border-[#27272a] focus-within:border-[#38bdf8]/50 rounded-xl transition-all shadow-sm overflow-hidden mb-8">
+              <input
+                ref={goToPageInputRef}
+                type="number"
+                value={goToPageValue}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === "") {
+                    setGoToPageValue("");
+                    return;
+                  }
+                  let num = parseInt(val, 10);
+                  if (isNaN(num)) return;
+                  if (num < 1) num = 1;
+                  if (loadedDoc && num > loadedDoc.doc.numPages) {
+                    num = loadedDoc.doc.numPages;
+                  }
+                  setGoToPageValue(num.toString());
+                }}
+                onBlur={() => {
+                  if (goToPageValue === "") {
+                    setGoToPageValue(currentPage.toString());
+                  }
+                }}
+                onKeyDown={(e) => {
+                  e.stopPropagation();
+                  if (e.key === "Enter") handleGoToPage();
+                  if (e.key === "Escape") setShowGoToPageModal(false);
+                }}
+                autoFocus
+                className="flex-1 w-full px-5 py-4 bg-transparent outline-none text-center text-xl font-mono tracking-widest text-[#fafafa] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
+
+              <div className="flex flex-col h-full border-l border-[#27272a] shrink-0 bg-black/10">
+                <button
+                  onMouseDown={() => startContinuousChange("up")}
+                  onMouseUp={stopContinuousChange}
+                  onMouseLeave={stopContinuousChange}
+                  onTouchStart={() => startContinuousChange("up")}
+                  onTouchEnd={stopContinuousChange}
+                  className="flex-1 px-3.5 hover:bg-white/5 text-[#a1a1aa] hover:text-white transition-colors flex items-center justify-center border-b border-[#27272a] active:bg-white/10"
+                  tabIndex={-1}
+                >
+                  <ChevronUp size={18} />
+                </button>
+                <button
+                  onMouseDown={() => startContinuousChange("down")}
+                  onMouseUp={stopContinuousChange}
+                  onMouseLeave={stopContinuousChange}
+                  onTouchStart={() => startContinuousChange("down")}
+                  onTouchEnd={stopContinuousChange}
+                  className="flex-1 px-3.5 hover:bg-white/5 text-[#a1a1aa] hover:text-white transition-colors flex items-center justify-center active:bg-white/10"
+                  tabIndex={-1}
+                >
+                  <ChevronDown size={18} />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex gap-4 w-full">
+              <button
+                onClick={() => setShowGoToPageModal(false)}
+                className="flex-1 px-4 py-3.5 rounded-xl bg-[#18181b] text-[#a1a1aa] hover:text-[#fafafa] hover:bg-[#27272a] border border-[#27272a] transition-all font-medium active:scale-[0.98]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleGoToPage}
+                className="flex-1 px-4 py-3.5 rounded-xl bg-[#38bdf8] text-black hover:bg-[#38bdf8]/90 transition-all font-medium shadow-[0_0_15px_rgba(56,189,248,0.3)] active:scale-[0.98]"
+              >
+                Go
               </button>
             </div>
           </div>

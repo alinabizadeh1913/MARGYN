@@ -9,7 +9,6 @@ import {
   FileText,
   AlertTriangle,
   Download,
-  Upload,
 } from "lucide-react";
 import Typography from "@/typography";
 
@@ -71,7 +70,7 @@ export default function LibraryView({
   return (
     <div className="flex flex-col h-full w-full bg-[#09090b] p-10 overflow-y-auto relative">
       <div className="max-w-4xl w-full mx-auto">
-        <header className="mb-10 flex items-center justify-between">
+        <header className="mb-10 flex flex-wrap items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-3 mb-3">
               <BookOpen className="text-[#38bdf8]" size={28} />
@@ -98,7 +97,7 @@ export default function LibraryView({
               onClick={onImportProject}
               className="flex items-center gap-2 px-4 py-2 text-sm text-[#38bdf8] bg-[#38bdf8]/10 border border-[#38bdf8]/20 rounded-xl hover:bg-[#38bdf8]/20 transition-all font-medium"
             >
-              <Upload size={16} />
+              <Download size={16} />
               Import Project
             </button>
             {files.length > 0 && (

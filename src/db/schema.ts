@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 
 export const sessions = sqliteTable("sessions", {
   id: text("id").primaryKey(),
-  filePath: text("file_path"), // NEW: لینک کردن سشن به فایل خاص
+  filePath: text("file_path"),
   startTime: integer("start_time").notNull(),
   endTime: integer("end_time"),
   startPage: integer("start_page").notNull(),
@@ -33,4 +33,5 @@ export const recentFiles = sqliteTable("recent_files", {
   filePath: text("file_path").notNull(),
   lastOpened: integer("last_opened").notNull(),
   completed: integer("completed").default(0),
+  projectPath: text("project_path"), // NEW
 });
