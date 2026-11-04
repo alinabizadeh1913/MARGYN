@@ -59,12 +59,21 @@ export function paintStroke(
       ctx.stroke();
       break;
 
-    case "highlight-rect":
+    case "highlight-rect": {
       ctx.globalCompositeOperation = "multiply";
       ctx.globalAlpha = HIGHLIGHT_ALPHA;
-      for (let i = 0; i + 3 < p.length; i += 4)
-        ctx.fillRect(p[i], p[i + 1], p[i + 2] - p[i], p[i + 3] - p[i + 1]);
+      // ONE path: overlapping rects are filled once (no darker seams)
+      ctx.beginPath();
+      for (let i = 0; i + 3 < p.length; i += 4) {
+        const x0 = Math.min(p[i], p[i + 2]),
+          x1 = Math.max(p[i], p[i + 2]),
+          y0 = Math.min(p[i + 1], p[i + 3]),
+          y1 = Math.max(p[i + 1], p[i + 3]);
+        ctx.rect(x0, y0, x1 - x0, y1 - y0);
+      }
+      ctx.fill();
       break;
+    }
 
     case "rectangle": {
       if (n < 2) break;
@@ -83,7 +92,15 @@ export function paintStroke(
         ry = Math.abs(p[1] - p[3]) / 2;
       if (rx < 0.01 && ry < 0.01) break;
       ctx.beginPath();
-      ctx.ellipse((p[0] + p[2]) / 2, (p[1] + p[3]) / 2, rx, ry, 0, 0, Math.PI * 2);
+      ctx.ellipse(
+        (p[0] + p[2]) / 2,
+        (p[1] + p[3]) / 2,
+        rx,
+        ry,
+        0,
+        0,
+        Math.PI * 2,
+      );
       ctx.stroke();
       break;
     }
@@ -109,7 +126,8 @@ export function paintStroke(
       ctx.lineCap = "butt";
       ctx.beginPath();
       ctx.moveTo(cv.p0[0], cv.p0[1]);
-      if (cv.curved) ctx.bezierCurveTo(cv.c1[0], cv.c1[1], cv.c2[0], cv.c2[1], ex, ey);
+      if (cv.curved)
+        ctx.bezierCurveTo(cv.c1[0], cv.c1[1], cv.c2[0], cv.c2[1], ex, ey);
       else ctx.lineTo(ex, ey);
       ctx.stroke();
       const bx = tip[0] - t[0] * hl,

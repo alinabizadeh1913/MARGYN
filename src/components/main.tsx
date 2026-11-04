@@ -422,7 +422,6 @@ function AppContent() {
     });
   }, []);
 
-  // ✅ handleCloseTab: هر تب dirty (فعال یا غیرفعال) اول activate، بعد مودال
   const handleCloseTab = useCallback(
     (e: React.MouseEvent, tabId: string) => {
       e.stopPropagation();
@@ -764,7 +763,6 @@ function AppContent() {
     };
   }, []);
 
-  // ✅ flush DB قبل از بستن
   useEffect(() => {
     if (!window.electronAPI) return;
     const cleanup = window.electronAPI.onAppCloseRequest(async () => {
@@ -1126,25 +1124,10 @@ function AppContent() {
 
       {isAppReady && (
         <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#09090b]">
-          <header className="h-16 flex items-center justify-between px-4 border-b border-white/5 bg-black/40 backdrop-blur-2xl shrink-0 z-50 shadow-[0_4px_30px_rgba(0,0,0,0.5)] gap-2">
+          {/* ✅ لوگو از اینجا حذف شد و به AppShell منتقل شد */}
+          <header className="h-16 flex items-center justify-between px-4 border-b border-white/5 bg-black/40 backdrop-blur-2xl shrink-0 z-[100] shadow-[0_4px_30px_rgba(0,0,0,0.5)] gap-2">
             <div className="flex items-center gap-2 min-w-0 flex-1">
-              <div className="flex items-center gap-2 shrink-0">
-                <div className="w-8 h-8 flex items-center justify-center shrink-0">
-                  <img
-                    src="/logo.png"
-                    alt="MARGYN"
-                    className="w-full h-full object-contain"
-                  />
-                </div>
-                <Typography
-                  variant="cardTitle"
-                  as="span"
-                  className="text-transparent bg-clip-text bg-gradient-to-r from-white to-white/60 tracking-wider hidden 2xl:block"
-                >
-                  MARGYN
-                </Typography>
-              </div>
-
+              {/* View Switcher */}
               <div className="flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/5 shrink-0">
                 <button
                   onClick={() => setView("reader")}
@@ -1240,10 +1223,8 @@ function AppContent() {
 
                   <div className="w-px h-6 bg-white/10 mx-0.5" />
 
-                  {/* ✅ Focus Timer display */}
                   <TimerDisplay />
 
-                  {/* ✅ Focus Timer button (only when no timer running) */}
                   {!timerEndsAt && !isSessionSyncing && (
                     <button
                       onClick={handleStartTimer}

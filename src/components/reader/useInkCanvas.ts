@@ -14,6 +14,7 @@ import {
   getHandles,
   HANDLE_CURSOR,
   hitStroke,
+  inflate,
   isBindable,
   kindOf,
   resizeFn,
@@ -33,7 +34,7 @@ import {
   paintStroke,
   type SelInfo,
 } from "./inkRender";
-import { selectionRects } from "./inkText";
+import { highlightRects } from "./inkText";
 import type {
   Anchor,
   Binding,
@@ -57,9 +58,12 @@ interface Options {
   textLines?: TextLine[];
 }
 
-const SAVE_DELAY_MS = 350;
+const SAVE_DELAY_MS = 500;
 const MIN_DIST2 = 0.5 * 0.5;
-const MAX_PREDICTED = 2;
+const MAX_PREDICTED = 4;
+/** look-ahead used when the browser gives no predicted events (mouse) */
+const PREDICT_MS = 14;
+const PREDICT_CAP = 32;
 const MAX_HISTORY = 100;
 const SETTLE_FRAMES = 2;
 
@@ -85,6 +89,31 @@ interface BindHit {
   id: string;
   anchor: Anchor;
   box: Box;
+}
+
+/** velocity based tail so the ink tip reaches the cursor (mouse fallback) */
+function extrapolate(sm: number[]): number[] {
+  const m = (sm.length / 3) | 0;
+  if (m < 2) return [];
+  const k = (m - 1) * 3;
+  const lx = sm[k],
+    ly = sm[k + 1],
+    lt = sm[k + 2];
+  let j = m - 2;
+  while (j > 0 && lt - sm[j * 3 + 2] < 8) j--;
+  const dt = lt - sm[j * 3 + 2];
+  if (dt < 2 || dt > 80) return [];
+  const vx = (lx - sm[j * 3]) / dt,
+    vy = (ly - sm[j * 3 + 1]) / dt;
+  if (Math.hypot(vx, vy) < 0.05) return [];
+  let dx = vx * PREDICT_MS,
+    dy = vy * PREDICT_MS;
+  const len = Math.hypot(dx, dy);
+  if (len > PREDICT_CAP) {
+    dx *= PREDICT_CAP / len;
+    dy *= PREDICT_CAP / len;
+  }
+  return [lx + dx * 0.5, ly + dy * 0.5, lx + dx, ly + dy];
 }
 
 export function useInkCanvas({
@@ -238,6 +267,14 @@ export function useInkCanvas({
       rafRef.current = requestAnimationFrame(() => api.current?.frame());
   }, []);
 
+  const renderNow = useCallback(() => {
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = 0;
+    }
+    api.current?.renderFrame();
+  }, []);
+
   /* ───────────── geometry cache ───────────── */
 
   function geom(s: Stroke) {
@@ -274,6 +311,46 @@ export function useInkCanvas({
       if (hide && s.id && hide.has(s.id)) continue;
       paintStroke(ctx, s, geom(s).pts);
     }
+  }
+
+  /** repaints only a rectangle of the static layer (no full-page redraw) */
+  function redrawRegion(b: Box) {
+    const c = staticRef.current;
+    const ctx = getStaticCtx();
+    if (!c || !ctx) return;
+    const d = dpr();
+    const px0 = Math.max(0, Math.floor(b.x * d)),
+      py0 = Math.max(0, Math.floor(b.y * d)),
+      px1 = Math.min(c.width, Math.ceil((b.x + b.w) * d)),
+      py1 = Math.min(c.height, Math.ceil((b.y + b.h) * d));
+    if (px1 <= px0 || py1 <= py0) return;
+    const vx0 = px0 / d,
+      vy0 = py0 / d,
+      vx1 = px1 / d,
+      vy1 = py1 / d;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.beginPath();
+    ctx.rect(px0, py0, px1 - px0, py1 - py0);
+    ctx.clip();
+    ctx.clearRect(px0, py0, px1 - px0, py1 - py0);
+    ctx.setTransform(d, 0, 0, d, 0, 0);
+    const hide = hiddenRef.current;
+    for (const s of linesRef.current) {
+      if (hide && s.id && hide.has(s.id)) continue;
+      const g = geom(s);
+      const m = s.size * 0.75 + 2;
+      const bb = g.box;
+      if (
+        bb.x - m > vx1 ||
+        bb.x + bb.w + m < vx0 ||
+        bb.y - m > vy1 ||
+        bb.y + bb.h + m < vy0
+      )
+        continue;
+      paintStroke(ctx, s, g.pts);
+    }
+    ctx.restore();
   }
 
   const resize = useCallback(
@@ -313,11 +390,13 @@ export function useInkCanvas({
     if (h.past.length > MAX_HISTORY) h.past.shift();
     h.future = [];
   }
-  function commit(next: Stroke[], added?: Stroke) {
+  function commit(next: Stroke[], added?: Stroke, region = false) {
     pushHistory(linesRef.current);
     linesRef.current = next;
     scheduleSave();
-    if (added) {
+    if (added && region) {
+      redrawRegion(inflate(geom(added).box, 3));
+    } else if (added) {
       const ctx = getStaticCtx();
       const d = dpr();
       if (ctx) {
@@ -445,7 +524,7 @@ export function useInkCanvas({
     return null;
   }
 
-  /* ───────────── transform pipeline (move / resize / nudge) ───────────── */
+  /* ───────────── transform pipeline ───────────── */
 
   function findDeps(ids: Set<string>): Stroke[] {
     return linesRef.current.filter(
@@ -519,35 +598,41 @@ export function useInkCanvas({
       by0 = Math.min(y0, y1) - R,
       bx1 = Math.max(x0, x1) + R,
       by1 = Math.max(y0, y1) + R;
-    let changed = false;
-    const next: Stroke[] = [];
-    for (const s of linesRef.current) {
-      const b = geom(s).box;
+    const lines = linesRef.current;
+    let next: Stroke[] | null = null;
+    for (let i = 0; i < lines.length; i++) {
+      const s = lines[i];
+      const g = geom(s);
+      const b = g.box;
       if (b.x > bx1 || b.x + b.w < bx0 || b.y > by1 || b.y + b.h < by0) {
-        next.push(s);
+        if (next) next.push(s);
         continue;
       }
-      const res = eraseGeometry(s, geom(s).pts, x0, y0, x1, y1, R);
+      const res = eraseGeometry(s, g.pts, x0, y0, x1, y1, R);
       if (res === null) {
-        next.push(s);
+        if (next) next.push(s);
         continue;
       }
-      changed = true;
+      if (!next) next = lines.slice(0, i);
+      // remember the OLD bounds → only this area is repainted
+      X.db = X.db
+        ? unionBoxes([X.db as Box, b])
+        : { x: b.x, y: b.y, w: b.w, h: b.h };
       if (res === "remove") continue;
       const k = kindOf(s);
       if (k === "highlight-rect") {
         next.push({ ...s, points: toStoredPts(res[0]) });
       } else {
-        res.forEach((part: number[], i: number) =>
-          next.push({
+        res.forEach((part: number[], j: number) =>
+          next!.push({
             ...s,
-            id: i === 0 ? s.id : uid(),
+            id: j === 0 ? s.id : uid(),
             points: toStoredPts(part),
           }),
         );
       }
     }
-    if (changed) {
+    if (next) {
       linesRef.current = next;
       X.changed = true;
       X.dirty = true;
@@ -637,6 +722,11 @@ export function useInkCanvas({
     const c = dynamicRef.current;
     const ctx = getDynamicCtx();
     if (!c || !ctx) return;
+    const X0 = ix.current;
+    if (X0 && X0.kind === "pen") {
+      penFrame(X0, true);
+      return;
+    }
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, c.width, c.height);
     const d = dpr();
@@ -649,28 +739,13 @@ export function useInkCanvas({
     }
 
     switch (X.kind) {
-      case "pen": {
-        paintStroke(ctx, X.style, X.pts);
-        const pr: number[] = X.pred;
-        if (pr.length) {
-          const p: number[] = X.pts;
-          ctx.save();
-          ctx.lineCap = "round";
-          ctx.lineJoin = "round";
-          ctx.lineWidth = X.style.size;
-          ctx.strokeStyle = X.style.color;
-          ctx.beginPath();
-          ctx.moveTo(p[p.length - 2], p[p.length - 1]);
-          for (let i = 0; i < pr.length; i += 2) ctx.lineTo(pr[i], pr[i + 1]);
-          ctx.stroke();
-          ctx.restore();
-        }
-        break;
-      }
       case "erase": {
         if (X.dirty) {
           X.dirty = false;
-          redraw();
+          const db = X.db as Box | null;
+          X.db = null;
+          if (db) redrawRegion(inflate(db, 3));
+          else redraw();
         }
         drawEraserRing(ctx, X.cx, X.cy, X.R);
         break;
@@ -693,12 +768,13 @@ export function useInkCanvas({
         break;
       }
       case "hl": {
-        const rects = selectionRects(
+        const rects = highlightRects(
           cfg.current.textLines || [],
           X.ax,
           X.ay,
           X.cx,
           X.cy,
+          cfg.current.size,
         );
         X.rects = rects;
         const flat: number[] = [];
@@ -790,6 +866,116 @@ export function useInkCanvas({
     }
   }
 
+  /* ───────────── pen engine (incremental) ─────────────
+   * finished curve pieces go straight onto the STATIC layer (append only,
+   * O(new points) per frame). The DYNAMIC layer only holds the tiny
+   * provisional tail + predicted tip and is cleared by dirty-rect.       */
+
+  function commitPenSegments(X: IX) {
+    const ctx = getStaticCtx();
+    if (!ctx) return;
+    const p: number[] = X.pts;
+    const n = p.length >> 1;
+    if (n < 3) return;
+    let i: number = X.fi;
+    if (i > n - 2) return;
+    const d = dpr();
+    ctx.save();
+    ctx.setTransform(d, 0, 0, d, 0, 0);
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.lineWidth = X.style.size;
+    ctx.strokeStyle = X.style.color;
+    ctx.beginPath();
+    if (i === 1) ctx.moveTo(p[0], p[1]);
+    else
+      ctx.moveTo(
+        (p[i * 2 - 2] + p[i * 2]) / 2,
+        (p[i * 2 - 1] + p[i * 2 + 1]) / 2,
+      );
+    for (; i <= n - 2; i++)
+      ctx.quadraticCurveTo(
+        p[i * 2],
+        p[i * 2 + 1],
+        (p[i * 2] + p[i * 2 + 2]) / 2,
+        (p[i * 2 + 1] + p[i * 2 + 3]) / 2,
+      );
+    ctx.stroke();
+    ctx.restore();
+    X.fi = i;
+  }
+
+  function penOverlay(X: IX, withPred: boolean) {
+    const c = dynamicRef.current;
+    const ctx = getDynamicCtx();
+    if (!c || !ctx) return;
+    const d = dpr();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const ob = X.ob as { x: number; y: number; w: number; h: number } | null;
+    if (ob) ctx.clearRect(ob.x, ob.y, ob.w, ob.h);
+    else ctx.clearRect(0, 0, c.width, c.height);
+
+    const p: number[] = X.pts;
+    const n = p.length >> 1;
+    if (!n) {
+      X.ob = null;
+      return;
+    }
+    const pr: number[] = withPred ? X.pred : [];
+    const lx = p[(n - 1) * 2],
+      ly = p[(n - 1) * 2 + 1];
+    let sx = p[0],
+      sy = p[1];
+    if (n >= 3) {
+      sx = (p[(n - 2) * 2] + lx) / 2;
+      sy = (p[(n - 2) * 2 + 1] + ly) / 2;
+    }
+    const size: number = X.style.size;
+    let x0 = Math.min(sx, lx),
+      x1 = Math.max(sx, lx),
+      y0 = Math.min(sy, ly),
+      y1 = Math.max(sy, ly);
+
+    ctx.setTransform(d, 0, 0, d, 0, 0);
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.lineWidth = size;
+    ctx.strokeStyle = X.style.color;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.lineTo(n === 1 && !pr.length ? lx + 0.01 : lx, ly);
+    for (let i = 0; i < pr.length; i += 2) {
+      ctx.lineTo(pr[i], pr[i + 1]);
+      if (pr[i] < x0) x0 = pr[i];
+      if (pr[i] > x1) x1 = pr[i];
+      if (pr[i + 1] < y0) y0 = pr[i + 1];
+      if (pr[i + 1] > y1) y1 = pr[i + 1];
+    }
+    ctx.stroke();
+
+    const pad = size / 2 + 2;
+    const rx0 = Math.max(0, Math.floor((x0 - pad) * d)),
+      ry0 = Math.max(0, Math.floor((y0 - pad) * d)),
+      rx1 = Math.min(c.width, Math.ceil((x1 + pad) * d)),
+      ry1 = Math.min(c.height, Math.ceil((y1 + pad) * d));
+    X.ob =
+      rx1 > rx0 && ry1 > ry0
+        ? { x: rx0, y: ry0, w: rx1 - rx0, h: ry1 - ry0 }
+        : null;
+  }
+
+  function penFrame(X: IX, withPred: boolean) {
+    // zoom / resize during a stroke → rebuild screen points from stored ones
+    if (X.epoch !== mapVer.current) {
+      X.pts = flatten(X.stored, cfg.current.toScreen);
+      X.fi = 1;
+      X.epoch = mapVer.current;
+      X.ob = null;
+    }
+    commitPenSegments(X);
+    penOverlay(X, withPred);
+  }
+
   function frame() {
     rafRef.current = 0;
     if (settleRef.current > 0) {
@@ -836,11 +1022,6 @@ export function useInkCanvas({
     const c = dynamicRef.current;
     if (!c) return;
     const t = cfg.current.tool;
-    if (
-      t === "highlighter" &&
-      !(cfg.current.textLines && cfg.current.textLines.length)
-    )
-      return;
 
     const rect = c.getBoundingClientRect();
     rectRef.current = rect;
@@ -853,6 +1034,7 @@ export function useInkCanvas({
     } catch {}
     if (e.pointerType === "pen") penUntil.current = Infinity;
     hover.current = null;
+    settleRef.current = 0;
 
     const base = { pid: e.pointerId, cx: x, cy: y };
     const { color, size } = cfg.current;
@@ -865,9 +1047,14 @@ export function useInkCanvas({
           pts: [],
           stored: [],
           pred: [],
+          fi: 1,
+          ob: null,
+          samples: [x, y, e.timeStamp],
+          epoch: mapVer.current,
           ptype: e.pointerType,
           style: { points: [], color, size, tool: "pen" } as Stroke,
         };
+        clearDynamicNow();
         ix.current = X;
         addPenPoint(X, x, y, true);
         break;
@@ -882,6 +1069,7 @@ export function useInkCanvas({
           snap: linesRef.current,
           changed: false,
           dirty: false,
+          db: null,
         };
         ix.current = X;
         eraseSegment(X, x, y, x, y);
@@ -941,7 +1129,6 @@ export function useInkCanvas({
             if (e.shiftKey) {
               if (selRef.current.has(id)) {
                 selRef.current.delete(id);
-                // toggled off → no drag
                 try {
                   c.releasePointerCapture(e.pointerId);
                 } catch {}
@@ -1023,7 +1210,7 @@ export function useInkCanvas({
       hover.current = { x, y };
       const t = cfg.current.tool;
       updateHoverCursor(x, y);
-      if (t === "arrow" || t === "eraser") schedule();
+      if (t === "arrow" || t === "eraser") renderNow();
       return;
     }
     if (e.pointerId !== X.pid) return;
@@ -1032,21 +1219,31 @@ export function useInkCanvas({
 
     const ne = e.nativeEvent as PointerEvent & {
       getPredictedEvents?: () => PointerEvent[];
+      getCoalescedEvents?: () => PointerEvent[];
     };
     X.cx = e.clientX - r.left;
     X.cy = e.clientY - r.top;
 
     if (X.kind === "pen") {
+      // consume EVERY coalesced sample → no lost points on fast strokes
       const co = ne.getCoalescedEvents?.();
       const list = co && co.length ? co : [ne];
-      for (const ev of list)
-        addPenPoint(X, ev.clientX - r.left, ev.clientY - r.top);
-      const pr: number[] = [];
-      if (X.ptype === "pen") {
-        const pe = ne.getPredictedEvents?.();
-        if (pe)
-          for (let i = 0; i < pe.length && i < MAX_PREDICTED; i++)
-            pr.push(pe[i].clientX - r.left, pe[i].clientY - r.top);
+      const sm: number[] = X.samples;
+      for (const ev of list) {
+        const px = ev.clientX - r.left,
+          py = ev.clientY - r.top;
+        addPenPoint(X, px, py);
+        sm.push(px, py, ev.timeStamp);
+        if (sm.length > 18) sm.splice(0, 3);
+      }
+      // predicted tip: browser prediction first, velocity fallback for mouse
+      let pr: number[] = [];
+      const pe = ne.getPredictedEvents?.();
+      if (pe && pe.length) {
+        for (let i = 0; i < pe.length && i < MAX_PREDICTED; i++)
+          pr.push(pe[i].clientX - r.left, pe[i].clientY - r.top);
+      } else {
+        pr = extrapolate(sm);
       }
       X.pred = pr;
     } else if (X.kind === "erase") {
@@ -1060,7 +1257,22 @@ export function useInkCanvas({
         X.ly = py;
       }
     }
-    schedule();
+
+    // ✅ رندر زنده
+    if (
+      X.kind === "pen" ||
+      X.kind === "shape" ||
+      X.kind === "hl" ||
+      X.kind === "erase" ||
+      X.kind === "move" ||
+      X.kind === "resize" ||
+      X.kind === "endpoint" ||
+      X.kind === "marquee"
+    ) {
+      renderNow();
+    } else {
+      schedule();
+    }
   }
 
   function finish(e: React.PointerEvent<HTMLCanvasElement>, ok: boolean) {
@@ -1078,7 +1290,7 @@ export function useInkCanvas({
       case "pen": {
         X.pred = [];
         if (ok) addPenPoint(X, X.cx, X.cy, true);
-        renderFrame(); // dynamic == final geometry, byte for byte
+        penFrame(X, false);
         ix.current = null;
         const s: Stroke = {
           id: uid(),
@@ -1087,8 +1299,9 @@ export function useInkCanvas({
           size: X.style.size,
           tool: "pen",
         };
-        commit(linesRef.current.concat(s), s);
-        settle(); // keep dynamic visible until static has been presented → no blink
+        // clean repaint of just this stroke's area → pixel-perfect result
+        commit(linesRef.current.concat(s), s, true);
+        settle();
         return;
       }
       case "erase": {
@@ -1129,12 +1342,13 @@ export function useInkCanvas({
       case "hl": {
         ix.current = null;
         if (!ok) break;
-        const rects = selectionRects(
+        const rects = highlightRects(
           cfg.current.textLines || [],
           X.ax,
           X.ay,
           X.cx,
           X.cy,
+          cfg.current.size,
         );
         if (rects.length) {
           const pts: number[][] = [];
@@ -1151,9 +1365,6 @@ export function useInkCanvas({
           commit(linesRef.current.concat(s), s);
           settle();
           return;
-        } else {
-          // ✅ اگر روی متن نبود، کاربر پیغام ببینه
-          window.dispatchEvent(new CustomEvent("margyn-no-text"));
         }
         break;
       }
@@ -1188,7 +1399,6 @@ export function useInkCanvas({
     schedule();
   }
 
-  // final preview frame for shapes, using the exact geometry that gets committed
   function renderFrameWith(X: IX, g: { p: number[]; endB: Binding | null }) {
     const c = dynamicRef.current;
     const ctx = getDynamicCtx();
@@ -1349,6 +1559,7 @@ export function useInkCanvas({
 
   api.current = {
     frame,
+    renderFrame,
     redraw,
     clearSelection,
     clearDynamicNow,
@@ -1364,7 +1575,6 @@ export function useInkCanvas({
 
   /* ───────────── effects ───────────── */
 
-  // load page data
   useEffect(() => {
     let alive = true;
     loadedRef.current = false;
@@ -1396,7 +1606,6 @@ export function useInkCanvas({
     };
   }, [filePath, page, kind, flush]);
 
-  // external events
   useEffect(() => {
     const resetAll = () => {
       dropPendingSave();
@@ -1455,7 +1664,6 @@ export function useInkCanvas({
     };
   }, [page, kind, filePath, flush, dropPendingSave]);
 
-  // leaving the select tool drops the selection; text lines changes repaint nothing
   useEffect(() => {
     if (tool !== "select") selRef.current = new Set();
     hover.current = null;
@@ -1463,7 +1671,6 @@ export function useInkCanvas({
     schedule();
   }, [tool, schedule]);
 
-  // picking a colour while something is selected recolours it (Figma-style)
   const prevColor = useRef(color);
   useEffect(() => {
     if (prevColor.current === color) return;
@@ -1499,7 +1706,7 @@ export function useInkCanvas({
   );
   const onPointerEnter = useCallback(() => {
     setActive();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
   const onPointerLeave = useCallback(() => {
     hover.current = null;
     if (!ix.current) schedule();
