@@ -19,7 +19,7 @@ import PdfDrawingLayer from "./PdfDrawingLayer";
 pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 
 // =========================================================
-// Lazy Rendered Pdf Page (Virtualization)
+// Lazy Rendered Pdf Page with Skeleton Loading
 // =========================================================
 const PdfPage = memo(
   ({
@@ -39,57 +39,52 @@ const PdfPage = memo(
     const [isVisible, setIsVisible] = useState(false);
     const [hasRendered, setHasRendered] = useState(false);
 
-    // Intersection Observer for Lazy Rendering (Only render pages near the viewport)
+    // Intersection Observer for Lazy Rendering
     useEffect(() => {
       if (!containerRef.current) return;
       const observer = new IntersectionObserver(
         ([entry]) => {
-          if (entry.isIntersecting) {
-            setIsVisible(true);
-            // Don't unobserve, we might want to render/unrender in future, but for now keep it rendered
-          } else {
-            setIsVisible(false);
-          }
+          if (entry.isIntersecting) setIsVisible(true);
         },
-        { rootMargin: "1000px 0px" }, // Pre-load pages 1000px above and below viewport
+        { rootMargin: "400px 0px" },
       );
       observer.observe(containerRef.current);
       return () => observer.disconnect();
     }, []);
 
     useEffect(() => {
-      if (!isVisible && hasRendered) return; // Don't re-render if it's already done and out of view
+      if (!isVisible && hasRendered) return;
       let isCancelled = false;
 
       const renderPage = async () => {
         try {
+          // Force loading state to true when scale or page changes
+          setHasRendered(false);
+
           const page = await pdfDoc.getPage(pageNumber);
           if (isCancelled) return;
           const viewport = page.getViewport({ scale });
           setSize({ width: viewport.width, height: viewport.height });
 
           const canvas = canvasRef.current;
-          const context = canvas?.getContext("2d");
+          const context = canvas?.getContext("2d", { alpha: false });
           if (canvas && context) {
             canvas.height = viewport.height;
             canvas.width = viewport.width;
             await page.render({ canvasContext: context, viewport }).promise;
-            setHasRendered(true);
+
+            if (!isCancelled) setHasRendered(true);
           }
         } catch (error) {}
       };
 
-      if (isVisible || !hasRendered) {
-        renderPage();
-      }
+      if (isVisible || !hasRendered) renderPage();
       return () => {
         isCancelled = true;
       };
     }, [pdfDoc, pageNumber, scale, isVisible, hasRendered]);
 
-    let wrapperClasses =
-      "shrink-0 shadow-2xl rounded-sm overflow-hidden bg-white relative transition-all duration-300 ease-in-out min-w-[700px] ";
-    wrapperClasses +=
+    const wrapperClass =
       viewMode === "single"
         ? "w-full h-full flex flex-col items-center justify-center p-4"
         : "mb-12";
@@ -97,21 +92,31 @@ const PdfPage = memo(
     return (
       <div
         ref={containerRef}
-        className={wrapperClasses}
+        className={`shrink-0 flex justify-center transition-all duration-300 ${wrapperClass}`}
         data-page={pageNumber.toString()}
       >
-        {/* Show skeleton until rendered */}
-        {!hasRendered && (
-          <div
-            style={{ width: size.width || 700, height: size.height || 990 }}
-            className="flex items-center justify-center text-[#a1a1aa] text-xs font-mono bg-zinc-100"
-          >
-            ...
-          </div>
-        )}
+        <div
+          className="relative shadow-2xl rounded-sm overflow-hidden bg-white"
+          style={{
+            width: size.width || 700,
+            height: size.height || 990,
+            minWidth: 700,
+          }}
+        >
+          {/* Always render the canvas, but cover it with loading skeleton when needed */}
+          <canvas ref={canvasRef} className="block w-full h-full" />
 
-        <div className={hasRendered ? "block" : "hidden"}>
-          <canvas ref={canvasRef} className="block" />
+          {/* Skeleton Loading Overlay */}
+          {!hasRendered && (
+            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-white">
+              <div className="w-8 h-8 border-[3px] border-zinc-200 border-t-zinc-500 rounded-full animate-spin"></div>
+              <Typography variant="microLabel" className="mt-4 text-zinc-400">
+                Rendering...
+              </Typography>
+            </div>
+          )}
+
+          {/* Drawing Layer (Only render when page size is known) */}
           {size.width > 0 && (
             <PdfDrawingLayer
               pageNumber={pageNumber}
@@ -126,6 +131,9 @@ const PdfPage = memo(
 );
 PdfPage.displayName = "PdfPage";
 
+// =========================================================
+// PdfViewer Component
+// =========================================================
 export default function PdfViewer({
   fileData,
 }: {
@@ -267,14 +275,14 @@ export default function PdfViewer({
         }}
       >
         {!pdfDoc && (
-          <div className="mt-20">
-            <Typography variant="microLabel" className="text-[#52525b]">
-              Loading Document...
+          <div className="mt-20 flex flex-col items-center">
+            <div className="w-10 h-10 border-4 border-[#27272a] border-t-emerald-500 rounded-full animate-spin"></div>
+            <Typography variant="microLabel" className="text-[#52525b] mt-4">
+              Loading PDF...
             </Typography>
           </div>
         )}
 
-        {/* We map over all page numbers, but only visible ones actually render the canvas */}
         {pdfDoc &&
           Array.from({ length: pdfDoc.numPages }, (_, i) => (
             <PdfPage

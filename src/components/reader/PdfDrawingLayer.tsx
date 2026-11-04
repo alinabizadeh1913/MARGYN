@@ -2,7 +2,6 @@
 
 import React, { useRef, useState, useEffect } from "react";
 import { getStroke } from "perfect-freehand";
-import { useSession } from "@/providers/SessionProvider";
 import { useTool } from "@/providers/ToolProvider";
 import { saveDrawing, loadDrawing } from "@/db";
 
@@ -19,7 +18,6 @@ export default function PdfDrawingLayer({
 }: PdfDrawingLayerProps) {
   const staticCanvasRef = useRef<HTMLCanvasElement>(null);
   const dynamicCanvasRef = useRef<HTMLCanvasElement>(null);
-  const { isActive } = useSession();
   const { tool, color, size } = useTool();
 
   const [lines, setLines] = useState<any[]>([]);
@@ -110,7 +108,6 @@ export default function PdfDrawingLayer({
   };
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!isActive) return;
     const canvas = dynamicCanvasRef.current;
     if (!canvas) return;
     canvas.setPointerCapture(e.pointerId);
@@ -162,9 +159,8 @@ export default function PdfDrawingLayer({
     if (reqAnimationRef.current) cancelAnimationFrame(reqAnimationRef.current);
   };
 
-  const cursorClass = !isActive
-    ? "pointer-events-none"
-    : tool === "eraser"
+  const cursorClass =
+    tool === "eraser"
       ? "cursor-eraser pointer-events-auto"
       : "cursor-pen pointer-events-auto";
 
@@ -174,7 +170,7 @@ export default function PdfDrawingLayer({
         ref={staticCanvasRef}
         width={width}
         height={height}
-        className="absolute inset-0 pointer-events-none"
+        className="absolute inset-0 w-full h-full pointer-events-none"
       />
       <canvas
         ref={dynamicCanvasRef}
@@ -184,7 +180,7 @@ export default function PdfDrawingLayer({
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerUp}
-        className={`absolute inset-0 touch-none ${cursorClass}`}
+        className={`absolute inset-0 w-full h-full touch-none ${cursorClass}`}
       />
     </div>
   );

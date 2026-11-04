@@ -1,15 +1,17 @@
 "use client";
 
-import React, { createContext, useContext, useState, ReactNode } from "react";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useMemo,
+  ReactNode,
+} from "react";
 import { v4 as uuidv4 } from "uuid";
 import { getDb, saveDb } from "@/db";
 import { sessions } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { playStartSound, playEndSound } from "@/lib/audio";
-
-/* =========================================================
-   MARGYN — Session Context
-========================================================= */
 
 interface SessionContextType {
   isActive: boolean;
@@ -31,23 +33,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const startSession = async () => {
     try {
-      const db = await getDb();
+      // 1. Play sound immediately (non-blocking)
+      playStartSound();
+
+      // 2. Optimistically update UI state for zero lag
       const newId = uuidv4();
-      const start = Date.now();
-
-      await db.insert(sessions).values({
-        id: newId,
-        startTime: start,
-        startPage: currentPage,
-      });
-      await saveDb();
-
       setSessionId(newId);
       setStartPage(currentPage);
       setIsActive(true);
 
-      // Play the subtle start chime
-      playStartSound();
+      // 3. Save to DB in background
+      const db = await getDb();
+      await db.insert(sessions).values({
+        id: newId,
+        startTime: Date.now(),
+        startPage: currentPage,
+      });
+      await saveDb();
     } catch (error) {
       console.error("Failed to start session:", error);
     }
@@ -57,46 +59,43 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     if (!sessionId || startPage === null) return;
 
     try {
-      const db = await getDb();
-      const end = Date.now();
+      // 1. Play sound immediately
+      playEndSound();
+
+      // 2. Optimistic UI update
       const pagesRead = Math.abs(currentPage - startPage) + 1;
-
-      await db
-        .update(sessions)
-        .set({
-          endTime: end,
-          endPage: currentPage,
-          pagesRead: pagesRead,
-        })
-        .where(eq(sessions.id, sessionId));
-
-      await saveDb();
-
       setIsActive(false);
       setSessionId(null);
       setStartPage(null);
 
-      // Play the resolution chime
-      playEndSound();
+      // 3. Save to DB in background
+      const db = await getDb();
+      await db
+        .update(sessions)
+        .set({ endTime: Date.now(), endPage: currentPage, pagesRead })
+        .where(eq(sessions.id, sessionId));
+      await saveDb();
     } catch (error) {
       console.error("Failed to end session:", error);
     }
   };
 
+  // Memoize the context value to prevent unnecessary re-renders across the app
+  const value = useMemo(
+    () => ({
+      isActive,
+      sessionId,
+      startPage,
+      currentPage,
+      setCurrentPage,
+      startSession,
+      endSession,
+    }),
+    [isActive, sessionId, startPage, currentPage],
+  );
+
   return (
-    <SessionContext.Provider
-      value={{
-        isActive,
-        sessionId,
-        startPage,
-        currentPage,
-        setCurrentPage,
-        startSession,
-        endSession,
-      }}
-    >
-      {children}
-    </SessionContext.Provider>
+    <SessionContext.Provider value={value}>{children}</SessionContext.Provider>
   );
 }
 

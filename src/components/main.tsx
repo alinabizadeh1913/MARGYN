@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import MarginCanvas from "./reader/MarginCanvas";
 import PdfViewer from "./reader/PdfViewer";
 import Toolbar from "./reader/Toolbar";
@@ -20,7 +20,8 @@ import { SessionProvider, useSession } from "@/providers/SessionProvider";
 import { ToolProvider, useTool } from "@/providers/ToolProvider";
 import { ShortcutProvider, useShortcut } from "@/providers/ShortcutProvider";
 import Typography from "@/typography";
-import { clearPageDrawings, clearAllDrawings } from "@/db";
+import { clearPageDrawings, clearAllDrawings, getDb } from "@/db";
+import { prewarmAudio } from "@/lib/audio";
 
 function AppContent() {
   const { isActive, startSession, endSession, currentPage } = useSession();
@@ -28,11 +29,40 @@ function AppContent() {
   const [view, setView] = useState<"reader" | "history" | "settings">("reader");
   const [pdfData, setPdfData] = useState<Uint8Array | null>(null);
   const [isMarginOpen, setIsMarginOpen] = useState(true);
+  const [isAppReady, setIsAppReady] = useState(false); // برای جلوگیری از صفحه سیاه اولیه
+
+  useEffect(() => {
+    const init = async () => {
+      try {
+        await getDb();
+        if (window.electronAPI) {
+          const data = await window.electronAPI.loadActivePdf();
+          if (data) setPdfData(new Uint8Array(data));
+        }
+      } catch (err) {
+        console.error("Init error:", err);
+      } finally {
+        setIsAppReady(true);
+      }
+    };
+    init();
+
+    const handleFirstClick = () => {
+      prewarmAudio();
+      window.removeEventListener("click", handleFirstClick);
+    };
+    window.addEventListener("click", handleFirstClick);
+    return () => window.removeEventListener("click", handleFirstClick);
+  }, []);
 
   const handleOpenPdf = useCallback(async () => {
     if (window.electronAPI) {
       const data = await window.electronAPI.openPdf();
-      if (data) setPdfData(new Uint8Array(data));
+      if (data) {
+        const uint8Data = new Uint8Array(data);
+        setPdfData(uint8Data);
+        await window.electronAPI.saveActivePdf(data);
+      }
     }
   }, []);
 
@@ -43,13 +73,11 @@ function AppContent() {
 
   const handleClearCurrentPage = useCallback(async () => {
     await clearPageDrawings(currentPage);
-    // Dispatch custom event to tell canvases to clear instantly without reloading
     window.dispatchEvent(new CustomEvent(`margyn-clear-page-${currentPage}`));
   }, [currentPage]);
 
   const handleClearAllPages = useCallback(async () => {
     await clearAllDrawings();
-    // Dispatch custom event to clear all canvases
     window.dispatchEvent(new CustomEvent("margyn-clear-all"));
   }, []);
 
@@ -59,6 +87,14 @@ function AppContent() {
   useShortcut("openPdf", handleOpenPdf);
   useShortcut("clearPage", handleClearCurrentPage);
   useShortcut("clearAll", handleClearAllPages);
+
+  if (!isAppReady) {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-[#09090b]">
+        <div className="w-10 h-10 border-4 border-[#27272a] border-t-emerald-500 rounded-full animate-spin"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#09090b]">

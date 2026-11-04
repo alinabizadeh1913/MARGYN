@@ -1,57 +1,65 @@
-/* =========================================================
-   MARGYN — Audio Engine
-========================================================= */
-
 let audioCtx: AudioContext | null = null;
 let isAudioEnabled = true;
 
-// Export a way to toggle audio globally
 export const setAudioEnabled = (enabled: boolean) => {
   isAudioEnabled = enabled;
 };
 
-function getContext() {
+// Pre-warm the audio context on first interaction to prevent lag later
+export const prewarmAudio = () => {
   if (!audioCtx) {
-    audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    try {
+      audioCtx = new (
+        window.AudioContext || (window as any).webkitAudioContext
+      )();
+    } catch (e) {}
   }
-  if (audioCtx.state === "suspended") {
-    audioCtx.resume();
-  }
-  return audioCtx;
+};
+
+function getContext() {
+  prewarmAudio();
+  if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+  return audioCtx!;
 }
 
-function playTone(freq: number, startTime: number, duration: number, volume: number) {
-  if (!isAudioEnabled) return; // Block if disabled
-  const ctx = getContext();
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
+function playTone(
+  freq: number,
+  startTime: number,
+  duration: number,
+  volume: number,
+) {
+  if (!isAudioEnabled || !audioCtx) return;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
 
   osc.type = "sine";
-  osc.frequency.setValueAtTime(freq, ctx.currentTime + startTime);
+  osc.frequency.setValueAtTime(freq, audioCtx.currentTime + startTime);
 
-  gain.gain.setValueAtTime(0, ctx.currentTime + startTime);
-  gain.gain.linearRampToValueAtTime(volume, ctx.currentTime + startTime + 0.05);
-  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + startTime + duration);
+  gain.gain.setValueAtTime(0, audioCtx.currentTime + startTime);
+  gain.gain.linearRampToValueAtTime(
+    volume,
+    audioCtx.currentTime + startTime + 0.05,
+  );
+  gain.gain.exponentialRampToValueAtTime(
+    0.001,
+    audioCtx.currentTime + startTime + duration,
+  );
 
   osc.connect(gain);
-  gain.connect(ctx.destination);
+  gain.connect(audioCtx.destination);
 
-  osc.start(ctx.currentTime + startTime);
-  osc.stop(ctx.currentTime + startTime + duration);
+  osc.start(audioCtx.currentTime + startTime);
+  osc.stop(audioCtx.currentTime + startTime + duration);
 }
 
 export const playStartSound = () => {
-  try {
-    playTone(261.63, 0, 1.5, 0.1);    // C4
-    playTone(329.63, 0.15, 1.5, 0.1); // E4
-    playTone(392.00, 0.3, 2, 0.08);   // G4
-  } catch (e) { console.error(e); }
+  playTone(261.63, 0, 1.5, 0.1);
+  playTone(329.63, 0.15, 1.5, 0.1);
+  playTone(392.0, 0.3, 2, 0.08);
 };
 
 export const playEndSound = () => {
-  try {
-    playTone(392.00, 0, 1.5, 0.1);    // G4
-    playTone(329.63, 0.15, 1.5, 0.1); // E4
-    playTone(261.63, 0.3, 2, 0.08);   // C4
-  } catch (e) { console.error(e); }
+  playTone(392.0, 0, 1.5, 0.1);
+  playTone(329.63, 0.15, 1.5, 0.1);
+  playTone(261.63, 0.3, 2, 0.08);
 };

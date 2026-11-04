@@ -9,6 +9,9 @@ declare global {
       loadDb: () => Promise<Uint8Array | null>;
       saveDb: (data: Uint8Array) => Promise<boolean>;
       loadWasm: () => Promise<Uint8Array>;
+      loadActivePdf: () => Promise<Uint8Array | null>;
+      saveActivePdf: (data: Uint8Array) => Promise<boolean>;
+      clearActivePdf: () => Promise<boolean>;
       openPdf: () => Promise<Uint8Array | null>;
     };
   }

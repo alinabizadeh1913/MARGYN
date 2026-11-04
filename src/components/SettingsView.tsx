@@ -48,7 +48,14 @@ export default function SettingsView() {
     if (confirmed) {
       setIsResetting(true);
       try {
+        // 1. Reset the SQLite database
         await resetDatabase();
+
+        // 2. Clear the active PDF from the file system
+        if (window.electronAPI) {
+          await window.electronAPI.clearActivePdf();
+        }
+
         alert("All data has been cleared.");
         window.location.reload();
       } catch (error) {

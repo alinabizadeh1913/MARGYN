@@ -27,22 +27,19 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 
-// =========================================================
-// MARGYN — Database & File Paths
-// =========================================================
+// Paths
 const getDbPath = () => path.join(app.getPath("userData"), "margyn.db");
+const getPdfPath = () =>
+  path.join(app.getPath("userData"), "active_document.pdf");
 
+// IPC Handlers — Database
 ipcMain.handle("db-load", async () => {
   const dbPath = getDbPath();
-  if (fs.existsSync(dbPath)) {
-    return fs.readFileSync(dbPath);
-  }
-  return null;
+  return fs.existsSync(dbPath) ? fs.readFileSync(dbPath) : null;
 });
 
 ipcMain.handle("db-save", async (event, dataBuffer) => {
-  const dbPath = getDbPath();
-  fs.writeFileSync(dbPath, Buffer.from(dataBuffer));
+  fs.writeFileSync(getDbPath(), Buffer.from(dataBuffer));
   return true;
 });
 
@@ -51,13 +48,27 @@ ipcMain.handle("db-load-wasm", async () => {
     path.join(__dirname, "..", "public", "sql-wasm.wasm"),
     path.join(__dirname, "..", "out", "sql-wasm.wasm"),
   ];
-
   for (const wasmPath of possiblePaths) {
-    if (fs.existsSync(wasmPath)) {
-      return fs.readFileSync(wasmPath);
-    }
+    if (fs.existsSync(wasmPath)) return fs.readFileSync(wasmPath);
   }
-  throw new Error("Could not find sql-wasm.wasm in public or out directory.");
+  throw new Error("Could not find sql-wasm.wasm");
+});
+
+// IPC Handlers — Active PDF
+ipcMain.handle("pdf-load-active", async () => {
+  const pdfPath = getPdfPath();
+  return fs.existsSync(pdfPath) ? fs.readFileSync(pdfPath) : null;
+});
+
+ipcMain.handle("pdf-save-active", async (event, dataBuffer) => {
+  fs.writeFileSync(getPdfPath(), Buffer.from(dataBuffer));
+  return true;
+});
+
+ipcMain.handle("pdf-clear-active", async () => {
+  const pdfPath = getPdfPath();
+  if (fs.existsSync(pdfPath)) fs.unlinkSync(pdfPath);
+  return true;
 });
 
 ipcMain.handle("dialog:openPdf", async () => {
@@ -65,7 +76,6 @@ ipcMain.handle("dialog:openPdf", async () => {
     properties: ["openFile"],
     filters: [{ name: "PDF Documents", extensions: ["pdf"] }],
   });
-
   if (canceled || filePaths.length === 0) return null;
   return fs.readFileSync(filePaths[0]);
 });
@@ -74,7 +84,6 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
-    // INCREASED MINIMUM SIZE: Prevents UI from breaking and ensures enough space for both panels
     minWidth: 1280,
     minHeight: 800,
     titleBarStyle: "hidden",
@@ -87,10 +96,9 @@ function createWindow() {
       sandbox: false,
       webSecurity: true,
     },
-    show: false,
+    show: false, // برای جلوگیری از پرش و صفحه سیاه اولیه
   });
 
-  // Maximize window on startup
   mainWindow.maximize();
 
   if (!isDev) {
@@ -107,11 +115,15 @@ function createWindow() {
 
   if (isDev) {
     mainWindow.loadURL(devUrl);
+    // mainWindow.webContents.openDevTools(); // در صورت نیاز برای دیباگ باز شود
   } else {
     mainWindow.loadURL("app://bundle/index.html");
   }
 
-  mainWindow.once("ready-to-show", () => mainWindow.show());
+  mainWindow.once("ready-to-show", () => {
+    mainWindow.show();
+  });
+
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
@@ -122,6 +134,7 @@ function registerCustomProtocol() {
     const url = request.url.replace("app://", "");
     const [host, ...rest] = url.split("/");
     let filePath = path.join(__dirname, "..", "out", ...rest);
+
     if (
       host === "bundle" &&
       (rest.length === 0 || rest[rest.length - 1] === "")
