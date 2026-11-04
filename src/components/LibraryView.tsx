@@ -18,6 +18,7 @@ interface RecentFile {
   filePath: string;
   lastOpened: number;
   completed: number;
+  projectPath: string | null;
 }
 
 export default function LibraryView({
@@ -34,7 +35,20 @@ export default function LibraryView({
   const loadFiles = async () => {
     setIsLoading(true);
     const data = await getRecentFiles();
-    setFiles(data as RecentFile[]);
+
+    // ✅ Deduplicate based on projectPath or filePath
+    const uniqueFiles: RecentFile[] = [];
+    const seen = new Set();
+
+    for (const file of data as RecentFile[]) {
+      const key = file.projectPath || file.filePath;
+      if (!seen.has(key)) {
+        seen.add(key);
+        uniqueFiles.push(file);
+      }
+    }
+
+    setFiles(uniqueFiles);
     setIsLoading(false);
   };
 
@@ -140,7 +154,7 @@ export default function LibraryView({
                 <div className="absolute inset-0 bg-gradient-to-r from-[#38bdf8]/0 via-[#38bdf8]/0 to-[#38bdf8]/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
 
                 <div className="flex items-center gap-5 relative z-10">
-                  <div className="w-12 h-12 rounded-xl bg-[#09090b] border border-[#27272a] flex items-center justify-center group-hover:border-[#38bdf8]/30 transition-colors">
+                  <div className="w-12 h-12 rounded-xl bg-[#09090b] border border-[#27272a] flex items-center justify-center group-hover:border-[#38bdf8]/30 transition-colors shrink-0">
                     <FileText
                       size={20}
                       className="text-[#a1a1aa] group-hover:text-[#38bdf8] transition-colors"
@@ -152,7 +166,8 @@ export default function LibraryView({
                         variant="cardTitle"
                         className="text-[#fafafa] group-hover:text-[#38bdf8] transition-colors line-clamp-1"
                       >
-                        {file.name}
+                        {/* ✅ Fallback to "Untitled Project" if name is empty */}
+                        {file.name || "Untitled Project"}
                       </Typography>
                       {file.completed === 1 && (
                         <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-500 text-[10px] font-bold rounded-full border border-emerald-500/20">

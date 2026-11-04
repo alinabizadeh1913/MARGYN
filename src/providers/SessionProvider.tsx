@@ -7,6 +7,7 @@ import React, {
   useMemo,
   ReactNode,
   useEffect,
+  useCallback,
 } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { getDb, saveDb, getSetting, setSetting } from "@/db";
@@ -36,24 +37,27 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [startPage, setStartPage] = useState<number | null>(null);
   const [currentPage, setCurrentPageState] = useState(1);
-
   const [isSessionSyncing, setIsSessionSyncing] = useState(true);
 
-  const setCurrentPage = async (page: number) => {
+  const setCurrentPage = useCallback(async (page: number) => {
     setCurrentPageState(page);
     try {
       await setSetting("lastPage", page.toString());
     } catch (error) {}
-  };
+  }, []);
 
-  const syncSessionWithFile = async (filePath: string) => {
-    if (!filePath) return;
-
+  const syncSessionWithFile = useCallback(async (filePath: string) => {
+    // ✅ FIX: اگر فایل پاس داده نشد، لودینگ باید متوقف شود
+    if (!filePath) {
+      setIsSessionSyncing(false);
+      return;
+    }
     setIsSessionSyncing(true);
 
     try {
       const db = await getDb();
 
+      // آیا سشن فعالی وجود دارد؟
       const openSessions = await db
         .select()
         .from(sessions)
@@ -69,6 +73,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setCurrentPageState(targetPage);
         await setSetting("lastPage", targetPage.toString());
       } else {
+        // سشن بسته است، آخرین سشن را برای Resume پیدا می‌کنیم
         setIsActive(false);
         setSessionId(null);
         setStartPage(null);
@@ -79,15 +84,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           .where(eq(sessions.filePath, filePath))
           .orderBy(desc(sessions.startTime))
           .limit(1);
-          
+
         if (latestSessions.length > 0) {
           const latest = latestSessions[0];
-          // اولویت با endPage است چون نشان دهنده پایان قطعی سشن است
-          setLastFocusPage(
-            latest.endPage || latest.lastPage || latest.startPage,
-          );
+          // ✅ FIX: Get the absolute last page from DB
+          const lastKnownPage =
+            latest.endPage || latest.lastPage || latest.startPage;
+
+          setLastFocusPage(lastKnownPage);
+
+          // ✅ CRITICAL FIX: Sync currentPage so UI shows the correct page
+          setCurrentPageState(lastKnownPage);
+          await setSetting("lastPage", lastKnownPage.toString());
         } else {
           setLastFocusPage(null);
+          setCurrentPageState(1);
+          await setSetting("lastPage", "1");
         }
       }
     } catch (error) {
@@ -95,14 +107,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsSessionSyncing(false);
     }
-  };
+  }, []);
 
-  const clearSessionState = () => {
+  const clearSessionState = useCallback(() => {
     setIsActive(false);
     setSessionId(null);
     setStartPage(null);
     setLastFocusPage(null);
-  };
+  }, []);
 
   useEffect(() => {
     if (isActive && sessionId) {
@@ -113,49 +125,50 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             .update(sessions)
             .set({ lastPage: currentPage })
             .where(eq(sessions.id, sessionId));
-          // ذخیره فوری روی دیسک
-          await saveDb(true); 
+          await saveDb(true);
         } catch (e) {}
       };
       updateLastPage();
     }
   }, [currentPage, isActive, sessionId]);
 
-  const startSession = async (filePath: string, totalPages?: number) => {
-    if (!filePath) return;
-    try {
-      playStartSound();
-      const newId = uuidv4();
-      setSessionId(newId);
+  const startSession = useCallback(
+    async (filePath: string, totalPages?: number) => {
+      if (!filePath) return;
+      try {
+        playStartSound();
+        const newId = uuidv4();
+        setSessionId(newId);
 
-      let targetPage = currentPage;
-
-      // ✅ FIXED: منطق داینامیک شروع صفحه بعدی
-      if (lastFocusPage !== null) {
-        targetPage = lastFocusPage + 1;
-        // اگر به انتهای کتاب رسیده بودیم، از خود صفحه آخر شروع کن (نه بیشتر)
-        if (totalPages && targetPage > totalPages) {
-          targetPage = totalPages;
+        // ✅ محاسبه دقیق صفحه شروع
+        let targetPage = currentPage;
+        if (lastFocusPage !== null) {
+          targetPage = lastFocusPage + 1;
+          // اگر به انتهای فایل رسیده بودیم، از خود صفحه آخر شروع کن
+          if (totalPages && targetPage > totalPages) {
+            targetPage = totalPages;
+          }
         }
-      }
 
-      setStartPage(targetPage);
-      setCurrentPageState(targetPage);
-      setIsActive(true);
+        setStartPage(targetPage);
+        setCurrentPageState(targetPage);
+        setIsActive(true);
 
-      const db = await getDb();
-      await db.insert(sessions).values({
-        id: newId,
-        filePath,
-        startTime: Date.now(),
-        startPage: targetPage,
-        lastPage: targetPage,
-      });
-      await saveDb(true);
-    } catch (error) {}
-  };
+        const db = await getDb();
+        await db.insert(sessions).values({
+          id: newId,
+          filePath,
+          startTime: Date.now(),
+          startPage: targetPage,
+          lastPage: targetPage,
+        });
+        await saveDb(true);
+      } catch (error) {}
+    },
+    [currentPage, lastFocusPage],
+  );
 
-  const endSession = async () => {
+  const endSession = useCallback(async () => {
     if (!sessionId || startPage === null) return;
 
     try {
@@ -165,21 +178,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setIsActive(false);
       setSessionId(null);
       setStartPage(null);
+      // ✅ آپدیت کردن lastFocusPage با صفحه فعلی
       setLastFocusPage(currentPage);
 
       const db = await getDb();
       await db
         .update(sessions)
-        .set({ 
-          endTime: Date.now(), 
-          endPage: currentPage, 
+        .set({
+          endTime: Date.now(),
+          endPage: currentPage,
           lastPage: currentPage,
-          pagesRead 
+          pagesRead,
         })
         .where(eq(sessions.id, sessionId));
       await saveDb(true);
     } catch (error) {}
-  };
+  }, [sessionId, startPage, currentPage]);
 
   const value = useMemo(
     () => ({
@@ -202,6 +216,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       startPage,
       currentPage,
       isSessionSyncing,
+      setCurrentPage,
+      startSession,
+      endSession,
+      syncSessionWithFile,
+      clearSessionState,
     ],
   );
 

@@ -117,10 +117,18 @@ function AppContent() {
       } catch (e) {}
     }
 
+    // ✅ ۱) همه state updateهای مهم رو قبل از اولین await صف می‌کنیم
     setPdfData(uint8Data);
-    await window.electronAPI?.saveActivePdf(uint8Data);
     setActiveFileName(name);
     setActiveFilePath(path);
+    setIsCurrentPdfCompleted(completed === 1);
+
+    // ✅ ۲) sync رو همین‌جا (قبل از await) شروع می‌کنیم.
+    // setIsSessionSyncing(true) همگام اجرا و صف میشه، پس با
+    // setPdfData در همون فریم render میشه => دکمه "Checking..." نشون میده
+    const syncPromise = syncSessionWithFile(path);
+
+    await window.electronAPI?.saveActivePdf(uint8Data);
 
     let finalProjectPath = projectPath;
 
@@ -138,14 +146,15 @@ function AppContent() {
     }
 
     setActiveProjectPath(finalProjectPath);
-    setIsCurrentPdfCompleted(completed === 1);
-    await setSetting("activeFilePath", path);
 
     if (finalProjectPath) {
       await updateRecentFileProjectPath(path, finalProjectPath);
     }
 
-    await syncSessionWithFile(path);
+    await setSetting("activeFilePath", path);
+
+    await syncPromise;
+
     setView("reader");
     setIsDirty(false);
   };
@@ -174,16 +183,28 @@ function AppContent() {
         try {
           const data = await window.electronAPI.loadLibraryFile(filePath);
           if (data) {
-            const fileName =
-              filePath.split("-").slice(1).join("-") || "Document.pdf";
-            const record = await addRecentFile(fileName, filePath);
-            if (record)
-              await loadPdfFile(
-                new Uint8Array(data),
-                record.name,
-                record.filePath,
-                record.completed || 0,
-              );
+            const db = await getDb();
+            const record = (
+              await db
+                .select()
+                .from(recentFiles)
+                .where(eq(recentFiles.filePath, filePath))
+            )[0];
+
+            let finalName = record?.name;
+            if (!finalName) {
+              const baseName = filePath.split(/[/\\]/).pop() || "";
+              finalName =
+                baseName.split("-").slice(1).join("-") || "Untitled Document";
+            }
+
+            await loadPdfFile(
+              new Uint8Array(data),
+              finalName,
+              filePath,
+              record?.completed || 0,
+              record?.projectPath || null,
+            );
           }
         } catch (e) {}
       }
@@ -202,14 +223,54 @@ function AppContent() {
         }
 
         const { data: projectData, filePath: actualPath } = result;
-        const pdfBytes = Uint8Array.from(
-          Buffer.from(projectData.fileBase64, "base64"),
-        );
+        const db = await getDb();
+        const existing = await db
+          .select()
+          .from(recentFiles)
+          .where(eq(recentFiles.projectPath, actualPath));
 
-        const fakePath = "imported-" + Date.now() + "-" + projectData.fileName;
-        const record = await addRecentFile(projectData.fileName, fakePath);
+        const defaultName =
+          actualPath
+            .split(/[/\\]/)
+            .pop()
+            ?.replace(".margyn", "")
+            .replace(".pdf", "") || "Imported Project";
+        const displayName = projectData.fileName || defaultName;
 
-        if (record) {
+        let record;
+        let pdfBytes;
+
+        if (existing.length > 0) {
+          record = existing[0];
+          const existingPdf = await window.electronAPI.loadLibraryFile(
+            record.filePath,
+          );
+          if (existingPdf) {
+            pdfBytes = new Uint8Array(existingPdf);
+          } else {
+            pdfBytes = Uint8Array.from(
+              Buffer.from(projectData.fileBase64, "base64"),
+            );
+            await window.electronAPI.saveActivePdf(pdfBytes);
+            const newFakePath =
+              "imported-" + Date.now() + "-" + displayName + ".pdf";
+            record = await addRecentFile(displayName, newFakePath, actualPath);
+          }
+          await db
+            .update(recentFiles)
+            .set({ lastOpened: Date.now(), name: displayName })
+            .where(eq(recentFiles.id, record.id));
+        } else {
+          pdfBytes = Uint8Array.from(
+            Buffer.from(projectData.fileBase64, "base64"),
+          );
+          await window.electronAPI.saveActivePdf(pdfBytes);
+          const newFakePath =
+            "imported-" + Date.now() + "-" + displayName + ".pdf";
+          record = await addRecentFile(displayName, newFakePath, actualPath);
+        }
+
+        if (record && pdfBytes) {
           await loadPdfFile(
             pdfBytes,
             record.name,
@@ -218,7 +279,6 @@ function AppContent() {
             actualPath,
           );
 
-          const db = await getDb();
           await db
             .delete(sessions)
             .where(eq(sessions.filePath, record.filePath));
@@ -309,7 +369,6 @@ function AppContent() {
       });
     }
 
-    // ✅ NEW: Listen for PDFs opened via Windows
     let cleanupPdfOpen: (() => void) | undefined;
     if (window.electronAPI?.onOpenPdfFile) {
       cleanupPdfOpen = window.electronAPI.onOpenPdfFile(async (filePath) => {
@@ -421,23 +480,63 @@ function AppContent() {
       const result = await window.electronAPI.importProject();
       if (!result) return;
 
-      const { data: projectData, filePath } = result;
-      const pdfBytes = Uint8Array.from(
-        Buffer.from(projectData.fileBase64, "base64"),
-      );
-      const fakePath = "imported-" + Date.now() + "-" + projectData.fileName;
-      const record = await addRecentFile(projectData.fileName, fakePath);
+      const { data: projectData, filePath: margynPath } = result;
+      const db = await getDb();
+      const existing = await db
+        .select()
+        .from(recentFiles)
+        .where(eq(recentFiles.projectPath, margynPath));
 
-      if (record) {
+      const defaultName =
+        margynPath
+          .split(/[/\\]/)
+          .pop()
+          ?.replace(".margyn", "")
+          .replace(".pdf", "") || "Imported Project";
+      const displayName = projectData.fileName || defaultName;
+
+      let record;
+      let pdfBytes;
+
+      if (existing.length > 0) {
+        record = existing[0];
+        const existingPdf = await window.electronAPI.loadLibraryFile(
+          record.filePath,
+        );
+        if (existingPdf) {
+          pdfBytes = new Uint8Array(existingPdf);
+        } else {
+          pdfBytes = Uint8Array.from(
+            Buffer.from(projectData.fileBase64, "base64"),
+          );
+          await window.electronAPI.saveActivePdf(pdfBytes);
+          const newFakePath =
+            "imported-" + Date.now() + "-" + displayName + ".pdf";
+          record = await addRecentFile(displayName, newFakePath, margynPath);
+        }
+        await db
+          .update(recentFiles)
+          .set({ lastOpened: Date.now(), name: displayName })
+          .where(eq(recentFiles.id, record.id));
+      } else {
+        pdfBytes = Uint8Array.from(
+          Buffer.from(projectData.fileBase64, "base64"),
+        );
+        await window.electronAPI.saveActivePdf(pdfBytes);
+        const newFakePath =
+          "imported-" + Date.now() + "-" + displayName + ".pdf";
+        record = await addRecentFile(displayName, newFakePath, margynPath);
+      }
+
+      if (record && pdfBytes) {
         await loadPdfFile(
           pdfBytes,
           record.name,
           record.filePath,
           projectData.completed,
-          filePath,
+          margynPath,
         );
 
-        const db = await getDb();
         await db.delete(sessions).where(eq(sessions.filePath, record.filePath));
 
         const sessionIdMap: Record<string, string> = {};
@@ -550,7 +649,6 @@ function AppContent() {
   useShortcut("toggleMargin", () => setIsMarginOpen((prev) => !prev));
   useShortcut("saveProject", handleSaveProject);
 
-  // ✅ NEW SHORTCUTS
   useShortcut("importProject", handleImportProject);
   useShortcut("exportProject", handleExportProject);
 

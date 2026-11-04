@@ -529,27 +529,29 @@ export default function PdfViewer({
       {/* Main PDF Container */}
       <div
         ref={containerRef}
-        className="flex-1 w-full h-full relative flex items-center justify-center overflow-hidden p-8"
+        className="flex-1 w-full h-full relative flex items-center justify-center overflow-hidden"
       >
-        <div
-          className="relative bg-white ring-1 ring-black/5"
-          style={{
-            width: displayed?.width ?? 0,
-            height: displayed?.height ?? 0,
-          }}
-        >
-          <canvas
-            ref={canvasRef}
-            className="block"
+        <div className="p-8">
+          <div
+            className="relative bg-white ring-1 ring-black/5"
             style={{
               width: displayed?.width ?? 0,
               height: displayed?.height ?? 0,
             }}
-          />
+          >
+            <canvas
+              ref={canvasRef}
+              className="block"
+              style={{
+                width: displayed?.width ?? 0,
+                height: displayed?.height ?? 0,
+              }}
+            />
+          </div>
         </div>
 
         {displayed && containerSize.width > 0 && (
-          <div className="absolute inset-0">
+          <div className="absolute inset-0 z-10">
             <PdfDrawingLayer
               pageNumber={displayed.pageNumber}
               width={containerSize.width}

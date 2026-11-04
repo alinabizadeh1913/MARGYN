@@ -249,9 +249,35 @@ export async function resetDatabase() {
   await saveDb(true);
 }
 
-export async function addRecentFile(name: string, filePath: string) {
+// ✅ FIXED: Now accepts projectPath and checks for duplicates
+export async function addRecentFile(
+  name: string,
+  filePath: string,
+  projectPath: string | null = null,
+) {
   try {
     const database = await getDb();
+
+    // 1. Check by projectPath first (for .margyn imports)
+    if (projectPath) {
+      const existingProject = await database
+        .select()
+        .from(recentFiles)
+        .where(eq(recentFiles.projectPath, projectPath));
+      if (existingProject.length > 0) {
+        await database
+          .update(recentFiles)
+          .set({
+            lastOpened: Date.now(),
+            name: name || existingProject[0].name,
+          })
+          .where(eq(recentFiles.id, existingProject[0].id));
+        await saveDb();
+        return existingProject[0];
+      }
+    }
+
+    // 2. Check by filePath (for standard PDFs)
     const existing = await database
       .select()
       .from(recentFiles)
@@ -259,24 +285,32 @@ export async function addRecentFile(name: string, filePath: string) {
     if (existing.length > 0) {
       await database
         .update(recentFiles)
-        .set({ lastOpened: Date.now() })
-        .where(eq(recentFiles.filePath, filePath));
+        .set({ lastOpened: Date.now(), name: name || existing[0].name })
+        .where(eq(recentFiles.id, existing[0].id));
+      await saveDb();
       return existing[0];
     } else {
       const uniqueId =
         Date.now().toString() + Math.random().toString(36).substring(2, 9);
       await database.insert(recentFiles).values({
         id: uniqueId,
-        name,
+        name: name || "Untitled Project",
         filePath,
         lastOpened: Date.now(),
         completed: 0,
-        projectPath: null,
+        projectPath: projectPath,
       });
       await saveDb();
-      return { id: uniqueId, name, filePath, completed: 0, projectPath: null };
+      return {
+        id: uniqueId,
+        name: name || "Untitled Project",
+        filePath,
+        completed: 0,
+        projectPath: projectPath,
+      };
     }
   } catch (e) {
+    console.error("Failed to add recent file", e);
     return null;
   }
 }
@@ -323,7 +357,6 @@ export async function markFileCompleted(filePath: string) {
   } catch (e) {}
 }
 
-// ✅ NEW: Update project path in DB
 export async function updateRecentFileProjectPath(
   filePath: string,
   projectPath: string | null,
