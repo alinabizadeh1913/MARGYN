@@ -103,6 +103,11 @@ function AppContent() {
   const [showEndModal, setShowEndModal] = useState(false);
   const [showCloseModal, setShowCloseModal] = useState(false);
   const [showBackwardErrorModal, setShowBackwardErrorModal] = useState(false);
+
+  // ✅ استیت‌های مربوط به مودال تایمر
+  const [showTimerModal, setShowTimerModal] = useState(false);
+  const [timerInput, setTimerInput] = useState("25");
+
   const [endText, setEndText] = useState("");
   const [endError, setEndError] = useState(false);
   const endInputRef = useRef<HTMLInputElement>(null);
@@ -148,11 +153,18 @@ function AppContent() {
         } else if (showEndModal) setShowEndModal(false);
         else if (showBackwardErrorModal) setShowBackwardErrorModal(false);
         else if (showCongratsModal) setShowCongratsModal(false);
+        else if (showTimerModal) setShowTimerModal(false); // ✅ اضافه شد
       }
     };
     window.addEventListener("keydown", handleEsc);
     return () => window.removeEventListener("keydown", handleEsc);
-  }, [showCloseModal, showEndModal, showBackwardErrorModal, showCongratsModal]);
+  }, [
+    showCloseModal,
+    showEndModal,
+    showBackwardErrorModal,
+    showCongratsModal,
+    showTimerModal,
+  ]);
 
   const handleScaleChange = useCallback(
     (newScale: number) => {
@@ -388,6 +400,7 @@ function AppContent() {
     });
   }, []);
 
+  // ✅ تابع درگ اند دراپ که قبلا undefined بود
   const handleDropPdf = useCallback((file: File) => {
     if (!file.name.toLowerCase().endsWith(".pdf")) {
       showToast("Only PDF files are supported.", "error");
@@ -397,7 +410,6 @@ function AppContent() {
     stateRef.current.requestSafeAction(async () => {
       if (!window.electronAPI) return;
       try {
-        // Electron: گرفتن مسیر واقعی فایل از File object
         const filePath = window.electronAPI.getPathForFile?.(file);
         if (!filePath) {
           showToast("Could not resolve file path.", "error");
@@ -1142,15 +1154,20 @@ function AppContent() {
     setPendingAction(null);
   };
 
+  // ✅ توابع تایمر (حذف prompt و جایگزینی با مودال)
   const handleStartTimer = () => {
-    const input = prompt(
-      "Focus duration in minutes (25 / 40 / 50 / 90 / 120 or custom):",
-      "25",
-    );
-    if (!input) return;
-    const mins = parseInt(input, 10);
-    if (isNaN(mins) || mins <= 0) return;
+    setTimerInput("25");
+    setShowTimerModal(true);
+  };
+
+  const handleConfirmStartTimer = () => {
+    const mins = parseInt(timerInput, 10);
+    if (isNaN(mins) || mins <= 0) {
+      showToast("Please enter a valid number of minutes.", "error");
+      return;
+    }
     startTimer(mins * 60 * 1000);
+    setShowTimerModal(false);
   };
 
   const showResumeButton = !isActive && lastFocusPage !== null;
@@ -1161,7 +1178,6 @@ function AppContent() {
 
       {isAppReady && (
         <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#09090b]">
-          {/* ✅ لوگو از اینجا حذف شد و به AppShell منتقل شد */}
           <header className="h-16 flex items-center justify-between px-4 border-b border-white/5 bg-black/40 backdrop-blur-2xl shrink-0 z-[100] shadow-[0_4px_30px_rgba(0,0,0,0.5)] gap-2">
             <div className="flex items-center gap-2 min-w-0 flex-1">
               {/* View Switcher */}
@@ -1636,6 +1652,60 @@ function AppContent() {
                     className="w-full px-4 py-3 rounded-xl bg-[#18181b] text-[#a1a1aa] hover:text-[#fafafa] hover:bg-[#27272a] border border-[#27272a] transition-all font-medium active:scale-[0.98]"
                   >
                     Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ✅ مودال جدید برای تنظیم تایمر */}
+          {showTimerModal && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-md transition-all duration-300">
+              <div className="bg-[#121214] border border-[#38bdf8]/30 p-8 rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] w-full max-w-sm flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">
+                <div className="w-16 h-16 bg-[#38bdf8]/10 rounded-full flex items-center justify-center mb-6 shadow-inner">
+                  <Clock size={32} className="text-[#38bdf8]" />
+                </div>
+                <Typography
+                  variant="pageTitle"
+                  as="h2"
+                  className="text-[#fafafa] mb-2 font-semibold tracking-tight"
+                >
+                  Set Focus Timer
+                </Typography>
+                <Typography
+                  variant="body"
+                  as="p"
+                  className="text-[#a1a1aa] mb-8 leading-relaxed"
+                >
+                  Enter the duration in minutes.
+                </Typography>
+                <div className="w-full flex items-center bg-[#18181b] border-2 border-[#27272a] focus-within:border-[#38bdf8]/50 rounded-xl transition-all shadow-sm overflow-hidden mb-8">
+                  <input
+                    type="number"
+                    value={timerInput}
+                    onChange={(e) => setTimerInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      e.stopPropagation();
+                      if (e.key === "Enter") handleConfirmStartTimer();
+                      if (e.key === "Escape") setShowTimerModal(false);
+                    }}
+                    autoFocus
+                    className="flex-1 w-full px-5 py-4 bg-transparent outline-none text-center text-xl font-mono tracking-widest text-[#fafafa] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                  <span className="pr-5 text-[#52525b] font-medium">min</span>
+                </div>
+                <div className="flex gap-4 w-full">
+                  <button
+                    onClick={() => setShowTimerModal(false)}
+                    className="flex-1 px-4 py-3.5 rounded-xl bg-[#18181b] text-[#a1a1aa] hover:text-[#fafafa] hover:bg-[#27272a] border border-[#27272a] transition-all font-medium active:scale-[0.98]"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleConfirmStartTimer}
+                    className="flex-1 px-4 py-3.5 rounded-xl bg-[#38bdf8] text-black hover:bg-[#38bdf8]/90 transition-all font-medium shadow-[0_0_15px_rgba(56,189,248,0.3)] active:scale-[0.98]"
+                  >
+                    Start
                   </button>
                 </div>
               </div>

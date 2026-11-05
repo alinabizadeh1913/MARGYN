@@ -57,23 +57,25 @@ interface Options {
 }
 
 const SAVE_DELAY_MS = 500;
-// Ignore only sub-pixel noise. Larger gaps are spatially resampled below.
-const MIN_DIST2 = 0.35 * 0.35;
-const MAX_RESAMPLE_SPACING = 2.5;
-const MAX_RESAMPLE_STEPS = 64;
+// Ignore only sub-pixel noise. NO resampling: raw points go straight in.
+const MIN_DIST2 = 0.3 * 0.3;
 const MAX_HISTORY = 100;
-const MAX_PREDICTED = 4;
+const MAX_PREDICTED = 3;
+// if the pointer stops, drop the predicted tail after this long
+const PREDICT_TTL_MS = 40;
 
 /* ─── in-progress draw states ─── */
 
 interface PenState {
   kind: "pen";
-  pts: number[]; // screen-space x,y pairs
-  stored: number[][]; // stable document-space points
-  epoch: number;
-  predicted: number[];
+  pts: number[]; // screen-space x,y pairs (raw, never resampled)
+  /** index of the next control point whose quad has not been committed yet */
+  done: number;
+  /** current end of the committed path on the static canvas */
+  curX: number;
+  curY: number;
   headBox: Box | null;
-  lastDrawnK: number; // first unfinished Catmull-Rom segment
+  predTimer: ReturnType<typeof setTimeout> | null;
   color: string;
   size: number;
   pid: number;
@@ -227,7 +229,6 @@ export function useInkCanvas({
   const mods = useRef({ shift: false, alt: false });
   const rectRef = useRef<DOMRect | null>(null);
   const rafRef = useRef(0);
-  const penRafRef = useRef(0);
   const penUntil = useRef(0);
   const lastCursor = useRef("");
 
@@ -266,8 +267,7 @@ export function useInkCanvas({
   };
   const getDynamicCtx = () => {
     if (!dynamicCtxRef.current)
-      dynamicCtxRef.current =
-        dynamicRef.current?.getContext("2d", { desynchronized: true }) ?? null;
+      dynamicCtxRef.current = dynamicRef.current?.getContext("2d") ?? null;
     return dynamicCtxRef.current;
   };
 
@@ -404,16 +404,11 @@ export function useInkCanvas({
       if (c.style.width !== sw) c.style.width = sw;
       if (c.style.height !== sh) c.style.height = sh;
     }
-    rectRef.current = d.getBoundingClientRect();
     if (changed) {
       mapVer.current++;
-      const active = ix.current;
-      // Pen samples are kept in document coordinates and can survive resize.
-      // Other transient gestures are cancelled rather than left half-rendered.
-      if (active && active.kind !== "pen") ix.current = null;
+      ix.current = null;
       redrawStatic();
       clearLiveAll();
-      if (active?.kind === "pen") schedulePenFrame();
     }
   }, []);
 
@@ -731,82 +726,52 @@ export function useInkCanvas({
     return { p, endB: null as Binding | null, hint: null as BindHit | null };
   }
 
-  /* ─────────────── pen engine (Catmull-Rom spline) ─────────────── */
+  /* ─────────────── pen engine (midpoint quadratic) ─────────────── */
+  /*
+   * Same curve as tracePen() in inkRender: quad(ctrl = p[i], end = mid(p[i], p[i+1])).
+   * What you see while drawing is EXACTLY what is stored/redrawn later,
+   * and a segment needs only ONE point of look-ahead.
+   * - committed quads -> static canvas (appended, never redrawn)
+   * - unfinished tail + predicted points -> live canvas (cleared/redrawn)
+   * Both canvases are presented in the same frame (no desynchronized hint),
+   * so there are no gaps/seams between them.
+   */
 
-  function syncPenMapping(X: PenState) {
-    if (X.epoch === mapVer.current) return;
-    X.pts = flatten(X.stored, cfg.current.toScreen);
-    X.epoch = mapVer.current;
-    X.lastDrawnK = 0;
-    X.headBox = null;
-  }
-
-  function flushPenSegments(X: PenState, final = false) {
-    const ctx = getStaticCtx();
-    if (!ctx) return;
+  function penCommit(X: PenState) {
     const p = X.pts;
     const n = p.length >> 1;
-    // During input, wait for p3 so committed spline segments never change.
-    // On pointer-up, clamp p3 to the final point and flush the remaining tail.
-    const limit = final ? n - 1 : n - 2;
-    if (X.lastDrawnK >= limit) return;
-
+    if (X.done > n - 2) return;
+    const ctx = getStaticCtx();
+    if (!ctx) return;
     setStaticTransform(ctx);
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     ctx.lineWidth = X.size;
     ctx.strokeStyle = X.color;
     ctx.beginPath();
-
-    let first = true;
-    for (let k = X.lastDrawnK; k < limit; k++) {
-      const i0 = Math.max(0, k - 1) * 2;
-      const i1 = k * 2;
-      const i2 = (k + 1) * 2;
-      const i3 = Math.min(n - 1, k + 2) * 2;
-
-      const p0x = p[i0],
-        p0y = p[i0 + 1];
-      const p1x = p[i1],
-        p1y = p[i1 + 1];
-      const p2x = p[i2],
-        p2y = p[i2 + 1];
-      const p3x = p[i3],
-        p3y = p[i3 + 1];
-
-      const c1x = p1x + (p2x - p0x) / 6;
-      const c1y = p1y + (p2y - p0y) / 6;
-      const c2x = p2x - (p3x - p1x) / 6;
-      const c2y = p2y - (p3y - p1y) / 6;
-
-      if (first) {
-        ctx.moveTo(p1x, p1y);
-        first = false;
-      }
-      ctx.bezierCurveTo(c1x, c1y, c2x, c2y, p2x, p2y);
+    ctx.moveTo(X.curX, X.curY);
+    let i = X.done;
+    for (; i <= n - 2; i++) {
+      const mx = (p[i * 2] + p[i * 2 + 2]) / 2;
+      const my = (p[i * 2 + 1] + p[i * 2 + 3]) / 2;
+      ctx.quadraticCurveTo(p[i * 2], p[i * 2 + 1], mx, my);
+      X.curX = mx;
+      X.curY = my;
     }
-
-    if (!first) ctx.stroke();
-    X.lastDrawnK = limit;
+    ctx.stroke();
+    X.done = i;
   }
 
-  function drawPenHead(X: PenState, predicted: number[]) {
+  /** Live tail: committed end -> last real point -> predicted points. */
+  function drawPenHead(X: PenState, pred: number[]) {
     const ctx = getDynamicCtx();
     if (!ctx) return;
     if (X.headBox) clearLive(X.headBox);
 
-    const baseIndex = Math.max(0, X.lastDrawnK - 1);
-    const allPts = X.pts.slice(baseIndex * 2);
-    for (let i = 0; i < predicted.length; i += 2) {
-      allPts.push(predicted[i], predicted[i + 1]);
-    }
-
-    const m = allPts.length >> 1;
-    const liveStart = Math.max(0, X.lastDrawnK - baseIndex);
-    if (!m) {
-      X.headBox = null;
-      return;
-    }
+    const p = X.pts;
+    const n = p.length >> 1;
+    const lx = p[(n - 1) * 2];
+    const ly = p[(n - 1) * 2 + 1];
 
     setLiveTransform(ctx);
     ctx.lineCap = "round";
@@ -815,78 +780,42 @@ export function useInkCanvas({
     ctx.strokeStyle = X.color;
     ctx.fillStyle = X.color;
 
-    let x0 = Infinity,
-      x1 = -Infinity,
-      y0 = Infinity,
-      y1 = -Infinity;
-    if (m === 1) {
-      const x = allPts[0],
-        y = allPts[1];
+    let x0 = Math.min(X.curX, lx),
+      x1 = Math.max(X.curX, lx),
+      y0 = Math.min(X.curY, ly),
+      y1 = Math.max(X.curY, ly);
+
+    if (n === 1 && !pred.length) {
       ctx.beginPath();
-      ctx.arc(x, y, X.size / 2, 0, Math.PI * 2);
+      ctx.arc(lx, ly, X.size / 2, 0, Math.PI * 2);
       ctx.fill();
-      x0 = x1 = x;
-      y0 = y1 = y;
     } else {
       ctx.beginPath();
-      let first = true;
-      for (let k = liveStart; k < m - 1; k++) {
-        const i0 = Math.max(0, k - 1) * 2;
-        const i1 = k * 2;
-        const i2 = (k + 1) * 2;
-        const i3 = Math.min(m - 1, k + 2) * 2;
-
-        const p0x = allPts[i0],
-          p0y = allPts[i0 + 1];
-        const p1x = allPts[i1],
-          p1y = allPts[i1 + 1];
-        const p2x = allPts[i2],
-          p2y = allPts[i2 + 1];
-        const p3x = allPts[i3],
-          p3y = allPts[i3 + 1];
-
-        const c1x = p1x + (p2x - p0x) / 6;
-        const c1y = p1y + (p2y - p0y) / 6;
-        const c2x = p2x - (p3x - p1x) / 6;
-        const c2y = p2y - (p3y - p1y) / 6;
-
-        if (first) {
-          ctx.moveTo(p1x, p1y);
-          first = false;
-        }
-        ctx.bezierCurveTo(c1x, c1y, c2x, c2y, p2x, p2y);
-        x0 = Math.min(x0, p1x, p2x);
-        x1 = Math.max(x1, p1x, p2x);
-        y0 = Math.min(y0, p1y, p2y);
-        y1 = Math.max(y1, p1y, p2y);
+      ctx.moveTo(X.curX, X.curY);
+      let ax = lx,
+        ay = ly;
+      for (let i = 0; i < pred.length; i += 2) {
+        const bx = pred[i],
+          by = pred[i + 1];
+        ctx.quadraticCurveTo(ax, ay, (ax + bx) / 2, (ay + by) / 2);
+        if (bx < x0) x0 = bx;
+        if (bx > x1) x1 = bx;
+        if (by < y0) y0 = by;
+        if (by > y1) y1 = by;
+        ax = bx;
+        ay = by;
       }
-      if (first) {
-        X.headBox = null;
-        return;
-      }
+      ctx.lineTo(ax, ay);
       ctx.stroke();
     }
 
-    // Extra padding covers round caps and the small spline overshoot.
-    const pad = X.size / 2 + 8;
+    const pad = X.size / 2 + 3;
     X.headBox = {
-      x: Math.max(0, Math.floor(x0 - pad)),
-      y: Math.max(0, Math.floor(y0 - pad)),
-      w: Math.ceil(x1 - x0 + pad * 2),
-      h: Math.ceil(y1 - y0 + pad * 2),
+      x: Math.floor(x0 - pad),
+      y: Math.floor(y0 - pad),
+      w: Math.ceil(x1 - x0 + pad * 2) + 1,
+      h: Math.ceil(y1 - y0 + pad * 2) + 1,
     };
-  }
-
-  function schedulePenFrame() {
-    if (penRafRef.current) return;
-    penRafRef.current = requestAnimationFrame(() => {
-      penRafRef.current = 0;
-      const X = ix.current;
-      if (!X || X.kind !== "pen") return;
-      syncPenMapping(X);
-      flushPenSegments(X);
-      drawPenHead(X, X.predicted);
-    });
   }
 
   /* ─────────────── shape live preview ─────────────── */
@@ -1079,39 +1008,17 @@ export function useInkCanvas({
     activeInk = m;
   }
 
-  function addPenPoint(X: PenState, x: number, y: number, force = false) {
+  /** Returns true when a point was really added. Raw points, no resampling. */
+  function addPenPoint(X: PenState, x: number, y: number): boolean {
     const p = X.pts;
     const n = p.length;
-
-    const append = (px: number, py: number) => {
-      p.push(px, py);
-      X.stored.push(store(px, py));
-    };
-
-    if (!n) {
-      append(x, y);
-      return;
+    if (n) {
+      const dx = x - p[n - 2];
+      const dy = y - p[n - 1];
+      if (dx * dx + dy * dy < MIN_DIST2) return false;
     }
-
-    const lastX = p[n - 2];
-    const lastY = p[n - 1];
-    const dx = x - lastX;
-    const dy = y - lastY;
-    const distance2 = dx * dx + dy * dy;
-
-    if (force ? distance2 === 0 : distance2 < MIN_DIST2) return;
-
-    const distance = Math.sqrt(distance2);
-    const steps = Math.min(
-      MAX_RESAMPLE_STEPS,
-      Math.max(1, Math.ceil(distance / MAX_RESAMPLE_SPACING)),
-    );
-
-    for (let i = 1; i < steps; i++) {
-      const t = i / steps;
-      append(lastX + dx * t, lastY + dy * t);
-    }
-    append(x, y);
+    p.push(x, y);
+    return true;
   }
 
   function down(e: React.PointerEvent<HTMLCanvasElement>) {
@@ -1143,11 +1050,11 @@ export function useInkCanvas({
         const X: PenState = {
           kind: "pen",
           pts: [x, y],
-          stored: [store(x, y)],
-          epoch: mapVer.current,
-          predicted: [],
+          done: 1,
+          curX: x,
+          curY: y,
           headBox: null,
-          lastDrawnK: 0,
+          predTimer: null,
           color,
           size,
           pid: e.pointerId,
@@ -1155,8 +1062,7 @@ export function useInkCanvas({
           cy: y,
         };
         ix.current = X;
-        // نقطه اول را در لایه زنده رسم می‌کنیم (نقطه)
-        drawPenHead(X, []);
+        drawPenHead(X, []); // first dot, instantly
         break;
       }
 
@@ -1366,46 +1272,44 @@ export function useInkCanvas({
     X.cx = e.clientX - r.left;
     X.cy = e.clientY - r.top;
 
-    /* ── PEN: collect every sample, paint once per animation frame ── */
+    /* ── PEN: synchronous, raw coalesced points, 1-point look-ahead ── */
     if (X.kind === "pen") {
-      syncPenMapping(X);
       const co = ne.getCoalescedEvents?.();
       const list = co && co.length ? co : [ne];
-      const beforeN = X.pts.length >> 1;
-
+      let added = false;
       for (const ev of list) {
-        addPenPoint(X, ev.clientX - r.left, ev.clientY - r.top);
+        if (addPenPoint(X, ev.clientX - r.left, ev.clientY - r.top))
+          added = true;
       }
+      if (!added) return;
 
-      const afterN = X.pts.length >> 1;
-      if (afterN === beforeN && !X.headBox) return;
+      penCommit(X);
 
-      let predicted: number[] = [];
+      const pred: number[] = [];
       const pe = ne.getPredictedEvents?.();
       if (pe && pe.length) {
+        const n = X.pts.length;
+        let lx = X.pts[n - 2],
+          ly = X.pts[n - 1];
         for (let i = 0; i < pe.length && i < MAX_PREDICTED; i++) {
-          predicted.push(pe[i].clientX - r.left, pe[i].clientY - r.top);
+          const qx = pe[i].clientX - r.left,
+            qy = pe[i].clientY - r.top;
+          if ((qx - lx) ** 2 + (qy - ly) ** 2 < 0.25) continue;
+          pred.push(qx, qy);
+          lx = qx;
+          ly = qy;
         }
-      } else if (list.length >= 2) {
-        const last = list.length - 1;
-        const p1x = list[last].clientX - r.left;
-        const p1y = list[last].clientY - r.top;
-        const p0x = list[last - 1].clientX - r.left;
-        const p0y = list[last - 1].clientY - r.top;
-        let vx = p1x - p0x;
-        let vy = p1y - p0y;
-        const speed = Math.hypot(vx, vy);
-        const maxSpeed = 40;
-        if (speed > maxSpeed) {
-          const scale = maxSpeed / speed;
-          vx *= scale;
-          vy *= scale;
-        }
-        predicted.push(p1x + vx, p1y + vy);
       }
+      drawPenHead(X, pred);
 
-      X.predicted = predicted;
-      schedulePenFrame();
+      // pointer stopped? remove the guessed tail so no ghost ink stays ahead
+      if (X.predTimer) clearTimeout(X.predTimer);
+      X.predTimer = pred.length
+        ? setTimeout(() => {
+            X.predTimer = null;
+            if (ix.current === X) drawPenHead(X, []);
+          }, PREDICT_TTL_MS)
+        : null;
       return;
     }
 
@@ -1496,56 +1400,57 @@ export function useInkCanvas({
 
     switch (X.kind) {
       case "pen": {
-        if (penRafRef.current) {
-          cancelAnimationFrame(penRafRef.current);
-          penRafRef.current = 0;
+        ix.current = null;
+        if (X.predTimer) {
+          clearTimeout(X.predTimer);
+          X.predTimer = null;
         }
-
-        if (!ok) {
-          ix.current = null;
-          clearLiveAll();
-          // Already committed prefix segments must disappear on cancellation.
-          redrawStatic();
-          break;
-        }
-
-        syncPenMapping(X);
         const native = e.nativeEvent as PointerEvent & {
           getCoalescedEvents?: () => PointerEvent[];
         };
         const finalSamples = native.getCoalescedEvents?.();
-        if (finalSamples && r) {
-          for (const sample of finalSamples) {
+        if (ok && finalSamples && r) {
+          for (const sample of finalSamples)
             addPenPoint(X, sample.clientX - r.left, sample.clientY - r.top);
-          }
         }
-        if (r) addPenPoint(X, X.cx, X.cy);
+        if (ok) addPenPoint(X, X.cx, X.cy);
 
-        X.predicted = [];
-        clearLiveAll();
+        penCommit(X);
 
+        const ctx = getStaticCtx()!;
         const n = X.pts.length >> 1;
-        const ctx = getStaticCtx();
-        if (ctx && n === 1) {
-          setStaticTransform(ctx);
-          ctx.fillStyle = X.color;
-          ctx.beginPath();
-          ctx.arc(X.pts[0], X.pts[1], X.size / 2, 0, Math.PI * 2);
-          ctx.fill();
-        } else if (n >= 2) {
-          flushPenSegments(X, true);
-        }
-
-        ix.current = null;
         if (n >= 1) {
+          setStaticTransform(ctx);
+          ctx.strokeStyle = X.color;
+          ctx.fillStyle = X.color;
+          ctx.lineWidth = X.size;
+          ctx.lineCap = "round";
+          ctx.lineJoin = "round";
+          if (n === 1) {
+            ctx.beginPath();
+            ctx.arc(X.pts[0], X.pts[1], X.size / 2, 0, Math.PI * 2);
+            ctx.fill();
+          } else {
+            // last half-segment: committed end -> final point (same as tracePen)
+            ctx.beginPath();
+            ctx.moveTo(X.curX, X.curY);
+            ctx.lineTo(X.pts[(n - 1) * 2], X.pts[(n - 1) * 2 + 1]);
+            ctx.stroke();
+          }
+          // static and live are presented together, so no flash/gap here
+          if (X.headBox) clearLive(X.headBox);
+          X.headBox = null;
+
           const stroke: Stroke = {
             id: uid(),
-            points: X.stored,
+            points: toStoredPts(X.pts),
             color: X.color,
             size: X.size,
             tool: "pen",
           };
           commitLines(linesRef.current.concat(stroke));
+        } else if (X.headBox) {
+          clearLive(X.headBox);
         }
         break;
       }
@@ -1941,10 +1846,6 @@ export function useInkCanvas({
     hover.current = null;
     setCursor("");
     if (ix.current) {
-      if (penRafRef.current) {
-        cancelAnimationFrame(penRafRef.current);
-        penRafRef.current = 0;
-      }
       ix.current = null;
       clearLiveAll();
       redrawStatic();
@@ -1962,7 +1863,6 @@ export function useInkCanvas({
   useEffect(
     () => () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
-      if (penRafRef.current) cancelAnimationFrame(penRafRef.current);
     },
     [],
   );
