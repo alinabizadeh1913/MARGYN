@@ -57,3 +57,10 @@ MARGYN is built with a modern, robust, and secure technology stack:
 - **PDF Rendering:** [PDF.js](https://mozilla.github.io/pdf.js/)
 - **Ink Engine:** Custom-built canvas rendering engine utilizing vector geometry and pointer events.
 - **Encryption:** Native Web Crypto API (AES-GCM)
+
+## 📦 Build & Install
+
+To generate the standalone installer executable, run the following command in your terminal:
+
+```bash
+npm run desktop:win
