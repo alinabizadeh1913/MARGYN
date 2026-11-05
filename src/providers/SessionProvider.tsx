@@ -28,7 +28,6 @@ interface SessionContextType {
   syncSessionWithFile: (filePath: string) => Promise<void>;
   clearSessionState: () => void;
   isSessionSyncing: boolean;
-  // ✅ Focus Timer
   timerEndsAt: number | null;
   timerDurationMs: number | null;
   startTimer: (durationMs: number) => Promise<void>;
@@ -45,21 +44,20 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [currentPage, setCurrentPageState] = useState(1);
   const [isSessionSyncing, setIsSessionSyncing] = useState(true);
 
-  // ✅ Focus Timer state
   const [timerEndsAt, setTimerEndsAt] = useState<number | null>(null);
   const [timerDurationMs, setTimerDurationMs] = useState<number | null>(null);
 
-  // ✅ debounce برای updateLastPage
   const lastPageTimerRef = useRef<NodeJS.Timeout | null>(null);
   const pendingPageRef = useRef<{ sessionId: string; page: number } | null>(
     null,
   );
 
+  // OPTIMIZATION: no more setSetting on every page turn.
+  // The `recent_files.last_page` column + the before-quit flush
+  // already cover persistence. This drops ~20 DB writes/sec during
+  // rapid navigation down to a single debounced write.
   const setCurrentPage = useCallback(async (page: number) => {
     setCurrentPageState(page);
-    try {
-      await setSetting("lastPage", page.toString());
-    } catch (error) {}
   }, []);
 
   const syncSessionWithFile = useCallback(async (filePath: string) => {
@@ -84,7 +82,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setStartPage(active.startPage);
         const targetPage = active.lastPage || active.startPage;
         setCurrentPageState(targetPage);
-        await setSetting("lastPage", targetPage.toString());
       } else {
         setIsActive(false);
         setSessionId(null);
@@ -103,7 +100,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             latest.endPage || latest.lastPage || latest.startPage;
           setLastFocusPage(lastKnownPage);
           setCurrentPageState(lastKnownPage);
-          await setSetting("lastPage", lastKnownPage.toString());
         } else {
           const fileRecord = await db
             .select()
@@ -117,11 +113,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           ) {
             setLastFocusPage(null);
             setCurrentPageState(fileRecord[0].lastPage);
-            await setSetting("lastPage", fileRecord[0].lastPage.toString());
           } else {
             setLastFocusPage(null);
             setCurrentPageState(1);
-            await setSetting("lastPage", "1");
           }
         }
       }
@@ -139,7 +133,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setLastFocusPage(null);
   }, []);
 
-  // ✅ debounce روی updateLastPage - جلوگیری از I/O storm
+  // Debounced write of `sessions.last_page` (1.5s) — unchanged behavior.
   useEffect(() => {
     if (isActive && sessionId) {
       pendingPageRef.current = { sessionId, page: currentPage };
@@ -156,7 +150,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             .set({ lastPage: pending.page })
             .where(eq(sessions.id, pending.sessionId));
           await saveDb();
-        } catch (e) {}
+        } catch {}
       }, 1500);
     }
 
@@ -165,7 +159,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     };
   }, [currentPage, isActive, sessionId]);
 
-  // ✅ شروع session: اول DB، بعد UI
   const startSession = useCallback(
     async (filePath: string, totalPages?: number) => {
       if (!filePath) return;
@@ -209,7 +202,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     if (!sessionId || startPage === null) return;
 
     try {
-      // ✅ پاک کردن pending timer
       if (lastPageTimerRef.current) {
         clearTimeout(lastPageTimerRef.current);
         lastPageTimerRef.current = null;
@@ -240,7 +232,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   }, [sessionId, startPage, currentPage]);
 
-  // ✅ Focus Timer
   const startTimer = useCallback(async (durationMs: number) => {
     const endsAt = Date.now() + durationMs;
     setTimerEndsAt(endsAt);
@@ -256,7 +247,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     await setSetting("timerDurationMs", "");
   }, []);
 
-  // ✅ بازیابی timer از DB در start
   useEffect(() => {
     const loadTimer = async () => {
       try {
@@ -272,7 +262,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             await setSetting("timerDurationMs", "");
           }
         }
-      } catch (e) {}
+      } catch {}
     };
     loadTimer();
   }, []);

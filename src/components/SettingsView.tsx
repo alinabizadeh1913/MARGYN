@@ -18,7 +18,7 @@ import { resetDatabase, getSetting, setSetting } from "@/db";
 import { useShortcuts, ShortcutAction } from "@/providers/ShortcutProvider";
 import { setAudioEnabled } from "@/lib/audio";
 import ShortcutInput from "./ShortcutInput";
-import DevSessionInspector from "./DevSessionInspector";
+// import DevSessionInspector from "./DevSessionInspector"; // ✅ کامنت شد
 
 const REQUIRED_RESET_PHRASE = "DELETE ALL MY DATA";
 
@@ -124,7 +124,7 @@ export default function SettingsView() {
     endSession: "End Session",
     openPdf: "Open PDF File",
     closePdf: "Close Current Tab",
-    switchTab: "Switch Tab", // ✅ اضافه شد
+    switchTab: "Switch Tab",
     clearPage: "Clear Current Page Drawings",
     clearAll: "Clear All Pages Drawings",
     toggleMargin: "Toggle Margin Sidebar",
@@ -367,7 +367,8 @@ export default function SettingsView() {
             </div>
           </section>
 
-          <DevSessionInspector />
+          {/* ✅ کامپوننت DevSessionInspector کامنت شد */}
+          {/* <DevSessionInspector /> */}
         </div>
       </div>
 

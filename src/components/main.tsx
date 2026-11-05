@@ -388,6 +388,43 @@ function AppContent() {
     });
   }, []);
 
+  const handleDropPdf = useCallback((file: File) => {
+    if (!file.name.toLowerCase().endsWith(".pdf")) {
+      showToast("Only PDF files are supported.", "error");
+      return;
+    }
+
+    stateRef.current.requestSafeAction(async () => {
+      if (!window.electronAPI) return;
+      try {
+        // Electron: گرفتن مسیر واقعی فایل از File object
+        const filePath = window.electronAPI.getPathForFile?.(file);
+        if (!filePath) {
+          showToast("Could not resolve file path.", "error");
+          return;
+        }
+
+        const result = await window.electronAPI.readPdfPath(filePath);
+        if (result && result.data) {
+          const record = await addRecentFile(result.name, result.libraryPath);
+          if (record) {
+            await stateRef.current.loadPdfFile(
+              new Uint8Array(result.data),
+              record.name,
+              record.filePath,
+              record.completed || 0,
+              null,
+            );
+          }
+        } else {
+          showToast("Failed to open dropped PDF.", "error");
+        }
+      } catch (e) {
+        showToast("Failed to open dropped PDF.", "error");
+      }
+    });
+  }, []);
+
   const handleSelectLibraryFile = useCallback((filePath: string) => {
     stateRef.current.requestSafeAction(async () => {
       if (window.electronAPI) {
@@ -1363,7 +1400,7 @@ function AppContent() {
                         );
                       }
                     }}
-                    onDropPdf={undefined}
+                    onDropPdf={handleDropPdf}
                     onOpenPdf={handleOpenPdf}
                   />
                 </div>

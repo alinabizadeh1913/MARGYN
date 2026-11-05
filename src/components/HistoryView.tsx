@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { getDb, deleteSessionById } from "@/db";
 import { sessions } from "@/db/schema";
 import {
@@ -14,14 +14,14 @@ import {
   AlertTriangle,
   Lock,
   Timer,
-  Terminal,
-  FastForward,
-  RotateCcw,
+  // Terminal, // ✅ کامنت شد (مربوط به بخش Time Travel)
+  // FastForward, // ✅ کامنت شد (مربوط به بخش Time Travel)
+  // RotateCcw, // ✅ کامنت شد (مربوط به بخش Time Travel)
 } from "lucide-react";
 import { desc, isNotNull, eq, and } from "drizzle-orm";
 import Typography from "@/typography";
 import CalendarWidget from "./CalendarWidget";
-import { useTime } from "@/providers/TimeProvider";
+import { useTime, useNowMinute, useNowSecond } from "@/providers/TimeProvider";
 
 type SessionData = typeof sessions.$inferSelect & {
   startTime: number;
@@ -39,6 +39,52 @@ interface HistoryViewProps {
 
 const REQUIRED_DELETE_PHRASE = "DELETE SESSION";
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+
+/* ---------------------------------------------------------
+   Isolated second-level countdown.
+   Only this small component re-renders once per second.
+--------------------------------------------------------- */
+function Countdown({ unlockTime }: { unlockTime: number }) {
+  const now = useNowSecond();
+  const remaining = Math.max(0, unlockTime - now);
+  const days = Math.floor(remaining / (1000 * 60 * 60 * 24));
+  const hours = Math.floor(
+    (remaining % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60),
+  );
+  const mins = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
+  const secs = Math.floor((remaining % (1000 * 60)) / 1000);
+
+  const items = [
+    { label: "Days", val: days },
+    { label: "Hours", val: hours },
+    { label: "Mins", val: mins },
+    { label: "Secs", val: secs },
+  ];
+
+  return (
+    <div className="flex items-center gap-3 sm:gap-5">
+      {items.map((item, i) => (
+        <React.Fragment key={item.label}>
+          <div className="flex flex-col items-center">
+            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-[#09090b] border border-[#27272a] rounded-2xl flex items-center justify-center shadow-inner relative overflow-hidden group">
+              <div className="absolute inset-0 bg-gradient-to-t from-amber-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+              <span className="text-3xl font-mono font-bold text-amber-400 relative z-10">
+                {item.val.toString().padStart(2, "0")}
+              </span>
+            </div>
+            <span className="text-[10px] uppercase font-bold text-[#52525b] mt-3 tracking-widest">
+              {item.label}
+            </span>
+          </div>
+          {i < 3 && (
+            <span className="text-3xl font-bold text-[#3f3f46] -mt-6">:</span>
+          )}
+        </React.Fragment>
+      ))}
+    </div>
+  );
+}
 
 export default function HistoryView({
   filePath,
@@ -50,7 +96,10 @@ export default function HistoryView({
   const [viewedDays, setViewedDays] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
 
-  const { now, offset, setOffset } = useTime();
+  // Only the offset channel — this re-renders only on time-travel shifts.
+  const { offset, setOffset } = useTime();
+  // Minute-level `now` for lock checks and grouping (60× fewer re-renders).
+  const now = useNowMinute();
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
@@ -74,7 +123,7 @@ export default function HistoryView({
     if (saved) {
       try {
         setViewedDays(new Set(JSON.parse(saved)));
-      } catch (e) {
+      } catch {
         console.error("Corrupted viewed days data, clearing it.");
         localStorage.removeItem("margyn_viewed_days");
       }
@@ -111,9 +160,9 @@ export default function HistoryView({
     fetchHistory();
   }, [filePath]);
 
-  const formatDateKey = (date: Date) => {
+  const formatDateKey = useCallback((date: Date) => {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-  };
+  }, []);
 
   const sessionsByDate = useMemo(() => {
     const grouped: Record<string, SessionData[]> = {};
@@ -124,7 +173,7 @@ export default function HistoryView({
       grouped[key].push(session);
     });
     return grouped;
-  }, [allSessions]);
+  }, [allSessions, formatDateKey]);
 
   const selectedDateKey = formatDateKey(selectedDate);
   const selectedSessions = sessionsByDate[selectedDateKey] || [];
@@ -138,16 +187,8 @@ export default function HistoryView({
     0,
     0,
   ).getTime();
-  const unlockTime = startOfDay + 7 * 24 * 60 * 60 * 1000;
+  const unlockTime = startOfDay + SEVEN_DAYS_MS;
   const isLocked = now < unlockTime;
-  const remainingMs = Math.max(0, unlockTime - now);
-
-  const daysLeft = Math.floor(remainingMs / (1000 * 60 * 60 * 24));
-  const hoursLeft = Math.floor(
-    (remainingMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60),
-  );
-  const minsLeft = Math.floor((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
-  const secsLeft = Math.floor((remainingMs % (1000 * 60)) / 1000);
 
   const totalPagesForDay = useMemo(() => {
     return selectedSessions.reduce(
@@ -171,7 +212,7 @@ export default function HistoryView({
           0,
           0,
         ).getTime();
-        const unlockTimeForDay = startOfDayForDay + 7 * 24 * 60 * 60 * 1000;
+        const unlockTimeForDay = startOfDayForDay + SEVEN_DAYS_MS;
 
         const isUnlocked = now >= unlockTimeForDay;
         const isUnseen = !viewedDays.has(dateKey);
@@ -182,37 +223,39 @@ export default function HistoryView({
     return count;
   }, [sessionsByDate, viewedDays, now]);
 
-  const handleSelectDate = (date: Date) => {
-    setSelectedDate(date);
-    const dateKey = formatDateKey(date);
-    const daySessions = sessionsByDate[dateKey] || [];
+  const handleSelectDate = useCallback(
+    (date: Date) => {
+      setSelectedDate(date);
+      const dateKey = formatDateKey(date);
+      const daySessions = sessionsByDate[dateKey] || [];
 
-    if (daySessions.length > 0) {
-      const d = new Date(daySessions[0].endTime || daySessions[0].startTime);
-      const startOfDayForDay = new Date(
-        d.getFullYear(),
-        d.getMonth(),
-        d.getDate(),
-        0,
-        0,
-        0,
-        0,
-      ).getTime();
-      const unlockTimeForDay = startOfDayForDay + 7 * 24 * 60 * 60 * 1000;
+      if (daySessions.length > 0) {
+        const d = new Date(daySessions[0].endTime || daySessions[0].startTime);
+        const startOfDayForDay = new Date(
+          d.getFullYear(),
+          d.getMonth(),
+          d.getDate(),
+          0,
+          0,
+          0,
+          0,
+        ).getTime();
+        const unlockTimeForDay = startOfDayForDay + SEVEN_DAYS_MS;
 
-      if (now >= unlockTimeForDay && !viewedDays.has(dateKey)) {
-        const newViewed = new Set(viewedDays);
-        newViewed.add(dateKey);
-        setViewedDays(newViewed);
-        localStorage.setItem(
-          "margyn_viewed_days",
-          JSON.stringify(Array.from(newViewed)),
-        );
+        if (now >= unlockTimeForDay && !viewedDays.has(dateKey)) {
+          const newViewed = new Set(viewedDays);
+          newViewed.add(dateKey);
+          setViewedDays(newViewed);
+          localStorage.setItem(
+            "margyn_viewed_days",
+            JSON.stringify(Array.from(newViewed)),
+          );
+        }
       }
-    }
-  };
+    },
+    [sessionsByDate, viewedDays, now, formatDateKey],
+  );
 
-  // ✅ حذف فقط برای جلسات ۲۴ ساعت اخیر
   const handleOpenDeleteModal = (sessionId: string, index: number) => {
     const session = selectedSessions[index];
     if (!session) return;
@@ -244,13 +287,13 @@ export default function HistoryView({
     }
   };
 
+  // ✅ این توابع فعلا دست‌نخورده باقی ماندند تا در صورت نیاز مجدد به Time Travel از آن‌ها استفاده شود
   const handleTimeTravel = (ms: number) => {
     setOffset(offset + ms);
   };
   const handleResetTime = () => {
     setOffset(0);
   };
-
   const formatOffsetText = () => {
     if (offset === 0) return "Real Time";
     const days = Math.floor(offset / (1000 * 60 * 60 * 24));
@@ -342,6 +385,7 @@ export default function HistoryView({
               selectedDate={selectedDate}
               onSelectDate={handleSelectDate}
               viewedDays={viewedDays}
+              now={now}
             />
 
             <div className="bg-[#121214] border border-[#27272a] rounded-3xl p-6 shadow-sm min-h-[400px] flex flex-col">
@@ -428,33 +472,7 @@ export default function HistoryView({
                         once the 7-day lock expires.
                       </Typography>
 
-                      <div className="flex items-center gap-3 sm:gap-5">
-                        {[
-                          { label: "Days", val: daysLeft },
-                          { label: "Hours", val: hoursLeft },
-                          { label: "Mins", val: minsLeft },
-                          { label: "Secs", val: secsLeft },
-                        ].map((item, i) => (
-                          <React.Fragment key={item.label}>
-                            <div className="flex flex-col items-center">
-                              <div className="w-16 h-16 sm:w-20 sm:h-20 bg-[#09090b] border border-[#27272a] rounded-2xl flex items-center justify-center shadow-inner relative overflow-hidden group">
-                                <div className="absolute inset-0 bg-gradient-to-t from-amber-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                                <span className="text-3xl font-mono font-bold text-amber-400 relative z-10">
-                                  {item.val.toString().padStart(2, "0")}
-                                </span>
-                              </div>
-                              <span className="text-[10px] uppercase font-bold text-[#52525b] mt-3 tracking-widest">
-                                {item.label}
-                              </span>
-                            </div>
-                            {i < 3 && (
-                              <span className="text-3xl font-bold text-[#3f3f46] -mt-6">
-                                :
-                              </span>
-                            )}
-                          </React.Fragment>
-                        ))}
-                      </div>
+                      <Countdown unlockTime={unlockTime} />
                     </div>
                   )}
 
@@ -593,6 +611,8 @@ export default function HistoryView({
           </div>
         )}
 
+        {/* ✅ بخش Developer Tools: Time Travel کامنت شد */}
+        {/* 
         <div className="mt-8 bg-[#121214] border border-amber-500/30 rounded-3xl p-6 shadow-[0_0_30px_rgba(245,158,11,0.05)] animate-in fade-in slide-in-from-bottom-8 duration-500 delay-150">
           <div className="flex items-center justify-between mb-6 pb-4 border-b border-[#27272a]">
             <div className="flex items-center gap-3">
@@ -649,6 +669,7 @@ export default function HistoryView({
             </button>
           </div>
         </div>
+        */}
       </div>
 
       {showOrderErrorModal && (

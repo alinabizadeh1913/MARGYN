@@ -14,21 +14,37 @@ export const HIGHLIGHT_ALPHA = 0.4;
 
 export function tracePen(ctx: CanvasRenderingContext2D, p: number[]) {
   const n = p.length >> 1;
+  if (!n) return;
+
   ctx.moveTo(p[0], p[1]);
   if (n === 1) {
     ctx.lineTo(p[0] + 0.01, p[1]);
-  } else if (n === 2) {
-    ctx.lineTo(p[2], p[3]);
-  } else {
-    for (let i = 1; i < n - 1; i++) {
-      ctx.quadraticCurveTo(
-        p[i * 2],
-        p[i * 2 + 1],
-        (p[i * 2] + p[i * 2 + 2]) / 2,
-        (p[i * 2 + 1] + p[i * 2 + 3]) / 2,
-      );
-    }
-    ctx.lineTo(p[(n - 1) * 2], p[(n - 1) * 2 + 1]);
+    return;
+  }
+
+  // Keep the persisted / redraw path identical to the live incremental
+  // Catmull-Rom renderer in useInkCanvas.
+  for (let k = 0; k < n - 1; k++) {
+    const i0 = Math.max(0, k - 1) * 2;
+    const i1 = k * 2;
+    const i2 = (k + 1) * 2;
+    const i3 = Math.min(n - 1, k + 2) * 2;
+
+    const p0x = p[i0],
+      p0y = p[i0 + 1];
+    const p1x = p[i1],
+      p1y = p[i1 + 1];
+    const p2x = p[i2],
+      p2y = p[i2 + 1];
+    const p3x = p[i3],
+      p3y = p[i3 + 1];
+
+    const c1x = p1x + (p2x - p0x) / 6;
+    const c1y = p1y + (p2y - p0y) / 6;
+    const c2x = p2x - (p3x - p1x) / 6;
+    const c2y = p2y - (p3y - p1y) / 6;
+
+    ctx.bezierCurveTo(c1x, c1y, c2x, c2y, p2x, p2y);
   }
 }
 

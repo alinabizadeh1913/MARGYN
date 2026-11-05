@@ -6,6 +6,8 @@ import React, {
   useState,
   useEffect,
   useRef,
+  useMemo,
+  useCallback,
   ReactNode,
 } from "react";
 import { getSetting, setSetting } from "@/db";
@@ -17,7 +19,7 @@ export type ShortcutAction =
   | "endSession"
   | "openPdf"
   | "closePdf"
-  | "switchTab" // ✅ اضافه شد
+  | "switchTab"
   | "clearPage"
   | "clearAll"
   | "toggleMargin"
@@ -32,7 +34,7 @@ export const DEFAULT_SHORTCUTS: Record<ShortcutAction, string> = {
   endSession: "ctrl+shift+enter",
   openPdf: "ctrl+o",
   closePdf: "ctrl+w",
-  switchTab: "ctrl+tab", // ✅ اضافه شد
+  switchTab: "ctrl+tab",
   clearPage: "delete",
   clearAll: "shift+delete",
   toggleMargin: "ctrl+b",
@@ -57,7 +59,6 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
   const [shortcuts, setShortcuts] =
     useState<Record<ShortcutAction, string>>(DEFAULT_SHORTCUTS);
   const [isLoaded, setIsLoaded] = useState(false);
-
   const [isShortcutsEnabled, setIsShortcutsEnabled] = useState(true);
   const isShortcutsEnabledRef = useRef(isShortcutsEnabled);
 
@@ -98,7 +99,7 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
 
             setShortcuts(validShortcuts);
             await setSetting("shortcuts", JSON.stringify(validShortcuts));
-          } catch (parseError) {
+          } catch {
             console.error("Corrupted shortcuts data, resetting to default.");
             await setSetting("shortcuts", JSON.stringify(DEFAULT_SHORTCUTS));
           }
@@ -112,16 +113,19 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
     loadShortcuts();
   }, []);
 
-  const updateShortcut = async (action: ShortcutAction, keys: string) => {
-    const updated = { ...shortcuts, [action]: keys };
-    setShortcuts(updated);
-    await setSetting("shortcuts", JSON.stringify(updated));
-  };
+  const updateShortcut = useCallback(
+    async (action: ShortcutAction, keys: string) => {
+      const updated = { ...shortcuts, [action]: keys };
+      setShortcuts(updated);
+      await setSetting("shortcuts", JSON.stringify(updated));
+    },
+    [shortcuts],
+  );
 
-  const resetShortcuts = async () => {
+  const resetShortcuts = useCallback(async () => {
     setShortcuts(DEFAULT_SHORTCUTS);
     await setSetting("shortcuts", JSON.stringify(DEFAULT_SHORTCUTS));
-  };
+  }, []);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -150,7 +154,7 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
         target.tagName === "TEXTAREA" ||
         target.isContentEditable;
 
-      const keys = [];
+      const keys: string[] = [];
       if (e.ctrlKey || e.metaKey) keys.push("ctrl");
       if (e.altKey) keys.push("alt");
       if (e.shiftKey) keys.push("shift");
@@ -163,8 +167,7 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
       else if (key === "Backspace") key = "backspace";
       else if (key === "Space") key = "space";
       else if (key === "Enter") key = "enter";
-      else if (key === "Tab")
-        key = "tab"; // ✅ اضافه شد
+      else if (key === "Tab") key = "tab";
       else key = key.toLowerCase();
 
       if (
@@ -195,7 +198,7 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
       if (
         pressedString === "ctrl+o" ||
         pressedString === "ctrl+w" ||
-        pressedString === "ctrl+tab" || // ✅ اضافه شد
+        pressedString === "ctrl+tab" ||
         pressedString === "ctrl+enter" ||
         pressedString === "ctrl+shift+enter" ||
         pressedString === "ctrl+b" ||
@@ -216,16 +219,19 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isLoaded]);
 
+  const value = useMemo<ShortcutContextType>(
+    () => ({
+      shortcuts,
+      updateShortcut,
+      resetShortcuts,
+      isShortcutsEnabled,
+      setShortcutsEnabled: setIsShortcutsEnabled,
+    }),
+    [shortcuts, updateShortcut, resetShortcuts, isShortcutsEnabled],
+  );
+
   return (
-    <ShortcutContext.Provider
-      value={{
-        shortcuts,
-        updateShortcut,
-        resetShortcuts,
-        isShortcutsEnabled,
-        setShortcutsEnabled: setIsShortcutsEnabled,
-      }}
-    >
+    <ShortcutContext.Provider value={value}>
       {children}
     </ShortcutContext.Provider>
   );
@@ -238,15 +244,23 @@ export function useShortcuts() {
   return context;
 }
 
+/**
+ * OPTIMIZATION: the callback is stored in a ref, so inline
+ * `useShortcut("pen", () => setTool("pen"))` handlers no longer
+ * cause the window listener to re-subscribe on every render.
+ */
 export function useShortcut(action: ShortcutAction, callback: () => void) {
   const { shortcuts } = useShortcuts();
   const expectedKey = shortcuts[action];
+  const cbRef = useRef(callback);
+
+  useEffect(() => {
+    cbRef.current = callback;
+  }, [callback]);
 
   useEffect(() => {
     const handleShortcut = (e: CustomEvent<string>) => {
-      if (e.detail === expectedKey) {
-        callback();
-      }
+      if (e.detail === expectedKey) cbRef.current();
     };
     window.addEventListener("margyn-shortcut", handleShortcut as EventListener);
     return () =>
@@ -254,5 +268,5 @@ export function useShortcut(action: ShortcutAction, callback: () => void) {
         "margyn-shortcut",
         handleShortcut as EventListener,
       );
-  }, [expectedKey, callback]);
+  }, [expectedKey]);
 }

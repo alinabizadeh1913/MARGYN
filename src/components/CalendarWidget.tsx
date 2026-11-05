@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, memo } from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -8,13 +8,13 @@ import {
   Lock,
 } from "lucide-react";
 import Typography from "@/typography";
-import { useTime } from "@/providers/TimeProvider";
 
 interface CalendarWidgetProps {
   sessionsByDate: Record<string, any[]>;
   selectedDate: Date;
   onSelectDate: (date: Date) => void;
   viewedDays: Set<string>;
+  now: number;
 }
 
 const DAYS_OF_WEEK = [
@@ -27,19 +27,17 @@ const DAYS_OF_WEEK = [
   "Saturday",
 ];
 
-export default function CalendarWidget({
+function CalendarWidgetImpl({
   sessionsByDate,
   selectedDate,
   onSelectDate,
   viewedDays,
+  now,
 }: CalendarWidgetProps) {
-  const { now } = useTime();
-
-  // ✅ پیدا کردن ابتدای هفته (یکشنبه) برای تاریخ انتخاب شده
   const [weekStart, setWeekStart] = useState<Date>(() => {
     const d = new Date(selectedDate);
     const day = d.getDay();
-    const diff = d.getDate() - day; // یکشنبه
+    const diff = d.getDate() - day;
     return new Date(d.setDate(diff));
   });
 
@@ -70,7 +68,6 @@ export default function CalendarWidget({
   const today = new Date(now);
   const todayKey = formatDateKey(today);
 
-  // ✅ ساخت 7 روز هفته
   const weekDays = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(weekStart);
     d.setDate(weekStart.getDate() + i);
@@ -135,7 +132,6 @@ export default function CalendarWidget({
             selectedDate.getFullYear() === dateObj.getFullYear();
           const isToday = todayKey === dateKey;
 
-          // محاسبه قفل
           const startOfDay = new Date(
             dateObj.getFullYear(),
             dateObj.getMonth(),
@@ -171,7 +167,6 @@ export default function CalendarWidget({
                 {dateObj.getDate()}
               </span>
 
-              {/* نشانگر وضعیت سشن */}
               <div className="absolute bottom-2 flex items-center justify-center h-2">
                 {hasSessions && (
                   <>
@@ -199,3 +194,5 @@ export default function CalendarWidget({
     </div>
   );
 }
+
+export default memo(CalendarWidgetImpl);
