@@ -1809,6 +1809,18 @@ export function useInkCanvas({
     const handleHide = () => {
       if (document.visibilityState === "hidden") flush();
     };
+
+    const handleDiscard = () => {
+      dropPendingSave();
+      linesRef.current = [];
+      selRef.current = new Set();
+      hist.current = { past: [], future: [] };
+      hiddenRef.current = null;
+      redrawStatic();
+      clearLiveAll();
+    };
+    window.addEventListener("margyn-discard-changes", handleDiscard);
+
     const mine = () => activeInk?.token === me.current.token;
     const handleUndo = () => mine() && undo();
     const handleRedo = () => mine() && redo();
@@ -1837,6 +1849,7 @@ export function useInkCanvas({
       window.removeEventListener("keydown", mod);
       window.removeEventListener("keyup", mod);
       document.removeEventListener("visibilitychange", handleHide);
+      window.removeEventListener("margyn-discard-changes", handleDiscard);
       if (activeInk === me.current) activeInk = null;
     };
   }, [page, kind, filePath, flush, dropPendingSave]);

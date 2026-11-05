@@ -57,7 +57,7 @@ import {
 } from "@/db";
 import { prewarmAudio } from "@/lib/audio";
 import { sessions, drawings, recentFiles } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm"; // ✅ اضافه شدن and و isNull
 
 const REQUIRED_END_PHRASE = "END MY SESSION";
 
@@ -104,7 +104,6 @@ function AppContent() {
   const [showCloseModal, setShowCloseModal] = useState(false);
   const [showBackwardErrorModal, setShowBackwardErrorModal] = useState(false);
 
-  // ✅ استیت‌های مربوط به مودال تایمر
   const [showTimerModal, setShowTimerModal] = useState(false);
   const [timerInput, setTimerInput] = useState("25");
 
@@ -153,7 +152,7 @@ function AppContent() {
         } else if (showEndModal) setShowEndModal(false);
         else if (showBackwardErrorModal) setShowBackwardErrorModal(false);
         else if (showCongratsModal) setShowCongratsModal(false);
-        else if (showTimerModal) setShowTimerModal(false); // ✅ اضافه شد
+        else if (showTimerModal) setShowTimerModal(false);
       }
     };
     window.addEventListener("keydown", handleEsc);
@@ -340,6 +339,16 @@ function AppContent() {
     )[0];
     const initialScale = fileRecord?.scale || 1.3;
 
+    // ✅ گرفتن اسنپ‌شات از وضعیت اولیه برای بازگردانی در صورت Discard
+    const initialDrawings = await db
+      .select()
+      .from(drawings)
+      .where(eq(drawings.filePath, path));
+    const initialRecent = (
+      await db.select().from(recentFiles).where(eq(recentFiles.filePath, path))
+    )[0];
+    const snapshot = { drawings: initialDrawings, recentFile: initialRecent };
+
     const newTabId = Date.now().toString();
     const newTab: OpenTab = {
       id: newTabId,
@@ -352,6 +361,7 @@ function AppContent() {
       currentPage: 1,
       isCompleted: completed === 1,
       scale: initialScale,
+      snapshot, // ✅ ذخیره اسنپ‌شات در تب
     };
 
     setOpenTabs((prev) => [...prev, newTab]);
@@ -400,7 +410,6 @@ function AppContent() {
     });
   }, []);
 
-  // ✅ تابع درگ اند دراپ که قبلا undefined بود
   const handleDropPdf = useCallback((file: File) => {
     if (!file.name.toLowerCase().endsWith(".pdf")) {
       showToast("Only PDF files are supported.", "error");
@@ -466,7 +475,6 @@ function AppContent() {
               record?.projectPath || null,
             );
           } else {
-            // ✅ اگر فایل PDF پیدا نشد، ببینیم آیا این یک پروژه است؟ اگر بله، پروژه را لود کن (خود ترمیم شوندگی)
             const db = await getDb();
             const record = (
               await db
@@ -609,7 +617,6 @@ function AppContent() {
         if (existingPdf) {
           pdfBytes = new Uint8Array(existingPdf);
         } else {
-          // فایل قبلی پیدا نشد (مسیر جعلی بوده)، مجدد استخراج و در پوشه library ذخیره می‌کنیم
           pdfBytes = Uint8Array.from(
             Buffer.from(projectData.fileBase64, "base64"),
           );
@@ -941,11 +948,33 @@ function AppContent() {
           setActiveProjectPath(savedPath);
           await updateRecentFileProjectPath(activeFilePath, savedPath);
           setIsDirty(false);
+
           if (activeTabId) {
+            const db = await getDb();
+            const freshDrawings = await db
+              .select()
+              .from(drawings)
+              .where(eq(drawings.filePath, activeFilePath));
+            const freshRecent = (
+              await db
+                .select()
+                .from(recentFiles)
+                .where(eq(recentFiles.filePath, activeFilePath))
+            )[0];
+            const newSnapshot = {
+              drawings: freshDrawings,
+              recentFile: freshRecent,
+            };
+
             setOpenTabs((prev) =>
               prev.map((t) =>
                 t.id === activeTabId
-                  ? { ...t, projectPath: savedPath, isDirty: false }
+                  ? {
+                      ...t,
+                      projectPath: savedPath,
+                      isDirty: false,
+                      snapshot: newSnapshot,
+                    }
                   : t,
               ),
             );
@@ -973,9 +1002,27 @@ function AppContent() {
       if (savedPath) {
         setIsDirty(false);
         if (activeTabId) {
+          const db = await getDb();
+          const freshDrawings = await db
+            .select()
+            .from(drawings)
+            .where(eq(drawings.filePath, activeFilePath));
+          const freshRecent = (
+            await db
+              .select()
+              .from(recentFiles)
+              .where(eq(recentFiles.filePath, activeFilePath))
+          )[0];
+          const newSnapshot = {
+            drawings: freshDrawings,
+            recentFile: freshRecent,
+          };
+
           setOpenTabs((prev) =>
             prev.map((t) =>
-              t.id === activeTabId ? { ...t, isDirty: false } : t,
+              t.id === activeTabId
+                ? { ...t, isDirty: false, snapshot: newSnapshot }
+                : t,
             ),
           );
         }
@@ -1006,10 +1053,31 @@ function AppContent() {
         await updateRecentFileProjectPath(activeFilePath, savedPath);
         setIsDirty(false);
         if (activeTabId) {
+          const db = await getDb();
+          const freshDrawings = await db
+            .select()
+            .from(drawings)
+            .where(eq(drawings.filePath, activeFilePath));
+          const freshRecent = (
+            await db
+              .select()
+              .from(recentFiles)
+              .where(eq(recentFiles.filePath, activeFilePath))
+          )[0];
+          const newSnapshot = {
+            drawings: freshDrawings,
+            recentFile: freshRecent,
+          };
+
           setOpenTabs((prev) =>
             prev.map((t) =>
               t.id === activeTabId
-                ? { ...t, projectPath: savedPath, isDirty: false }
+                ? {
+                    ...t,
+                    projectPath: savedPath,
+                    isDirty: false,
+                    snapshot: newSnapshot,
+                  }
                 : t,
             ),
           );
@@ -1168,9 +1236,57 @@ function AppContent() {
     }
   };
 
-  const handleModalDiscard = () => {
+  // ✅ بازگردانی دیتابیس به حالت اسنپ‌شات در صورت زدن دکمه Don't Save
+  const handleModalDiscard = async () => {
     setShowCloseModal(false);
     setIsDirty(false);
+
+    const tabToDiscard = openTabs.find((t) => t.id === activeTabId);
+    if (tabToDiscard && tabToDiscard.snapshot) {
+      const db = await getDb();
+
+      // ۱. بازگردانی نقاشی‌ها
+      await db
+        .delete(drawings)
+        .where(eq(drawings.filePath, tabToDiscard.filePath));
+      if (tabToDiscard.snapshot.drawings.length > 0) {
+        await db.insert(drawings).values(tabToDiscard.snapshot.drawings);
+      }
+
+      // ۲. بازگردانی وضعیت فایل اخیر (آخرین صفحه، زوم)
+      if (tabToDiscard.snapshot.recentFile) {
+        await db
+          .update(recentFiles)
+          .set({
+            lastPage: tabToDiscard.snapshot.recentFile.lastPage,
+            scale: tabToDiscard.snapshot.recentFile.scale,
+            completed: tabToDiscard.snapshot.recentFile.completed,
+          })
+          .where(eq(recentFiles.filePath, tabToDiscard.filePath));
+      }
+
+      // ۳. بازگردانی آخرین صفحه در سشنِ فعال
+      const activeSessions = await db
+        .select()
+        .from(sessions)
+        .where(
+          and(
+            eq(sessions.filePath, tabToDiscard.filePath),
+            isNull(sessions.endTime),
+          ),
+        );
+      if (activeSessions.length > 0 && tabToDiscard.snapshot.recentFile) {
+        await db
+          .update(sessions)
+          .set({ lastPage: tabToDiscard.snapshot.recentFile.lastPage || 1 })
+          .where(eq(sessions.id, activeSessions[0].id));
+      }
+
+      await saveDb(true);
+      // به بوم نقاشی (useInkCanvas) اطلاع میدهیم که تغییراتِ معلق را دور بریزد
+      window.dispatchEvent(new Event("margyn-discard-changes"));
+    }
+
     if (activeTabId) {
       setOpenTabs((prev) =>
         prev.map((t) => (t.id === activeTabId ? { ...t, isDirty: false } : t)),
@@ -1187,7 +1303,6 @@ function AppContent() {
     setPendingAction(null);
   };
 
-  // ✅ توابع تایمر (حذف prompt و جایگزینی با مودال)
   const handleStartTimer = () => {
     setTimerInput("25");
     setShowTimerModal(true);
@@ -1213,7 +1328,6 @@ function AppContent() {
         <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#09090b]">
           <header className="h-16 flex items-center justify-between px-4 border-b border-white/5 bg-black/40 backdrop-blur-2xl shrink-0 z-[100] shadow-[0_4px_30px_rgba(0,0,0,0.5)] gap-2">
             <div className="flex items-center gap-2 min-w-0 flex-1">
-              {/* View Switcher */}
               <div className="flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/5 shrink-0">
                 <button
                   onClick={() => setView("reader")}
@@ -1691,7 +1805,6 @@ function AppContent() {
             </div>
           )}
 
-          {/* ✅ مودال جدید برای تنظیم تایمر */}
           {showTimerModal && (
             <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-md transition-all duration-300">
               <div className="bg-[#121214] border border-[#38bdf8]/30 p-8 rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] w-full max-w-sm flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">

@@ -15,6 +15,11 @@ export interface OpenTab {
   currentPage: number;
   isCompleted: boolean;
   scale: number;
+  // ✅ اضافه شدن اسنپ‌شات برای بازگردانی تغییرات
+  snapshot?: {
+    drawings: any[];
+    recentFile: any;
+  };
 }
 
 interface TabsBarProps {
@@ -100,7 +105,6 @@ export default function TabsBar({
           const isActive = tab.id === activeTabId;
           const isProject = !!tab.projectPath;
 
-          // ✅ استخراج اسم پروژه از مسیر
           const projectName = isProject
             ? tab.projectPath!.split(/[/\\]/).pop()?.replace(".margyn", "")
             : null;
@@ -143,7 +147,6 @@ export default function TabsBar({
                 {displayName}
               </Typography>
 
-              {/* ✅ بج نوع فایل */}
               <span
                 className={`px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider shrink-0 ${isProject ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" : "bg-rose-500/10 text-rose-500 border border-rose-500/20"}`}
               >
