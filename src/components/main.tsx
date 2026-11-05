@@ -57,7 +57,7 @@ import {
 } from "@/db";
 import { prewarmAudio } from "@/lib/audio";
 import { sessions, drawings, recentFiles } from "@/db/schema";
-import { eq, and, isNull } from "drizzle-orm"; // ✅ اضافه شدن and و isNull
+import { eq, and, isNull } from "drizzle-orm";
 
 const REQUIRED_END_PHRASE = "END MY SESSION";
 
@@ -75,6 +75,7 @@ function AppContent() {
     isSessionSyncing,
     timerEndsAt,
     startTimer,
+    stopTimer,
   } = useSession();
   const { setTool } = useTool();
   const { setShortcutsEnabled } = useShortcuts();
@@ -236,6 +237,20 @@ function AppContent() {
     syncSessionWithFile(activeFilePath);
   }, [activeFilePath, syncSessionWithFile]);
 
+  // ✅ تشخیص تغییر وضعیت سشن برای فعال کردن دکمه سیو
+  const prevIsActive = useRef(isActive);
+  useEffect(() => {
+    if (prevIsActive.current !== isActive) {
+      setIsDirty(true);
+      if (activeTabId) {
+        setOpenTabs((prev) =>
+          prev.map((t) => (t.id === activeTabId ? { ...t, isDirty: true } : t)),
+        );
+      }
+      prevIsActive.current = isActive;
+    }
+  }, [isActive, activeTabId]);
+
   useEffect(() => {
     if (!isAppReady) return;
     const saveTabsToDb = async () => {
@@ -347,7 +362,15 @@ function AppContent() {
     const initialRecent = (
       await db.select().from(recentFiles).where(eq(recentFiles.filePath, path))
     )[0];
-    const snapshot = { drawings: initialDrawings, recentFile: initialRecent };
+    const initialSessions = await db
+      .select()
+      .from(sessions)
+      .where(eq(sessions.filePath, path));
+    const snapshot = {
+      drawings: initialDrawings,
+      recentFile: initialRecent,
+      sessions: initialSessions,
+    };
 
     const newTabId = Date.now().toString();
     const newTab: OpenTab = {
@@ -361,7 +384,7 @@ function AppContent() {
       currentPage: 1,
       isCompleted: completed === 1,
       scale: initialScale,
-      snapshot, // ✅ ذخیره اسنپ‌شات در تب
+      snapshot,
     };
 
     setOpenTabs((prev) => [...prev, newTab]);
@@ -961,9 +984,15 @@ function AppContent() {
                 .from(recentFiles)
                 .where(eq(recentFiles.filePath, activeFilePath))
             )[0];
+            const freshSessions = await db
+              .select()
+              .from(sessions)
+              .where(eq(sessions.filePath, activeFilePath));
+
             const newSnapshot = {
               drawings: freshDrawings,
               recentFile: freshRecent,
+              sessions: freshSessions,
             };
 
             setOpenTabs((prev) =>
@@ -1013,9 +1042,15 @@ function AppContent() {
               .from(recentFiles)
               .where(eq(recentFiles.filePath, activeFilePath))
           )[0];
+          const freshSessions = await db
+            .select()
+            .from(sessions)
+            .where(eq(sessions.filePath, activeFilePath));
+
           const newSnapshot = {
             drawings: freshDrawings,
             recentFile: freshRecent,
+            sessions: freshSessions,
           };
 
           setOpenTabs((prev) =>
@@ -1064,9 +1099,15 @@ function AppContent() {
               .from(recentFiles)
               .where(eq(recentFiles.filePath, activeFilePath))
           )[0];
+          const freshSessions = await db
+            .select()
+            .from(sessions)
+            .where(eq(sessions.filePath, activeFilePath));
+
           const newSnapshot = {
             drawings: freshDrawings,
             recentFile: freshRecent,
+            sessions: freshSessions,
           };
 
           setOpenTabs((prev) =>
@@ -1236,7 +1277,6 @@ function AppContent() {
     }
   };
 
-  // ✅ بازگردانی دیتابیس به حالت اسنپ‌شات در صورت زدن دکمه Don't Save
   const handleModalDiscard = async () => {
     setShowCloseModal(false);
     setIsDirty(false);
@@ -1265,33 +1305,49 @@ function AppContent() {
           .where(eq(recentFiles.filePath, tabToDiscard.filePath));
       }
 
-      // ۳. بازگردانی آخرین صفحه در سشنِ فعال
-      const activeSessions = await db
-        .select()
-        .from(sessions)
-        .where(
-          and(
-            eq(sessions.filePath, tabToDiscard.filePath),
-            isNull(sessions.endTime),
-          ),
-        );
-      if (activeSessions.length > 0 && tabToDiscard.snapshot.recentFile) {
-        await db
-          .update(sessions)
-          .set({ lastPage: tabToDiscard.snapshot.recentFile.lastPage || 1 })
-          .where(eq(sessions.id, activeSessions[0].id));
+      // ۳. بازگردانی سشن‌ها
+      await db
+        .delete(sessions)
+        .where(eq(sessions.filePath, tabToDiscard.filePath));
+      if (
+        tabToDiscard.snapshot.sessions &&
+        tabToDiscard.snapshot.sessions.length > 0
+      ) {
+        await db.insert(sessions).values(tabToDiscard.snapshot.sessions);
       }
 
       await saveDb(true);
-      // به بوم نقاشی (useInkCanvas) اطلاع میدهیم که تغییراتِ معلق را دور بریزد
-      window.dispatchEvent(new Event("margyn-discard-changes"));
+
+      // ۴. آپدیت کردن وضعیت UI
+      window.dispatchEvent(new Event("margyn-reload-all"));
+      await syncSessionWithFile(tabToDiscard.filePath);
+      stopTimer();
+
+      // ۵. آپدیت استیت تب‌ها
+      if (activeTabId) {
+        setOpenTabs((prev) =>
+          prev.map((t) =>
+            t.id === activeTabId
+              ? {
+                  ...t,
+                  isDirty: false,
+                  currentPage: tabToDiscard.snapshot?.recentFile?.lastPage || 1,
+                  scale: tabToDiscard.snapshot?.recentFile?.scale || 1.3,
+                }
+              : t,
+          ),
+        );
+      }
+    } else {
+      if (activeTabId) {
+        setOpenTabs((prev) =>
+          prev.map((t) =>
+            t.id === activeTabId ? { ...t, isDirty: false } : t,
+          ),
+        );
+      }
     }
 
-    if (activeTabId) {
-      setOpenTabs((prev) =>
-        prev.map((t) => (t.id === activeTabId ? { ...t, isDirty: false } : t)),
-      );
-    }
     if (pendingAction) {
       pendingAction();
       setPendingAction(null);

@@ -15,10 +15,11 @@ export interface OpenTab {
   currentPage: number;
   isCompleted: boolean;
   scale: number;
-  // ✅ اضافه شدن اسنپ‌شات برای بازگردانی تغییرات
+  // ✅ اسنپ‌شات کامل شامل سشن‌ها
   snapshot?: {
     drawings: any[];
     recentFile: any;
+    sessions: any[];
   };
 }
 

@@ -18,7 +18,10 @@ export default function TimerDisplay() {
       return;
     }
     hasEndedRef.current = false;
-    const interval = setInterval(() => setNow(Date.now()), 1000);
+    // ✅ فوراً زمان فعلی را ست میکنیم تا از پرش اولیه جلوگیری شود
+    setNow(Date.now());
+    // ✅ هر ۲۵۰ میلی‌ثانیه چک میکنیم تا دقیقاً در ثانیه صفر به پایان برسد
+    const interval = setInterval(() => setNow(Date.now()), 250);
     return () => clearInterval(interval);
   }, [timerEndsAt]);
 
@@ -37,8 +40,10 @@ export default function TimerDisplay() {
   if (!timerEndsAt) return null;
 
   const remaining = Math.max(0, timerEndsAt - now);
-  const minutes = Math.floor(remaining / 60000);
-  const seconds = Math.floor((remaining % 60000) / 1000);
+  // ✅ استفاده از Math.ceil به جای Math.floor برای رفع باگ 28:01
+  const totalSeconds = Math.ceil(remaining / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
 
   return (
     <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#38bdf8]/10 border border-[#38bdf8]/30 rounded-full">
