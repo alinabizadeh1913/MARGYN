@@ -169,6 +169,29 @@ ipcMain.handle("pdf-clear-active", async () => {
   return true;
 });
 
+// ✅ تابع کمکی برای ذخیره فایل در پوشه library
+const saveBufferToLibrary = (dataBuffer, originalName) => {
+  const hash = crypto.createHash("md5").update(dataBuffer).digest("hex");
+  const safeName = originalName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+  const libraryFilePath = path.join(getLibraryPath(), `${hash}-${safeName}`);
+
+  if (!fs.existsSync(libraryFilePath)) {
+    fs.writeFileSync(libraryFilePath, dataBuffer);
+  }
+  return libraryFilePath;
+};
+
+// ✅ هندلر جدید برای ذخیره امن فایل‌ها در کتابخانه از سمت Renderer
+ipcMain.handle("library-save-file", async (event, { data, name }) => {
+  try {
+    const dataBuffer = Buffer.from(data);
+    return saveBufferToLibrary(dataBuffer, name);
+  } catch (error) {
+    console.error("Failed to save library file:", error);
+    return null;
+  }
+});
+
 ipcMain.handle("dialog:openPdf", async () => {
   try {
     const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
@@ -181,13 +204,7 @@ ipcMain.handle("dialog:openPdf", async () => {
     const originalName = path.basename(originalPath);
     const dataBuffer = fs.readFileSync(originalPath);
 
-    const hash = crypto.createHash("md5").update(dataBuffer).digest("hex");
-    const safeName = originalName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
-    const libraryFilePath = path.join(getLibraryPath(), `${hash}-${safeName}`);
-
-    if (!fs.existsSync(libraryFilePath)) {
-      fs.writeFileSync(libraryFilePath, dataBuffer);
-    }
+    const libraryFilePath = saveBufferToLibrary(dataBuffer, originalName);
 
     return {
       data: new Uint8Array(dataBuffer),
@@ -206,13 +223,7 @@ ipcMain.handle("pdf:read-path", async (event, filePath) => {
     const originalName = path.basename(filePath);
     const dataBuffer = fs.readFileSync(filePath);
 
-    const hash = crypto.createHash("md5").update(dataBuffer).digest("hex");
-    const safeName = originalName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
-    const libraryFilePath = path.join(getLibraryPath(), `${hash}-${safeName}`);
-
-    if (!fs.existsSync(libraryFilePath)) {
-      fs.writeFileSync(libraryFilePath, dataBuffer);
-    }
+    const libraryFilePath = saveBufferToLibrary(dataBuffer, originalName);
 
     return {
       data: new Uint8Array(dataBuffer),
@@ -428,26 +439,30 @@ function createWindow() {
   });
 }
 
+// ✅ اصلاح پروتکل برای لود شدن صحیح تصاویر و فایل‌های استاتیک
 function registerCustomProtocol() {
   protocol.handle("app", (request) => {
-    const url = request.url.replace("app://", "");
-    const [host, ...rest] = url.split("/");
+    try {
+      const parsedUrl = new URL(request.url);
+      const pathname = decodeURIComponent(parsedUrl.pathname);
 
-    let filePath = path.join(__dirname, "..", "out", host, ...rest);
+      let filePath = path.join(__dirname, "..", "out", pathname);
 
-    if (host === "bundle") {
-      filePath = path.join(__dirname, "..", "out", ...rest);
-      if (rest.length === 0 || rest[rest.length - 1] === "") {
-        filePath = path.join(__dirname, "..", "out", "index.html");
+      if (!path.extname(filePath) && !filePath.endsWith("index.html")) {
+        const indexCheck = path.join(filePath, "index.html");
+        if (fs.existsSync(indexCheck)) filePath = indexCheck;
       }
-    }
 
-    if (!path.extname(filePath) && !filePath.endsWith("index.html")) {
-      const indexCheck = path.join(filePath, "index.html");
-      if (fs.existsSync(indexCheck)) filePath = indexCheck;
-    }
+      if (!fs.existsSync(filePath)) {
+        console.error("File not found in app:// protocol:", filePath);
+        return new Response("Not Found", { status: 404 });
+      }
 
-    return net.fetch(pathToFileURL(filePath).toString());
+      return net.fetch(pathToFileURL(filePath).toString());
+    } catch (error) {
+      console.error("Protocol handler error:", error);
+      return new Response("Internal Server Error", { status: 500 });
+    }
   });
 }
 

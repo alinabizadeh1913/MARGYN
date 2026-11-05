@@ -32,6 +32,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   deleteLibraryFile: (path) => ipcRenderer.invoke("library-delete-file", path),
   clearLibraryFolder: () => ipcRenderer.invoke("library-clear-all"),
 
+  // ✅ هندلر جدید برای ذخیره فایل‌ها در library
+  saveLibraryFile: (data, name) =>
+    ipcRenderer.invoke("library-save-file", { data, name }),
+
   selectDirectory: () => ipcRenderer.invoke("dialog:selectDirectory"),
   exportProject: (data, defaultDir) =>
     ipcRenderer.invoke("project:export", { data, defaultDir }),

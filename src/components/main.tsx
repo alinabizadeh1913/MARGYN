@@ -465,8 +465,28 @@ function AppContent() {
               record?.completed || 0,
               record?.projectPath || null,
             );
+          } else {
+            // ✅ اگر فایل PDF پیدا نشد، ببینیم آیا این یک پروژه است؟ اگر بله، پروژه را لود کن (خود ترمیم شوندگی)
+            const db = await getDb();
+            const record = (
+              await db
+                .select()
+                .from(recentFiles)
+                .where(eq(recentFiles.filePath, filePath))
+            )[0];
+
+            if (record && record.projectPath) {
+              await stateRef.current.loadProjectFromPath(record.projectPath);
+            } else {
+              showToast(
+                "File not found. It might have been moved or deleted.",
+                "error",
+              );
+            }
           }
-        } catch (e) {}
+        } catch (e) {
+          showToast("Failed to open file.", "error");
+        }
       }
     });
   }, []);
@@ -589,13 +609,20 @@ function AppContent() {
         if (existingPdf) {
           pdfBytes = new Uint8Array(existingPdf);
         } else {
+          // فایل قبلی پیدا نشد (مسیر جعلی بوده)، مجدد استخراج و در پوشه library ذخیره می‌کنیم
           pdfBytes = Uint8Array.from(
             Buffer.from(projectData.fileBase64, "base64"),
           );
           await window.electronAPI.saveActivePdf(pdfBytes);
-          const newFakePath =
+
+          const realLibraryPath = await window.electronAPI.saveLibraryFile(
+            pdfBytes,
+            displayName + ".pdf",
+          );
+          const newPath =
+            realLibraryPath ||
             "imported-" + Date.now() + "-" + displayName + ".pdf";
-          record = await addRecentFile(displayName, newFakePath, actualPath);
+          record = await addRecentFile(displayName, newPath, actualPath);
         }
         await db
           .update(recentFiles)
@@ -606,9 +633,15 @@ function AppContent() {
           Buffer.from(projectData.fileBase64, "base64"),
         );
         await window.electronAPI.saveActivePdf(pdfBytes);
-        const newFakePath =
+
+        const realLibraryPath = await window.electronAPI.saveLibraryFile(
+          pdfBytes,
+          displayName + ".pdf",
+        );
+        const newPath =
+          realLibraryPath ||
           "imported-" + Date.now() + "-" + displayName + ".pdf";
-        record = await addRecentFile(displayName, newFakePath, actualPath);
+        record = await addRecentFile(displayName, newPath, actualPath);
       }
 
       if (record && pdfBytes) {

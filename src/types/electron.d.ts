@@ -36,6 +36,12 @@ declare global {
       deleteLibraryFile: (filePath: string) => Promise<boolean>;
       clearLibraryFolder: () => Promise<boolean>;
 
+      // ✅ تایپ جدید
+      saveLibraryFile: (
+        data: Uint8Array,
+        name: string,
+      ) => Promise<string | null>;
+
       selectDirectory: () => Promise<string | null>;
       exportProject: (
         data: any,
