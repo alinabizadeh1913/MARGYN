@@ -64,7 +64,8 @@ To generate the standalone installer executable, run the following command in yo
 
 ```bash
 npm run desktop:win
+```
 
 Once the build process is successfully completed, navigate to the release directory in the project root. There, you will find the .exe installer. Simply run it to install MARGYN on your system.
 
-<div align="center"> <p>Built with ❤️ by <b>Ali Nabizadeh</b></p> <p> <a href="mailto:alinabizdeh1913@gmail.com">alinabizdeh1913@gmail.com</a> • <span>© 2026 MARGYN</span> </p> </div> ```
+<div align="center"> <p>Built with ❤️ by <b>Ali Nabizadeh</b></p> <p> <a href="mailto:alinabizdeh1913@gmail.com">alinabizdeh1913@gmail.com</a> • <span>© 2026 MARGYN</span> </p> </div>
