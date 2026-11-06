@@ -7,6 +7,7 @@ import React, {
   useEffect,
   useRef,
   ReactNode,
+  useCallback,
 } from "react";
 import { getSetting, setSetting } from "@/db";
 import { useShortcuts } from "./ShortcutProvider";
@@ -31,6 +32,20 @@ export const DEFAULT_COLORS = [
   "#a855f7",
 ];
 
+export interface ToolState {
+  tool: ToolType;
+  color: string;
+  size: number;
+  customColor: string;
+}
+
+const DEFAULT_STATE: ToolState = {
+  tool: "pen",
+  color: "#38bdf8",
+  size: 12,
+  customColor: "#ff00ff",
+};
+
 /** layout-independent (works with Persian keyboards too) */
 const TOOL_KEYS: Record<string, ToolType> = {
   KeyV: "select",
@@ -43,24 +58,18 @@ const TOOL_KEYS: Record<string, ToolType> = {
   KeyA: "arrow",
 };
 
-interface ToolContextType {
-  tool: ToolType;
+interface ToolContextType extends ToolState {
   setTool: (t: ToolType) => void;
-  color: string;
   setColor: (c: string) => void;
-  customColor: string;
   updateCustomColor: (c: string) => Promise<void>;
-  size: number;
   setSize: (s: number) => void;
 }
 
 const ToolContext = createContext<ToolContextType | undefined>(undefined);
 
 export function ToolProvider({ children }: { children: ReactNode }) {
-  const [tool, setTool] = useState<ToolType>("pen");
-  const [color, setColor] = useState("#38bdf8");
-  const [customColor, setCustomColor] = useState("#ff00ff");
-  const [size, setSize] = useState(12);
+  const [state, setState] = useState<ToolState>(DEFAULT_STATE);
+  const activeTabIdRef = useRef<string | null>(null);
 
   const { isShortcutsEnabled } = useShortcuts();
   const isShortcutsEnabledRef = useRef(isShortcutsEnabled);
@@ -69,6 +78,90 @@ export function ToolProvider({ children }: { children: ReactNode }) {
     isShortcutsEnabledRef.current = isShortcutsEnabled;
   }, [isShortcutsEnabled]);
 
+  // لود کردن رنگ سفارشی به عنوان پیش‌فرض اولیه
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const savedColor = await getSetting("customColor");
+        if (savedColor) {
+          setState((prev) => ({ ...prev, customColor: savedColor }));
+        }
+      } catch (err) {}
+    };
+    loadSettings();
+  }, []);
+
+  // گوش دادن به رویداد تغییر تب
+  useEffect(() => {
+    const handleTabSwitch = (
+      e: CustomEvent<{ tabId: string | null; toolState?: ToolState }>,
+    ) => {
+      const { tabId, toolState } = e.detail;
+      activeTabIdRef.current = tabId;
+
+      if (toolState) {
+        setState((prev) => ({
+          ...prev,
+          ...toolState,
+        }));
+      } else {
+        // اگر تب جدیدی باز شده و وضعیتی ندارد، به حالت پیش‌فرض برگرد
+        setState((prev) => ({
+          ...DEFAULT_STATE,
+          customColor: prev.customColor, // رنگ سفارشی کلی را حفظ کن
+        }));
+      }
+    };
+
+    window.addEventListener(
+      "margyn-tab-switched",
+      handleTabSwitch as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        "margyn-tab-switched",
+        handleTabSwitch as EventListener,
+      );
+    };
+  }, []);
+
+  // آپدیت کردن وضعیت و اطلاع‌رسانی به AppContent برای ذخیره در دیتابیس
+  const updateState = useCallback((updates: Partial<ToolState>) => {
+    setState((prev) => {
+      const next = { ...prev, ...updates };
+      if (activeTabIdRef.current) {
+        window.dispatchEvent(
+          new CustomEvent("margyn-tool-state-changed", {
+            detail: { tabId: activeTabIdRef.current, toolState: next },
+          }),
+        );
+      }
+      return next;
+    });
+  }, []);
+
+  const setTool = useCallback(
+    (t: ToolType) => updateState({ tool: t }),
+    [updateState],
+  );
+  const setColor = useCallback(
+    (c: string) => updateState({ color: c }),
+    [updateState],
+  );
+  const setSize = useCallback(
+    (s: number) => updateState({ size: s }),
+    [updateState],
+  );
+
+  const updateCustomColor = useCallback(
+    async (c: string) => {
+      updateState({ customColor: c, color: c });
+      await setSetting("customColor", c);
+    },
+    [updateState],
+  );
+
+  // شورتکات‌های کیبورد
   useEffect(() => {
     const handleColorKeys = (e: KeyboardEvent) => {
       if (!isShortcutsEnabledRef.current) return;
@@ -98,34 +191,15 @@ export function ToolProvider({ children }: { children: ReactNode }) {
     };
     window.addEventListener("keydown", handleColorKeys);
     return () => window.removeEventListener("keydown", handleColorKeys);
-  }, []);
-
-  useEffect(() => {
-    const loadSettings = async () => {
-      try {
-        const savedColor = await getSetting("customColor");
-        if (savedColor) setCustomColor(savedColor);
-      } catch (err) {}
-    };
-    loadSettings();
-  }, []);
-
-  const updateCustomColor = async (newColor: string) => {
-    setCustomColor(newColor);
-    setColor(newColor);
-    await setSetting("customColor", newColor);
-  };
+  }, [setTool, setColor]);
 
   return (
     <ToolContext.Provider
       value={{
-        tool,
+        ...state,
         setTool,
-        color,
         setColor,
-        customColor,
         updateCustomColor,
-        size,
         setSize,
       }}
     >

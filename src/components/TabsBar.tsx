@@ -2,6 +2,7 @@
 
 import React, { useRef, useState, useEffect } from "react";
 import { useContextMenu } from "@/providers/ContextMenuProvider";
+import { ToolState } from "@/providers/ToolProvider";
 import {
   FileText,
   FolderArchive,
@@ -26,7 +27,8 @@ export interface OpenTab {
   isCompleted: boolean;
   scale: number;
   canvasBg: string;
-  isBlank?: boolean; // ✅ اضافه شد
+  isBlank?: boolean;
+  toolState?: ToolState;
   snapshot?: {
     drawings: any[];
     recentFile: any;

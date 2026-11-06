@@ -39,3 +39,11 @@ export const recentFiles = sqliteTable("recent_files", {
   scale: real("scale").default(1.3),
   canvasBg: text("canvas_bg").default("#ffffff"),
 });
+
+export const notes = sqliteTable("notes", {
+  id: text("id").primaryKey(),
+  filePath: text("file_path").notNull(),
+  pageNumber: integer("page_number").notNull(),
+  content: text("content").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});

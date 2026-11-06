@@ -1,0 +1,1 @@
+export const REQUIRED_END_PHRASE = "END MY SESSION";

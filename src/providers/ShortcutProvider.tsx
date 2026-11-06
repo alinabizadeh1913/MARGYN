@@ -25,7 +25,9 @@ export type ShortcutAction =
   | "toggleMargin"
   | "saveProject"
   | "importProject"
-  | "exportProject";
+  | "exportProject"
+  | "newBlank"
+  | "note"; // ✅ اضافه شد
 
 export const DEFAULT_SHORTCUTS: Record<ShortcutAction, string> = {
   pen: "p",
@@ -35,12 +37,14 @@ export const DEFAULT_SHORTCUTS: Record<ShortcutAction, string> = {
   openPdf: "ctrl+o",
   closePdf: "ctrl+w",
   switchTab: "ctrl+tab",
-  clearPage: "ctrl+shift+delete", // ✅ تغییر یافت تا با دکمه Delete تداخل نداشته باشد
+  clearPage: "delete",
   clearAll: "shift+delete",
   toggleMargin: "ctrl+b",
   saveProject: "ctrl+s",
   importProject: "ctrl+i",
   exportProject: "ctrl+e",
+  newBlank: "ctrl+n",
+  note: "ctrl+t", // ✅ اضافه شد
 };
 
 interface ShortcutContextType {
@@ -78,9 +82,11 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
                 const k = key as ShortcutAction;
                 let val = parsed[k] || DEFAULT_SHORTCUTS[k];
 
-                // ✅ مایگریشن: اگر از نسخه قبلی "delete" ذخیره شده بود، به میانبر جدید تغییر کند
-                if (k === "clearPage" && val === "delete") {
-                  val = "ctrl+shift+delete";
+                if (
+                  k === "clearPage" &&
+                  (val === "delete" || val === "ctrl+shift+delete")
+                ) {
+                  val = "delete";
                 }
 
                 if (val.includes("shiftleft") || val.includes("shiftright")) {
@@ -203,6 +209,8 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
       if (
         pressedString === "ctrl+o" ||
         pressedString === "ctrl+w" ||
+        pressedString === "ctrl+n" ||
+        pressedString === "ctrl+t" || // ✅ اضافه شد
         pressedString === "ctrl+tab" ||
         pressedString === "ctrl+enter" ||
         pressedString === "ctrl+shift+enter" ||
@@ -249,11 +257,6 @@ export function useShortcuts() {
   return context;
 }
 
-/**
- * OPTIMIZATION: the callback is stored in a ref, so inline
- * `useShortcut("pen", () => setTool("pen"))` handlers no longer
- * cause the window listener to re-subscribe on every render.
- */
 export function useShortcut(action: ShortcutAction, callback: () => void) {
   const { shortcuts } = useShortcuts();
   const expectedKey = shortcuts[action];

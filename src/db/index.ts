@@ -1,7 +1,7 @@
 import initSqlJs, { Database as SqlJsDatabase } from "sql.js";
 import { drizzle } from "drizzle-orm/sql-js";
 import * as schema from "./schema";
-import { sessions, drawings, settings, recentFiles } from "./schema";
+import { sessions, drawings, settings, recentFiles, notes } from "./schema";
 import { and, eq, desc } from "drizzle-orm";
 
 let db: any = null;
@@ -38,6 +38,7 @@ export async function getDb() {
         CREATE TABLE IF NOT EXISTS drawings (id TEXT PRIMARY KEY, session_id TEXT, file_path TEXT, page_number INTEGER NOT NULL, target TEXT NOT NULL DEFAULT 'margin', data TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
         CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS recent_files (id TEXT PRIMARY KEY, name TEXT NOT NULL, file_path TEXT NOT NULL, last_opened INTEGER NOT NULL, completed INTEGER DEFAULT 0, project_path TEXT, last_page INTEGER DEFAULT 1, scale REAL DEFAULT 1.3, canvas_bg TEXT DEFAULT '#ffffff');
+        CREATE TABLE IF NOT EXISTS notes (id TEXT PRIMARY KEY, file_path TEXT NOT NULL, page_number INTEGER NOT NULL, content TEXT NOT NULL, updated_at INTEGER NOT NULL);
       `);
 
       try {
@@ -90,7 +91,6 @@ export async function getDb() {
           "ALTER TABLE recent_files ADD COLUMN scale REAL DEFAULT 1.3",
         );
       }
-      // ✅ مایگریشن جدید برای بک‌گراند
       try {
         sqliteInstance.run("SELECT canvas_bg FROM recent_files LIMIT 1");
       } catch (e) {
@@ -296,13 +296,14 @@ export async function setSetting(key: string, value: string) {
 export async function resetDatabase() {
   if (!sqliteInstance) return;
   sqliteInstance.run(
-    `DROP TABLE IF EXISTS sessions; DROP TABLE IF EXISTS drawings; DROP TABLE IF EXISTS settings; DROP TABLE IF EXISTS recent_files;`,
+    `DROP TABLE IF EXISTS sessions; DROP TABLE IF EXISTS drawings; DROP TABLE IF EXISTS settings; DROP TABLE IF EXISTS recent_files; DROP TABLE IF EXISTS notes;`,
   );
   sqliteInstance.run(`
     CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, file_path TEXT, start_time INTEGER NOT NULL, end_time INTEGER, start_page INTEGER NOT NULL, end_page INTEGER, last_page INTEGER, pages_read INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS drawings (id TEXT PRIMARY KEY, session_id TEXT, file_path TEXT, page_number INTEGER NOT NULL, target TEXT NOT NULL DEFAULT 'margin', data TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS recent_files (id TEXT PRIMARY KEY, name TEXT NOT NULL, file_path TEXT NOT NULL, last_opened INTEGER NOT NULL, completed INTEGER DEFAULT 0, project_path TEXT, last_page INTEGER DEFAULT 1, scale REAL DEFAULT 1.3, canvas_bg TEXT DEFAULT '#ffffff');
+    CREATE TABLE IF NOT EXISTS notes (id TEXT PRIMARY KEY, file_path TEXT NOT NULL, page_number INTEGER NOT NULL, content TEXT NOT NULL, updated_at INTEGER NOT NULL);
   `);
   await saveDb(true);
 }
@@ -453,7 +454,6 @@ export async function deleteSessionById(id: string) {
   }
 }
 
-// ✅ تابع جدید برای آپدیت بک‌گراند
 export async function updateRecentFileCanvasBg(
   filePath: string,
   canvasBg: string,
@@ -466,4 +466,56 @@ export async function updateRecentFileCanvasBg(
       .where(eq(recentFiles.filePath, filePath));
     await saveDb();
   } catch (e) {}
+}
+
+// ✅ توابع مربوط به نوت‌ها
+export async function getNote(filePath: string, pageNumber: number) {
+  if (!filePath) return "";
+  try {
+    const db = await getDb();
+    const res = await db
+      .select()
+      .from(notes)
+      .where(
+        and(eq(notes.filePath, filePath), eq(notes.pageNumber, pageNumber)),
+      );
+    return res.length > 0 ? res[0].content : "";
+  } catch (e) {
+    return "";
+  }
+}
+
+export async function saveNote(
+  filePath: string,
+  pageNumber: number,
+  content: string,
+) {
+  if (!filePath) return;
+  try {
+    const db = await getDb();
+    const existing = await db
+      .select()
+      .from(notes)
+      .where(
+        and(eq(notes.filePath, filePath), eq(notes.pageNumber, pageNumber)),
+      );
+
+    if (existing.length > 0) {
+      await db
+        .update(notes)
+        .set({ content, updatedAt: Date.now() })
+        .where(eq(notes.id, existing[0].id));
+    } else {
+      await db.insert(notes).values({
+        id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
+        filePath,
+        pageNumber,
+        content,
+        updatedAt: Date.now(),
+      });
+    }
+    await saveDb(true);
+  } catch (e) {
+    console.error("Failed to save note", e);
+  }
 }

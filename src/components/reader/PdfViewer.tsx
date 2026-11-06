@@ -24,6 +24,7 @@ import {
   Lock,
   Hash,
   FileDown,
+  Edit3, // ✅ اضافه شد
 } from "lucide-react";
 import Typography from "@/typography";
 import PdfDrawingLayer from "./PdfDrawingLayer";
@@ -58,13 +59,14 @@ interface PdfViewerProps {
   fileData: Uint8Array | null;
   filePath?: string;
   initialScale?: number;
-  canvasBg: string; // ✅ پراپ جدید
-  onCanvasBgChange: (color: string) => void; // ✅ پراپ جدید
+  canvasBg: string;
+  onCanvasBgChange: (color: string) => void;
   onDocumentLoad?: (totalPages: number) => void;
   onDropPdf?: (file: File) => void;
   onOpenPdf?: () => void;
   onScaleChange?: (scale: number) => void;
   onTextLayerStatus?: (hasText: boolean) => void;
+  onOpenNote?: () => void; // ✅ اضافه شد
 }
 
 export default function PdfViewer({
@@ -78,6 +80,7 @@ export default function PdfViewer({
   onOpenPdf,
   onScaleChange,
   onTextLayerStatus,
+  onOpenNote, // ✅ اضافه شد
 }: PdfViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
@@ -97,7 +100,7 @@ export default function PdfViewer({
   const holdInterval = useRef<NodeJS.Timeout | null>(null);
 
   const { isActive, lastFocusPage, currentPage, setCurrentPage } = useSession();
-  const { tool } = useTool(); // ✅ canvasBg و setCanvasBg حذف شدند
+  const { tool } = useTool();
 
   const [loadedDoc, setLoadedDoc] = useState<LoadedDoc | null>(null);
   const [scale, setScale] = useState(initialScale || DEFAULT_SCALE);
@@ -526,7 +529,6 @@ export default function PdfViewer({
     }
   }, [currentPage, isActive, setCurrentPage, isNavigationLocked]);
 
-  // ✅ اصلاح ایونت Wheel برای پشتیبانی از Ctrl + Wheel
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -760,6 +762,17 @@ export default function PdfViewer({
       style={{ backgroundColor: canvasBg }}
     >
       <div className="absolute top-8 right-8 flex flex-col gap-4 z-50">
+        {/* ✅ دکمه نوت اضافه شد */}
+        {onOpenNote && (
+          <button
+            onClick={onOpenNote}
+            className="bg-white/95 backdrop-blur-xl border border-zinc-200 p-2.5 rounded-2xl shadow-sm transition-all duration-200 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100"
+            title="Page Notes (Ctrl+T)"
+          >
+            <Edit3 size={20} />
+          </button>
+        )}
+
         <div className="bg-white/95 backdrop-blur-xl border border-zinc-200 p-2 rounded-2xl flex flex-col gap-1.5 shadow-sm">
           <button
             onClick={toggleFullscreen}
@@ -902,7 +915,6 @@ export default function PdfViewer({
         </div>
       )}
 
-      {/* Modals ... (بدون تغییر) */}
       {showBackModal && (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40 backdrop-blur-md transition-all duration-300">
           <div className="bg-[#121214] border border-rose-500/30 p-8 rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] w-full max-w-lg flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">

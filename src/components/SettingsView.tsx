@@ -18,7 +18,6 @@ import { resetDatabase, getSetting, setSetting } from "@/db";
 import { useShortcuts, ShortcutAction } from "@/providers/ShortcutProvider";
 import { setAudioEnabled } from "@/lib/audio";
 import ShortcutInput from "./ShortcutInput";
-// import DevSessionInspector from "./DevSessionInspector"; // ✅ کامنت شد
 
 const REQUIRED_RESET_PHRASE = "DELETE ALL MY DATA";
 
@@ -131,6 +130,8 @@ export default function SettingsView() {
     saveProject: "Save Project",
     importProject: "Import Project",
     exportProject: "Export Project",
+    newBlank: "Create New Blank Document",
+    note: "Open Page Notes", // ✅ اضافه شد
   };
 
   return (
@@ -366,9 +367,6 @@ export default function SettingsView() {
               </Typography>
             </div>
           </section>
-
-          {/* ✅ کامپوننت DevSessionInspector کامنت شد */}
-          {/* <DevSessionInspector /> */}
         </div>
       </div>
 
