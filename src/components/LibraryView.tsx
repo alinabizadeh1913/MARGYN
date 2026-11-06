@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { getRecentFiles, clearRecentFiles, deleteRecentFile } from "@/db";
+import { useContextMenu } from "@/providers/ContextMenuProvider";
 import {
   BookOpen,
   Trash2,
@@ -10,6 +11,7 @@ import {
   AlertTriangle,
   Download,
   FolderArchive,
+  FolderOpen,
 } from "lucide-react";
 import Typography from "@/typography";
 
@@ -33,6 +35,8 @@ export default function LibraryView({
   const [isLoading, setIsLoading] = useState(true);
   const [showConfirmClear, setShowConfirmClear] = useState(false);
   const [activeTab, setActiveTab] = useState<"pdfs" | "projects">("pdfs");
+
+  const { openMenu } = useContextMenu(); // ✅ اضافه شد
 
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
@@ -202,6 +206,31 @@ export default function LibraryView({
                 <div
                   key={file.id}
                   onClick={() => onSelectFile(file.filePath)}
+                  // ✅ هندلر راست کلیک برای هر فایل در کتابخانه
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    openMenu(e.clientX, e.clientY, [
+                      {
+                        label: isProject ? "Open Project" : "Open PDF",
+                        icon: FolderOpen,
+                        onClick: () => onSelectFile(file.filePath),
+                      },
+                      { separator: true },
+                      {
+                        label: "Remove from Library",
+                        icon: Trash2,
+                        danger: true,
+                        onClick: () =>
+                          handleDeleteSingle(
+                            { stopPropagation: () => {} } as any,
+                            file.id,
+                            file.filePath,
+                          ),
+                      },
+                    ]);
+                  }}
                   className="group flex items-center justify-between p-5 bg-[#121214] border border-[#27272a] rounded-2xl cursor-pointer hover:bg-[#18181b] hover:border-[#38bdf8]/50 transition-all duration-300 relative overflow-hidden"
                 >
                   <div className="absolute inset-0 bg-gradient-to-r from-[#38bdf8]/0 via-[#38bdf8]/0 to-[#38bdf8]/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />

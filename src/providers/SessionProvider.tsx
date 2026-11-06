@@ -32,6 +32,8 @@ interface SessionContextType {
   timerDurationMs: number | null;
   startTimer: (durationMs: number) => Promise<void>;
   stopTimer: () => Promise<void>;
+  activeSessionFilePath: string | null; // ✅ اضافه شد
+  timerFile: string | null; // ✅ اضافه شد
 }
 
 const SessionContext = createContext<SessionContextType | undefined>(undefined);
@@ -47,20 +49,25 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [timerEndsAt, setTimerEndsAt] = useState<number | null>(null);
   const [timerDurationMs, setTimerDurationMs] = useState<number | null>(null);
 
+  // ✅ استیت‌های جدید برای مدیریت فایل‌ها
+  const [activeSessionFilePath, setActiveSessionFilePath] = useState<
+    string | null
+  >(null);
+  const [currentFilePath, setCurrentFilePath] = useState<string | null>(null);
+  const [timerFile, setTimerFile] = useState<string | null>(null);
+
   const lastPageTimerRef = useRef<NodeJS.Timeout | null>(null);
   const pendingPageRef = useRef<{ sessionId: string; page: number } | null>(
     null,
   );
 
-  // OPTIMIZATION: no more setSetting on every page turn.
-  // The `recent_files.last_page` column + the before-quit flush
-  // already cover persistence. This drops ~20 DB writes/sec during
-  // rapid navigation down to a single debounced write.
   const setCurrentPage = useCallback(async (page: number) => {
     setCurrentPageState(page);
   }, []);
 
+  // ✅ آپدیت سینک کردن با در نظر گرفتن سشن‌های فایل‌های دیگر
   const syncSessionWithFile = useCallback(async (filePath: string) => {
+    setCurrentFilePath(filePath);
     if (!filePath) {
       setIsSessionSyncing(false);
       return;
@@ -70,19 +77,49 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     try {
       const db = await getDb();
 
+      // چک کردن تمام سشن‌های باز در کل نرم‌افزار
       const openSessions = await db
         .select()
         .from(sessions)
-        .where(and(isNull(sessions.endTime), eq(sessions.filePath, filePath)));
+        .where(isNull(sessions.endTime));
 
       if (openSessions.length > 0) {
         const active = openSessions[0];
-        setIsActive(true);
-        setSessionId(active.id);
-        setStartPage(active.startPage);
-        const targetPage = active.lastPage || active.startPage;
-        setCurrentPageState(targetPage);
+        setActiveSessionFilePath(active.filePath);
+
+        if (active.filePath === filePath) {
+          // سشن متعلق به همین فایل است
+          setIsActive(true);
+          setSessionId(active.id);
+          setStartPage(active.startPage);
+          const targetPage = active.lastPage || active.startPage;
+          setCurrentPageState(targetPage);
+        } else {
+          // سشن متعلق به فایل دیگری است
+          setIsActive(false);
+          setSessionId(null);
+          setStartPage(null);
+
+          const fileRecord = await db
+            .select()
+            .from(recentFiles)
+            .where(eq(recentFiles.filePath, filePath));
+
+          if (
+            fileRecord.length > 0 &&
+            fileRecord[0].lastPage &&
+            fileRecord[0].lastPage > 1
+          ) {
+            setLastFocusPage(null);
+            setCurrentPageState(fileRecord[0].lastPage);
+          } else {
+            setLastFocusPage(null);
+            setCurrentPageState(1);
+          }
+        }
       } else {
+        // هیچ سشن بازی در کل نرم‌افزار وجود ندارد
+        setActiveSessionFilePath(null);
         setIsActive(false);
         setSessionId(null);
         setStartPage(null);
@@ -131,9 +168,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setSessionId(null);
     setStartPage(null);
     setLastFocusPage(null);
+    setActiveSessionFilePath(null);
   }, []);
 
-  // Debounced write of `sessions.last_page` (1.5s) — unchanged behavior.
   useEffect(() => {
     if (isActive && sessionId) {
       pendingPageRef.current = { sessionId, page: currentPage };
@@ -159,10 +196,30 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     };
   }, [currentPage, isActive, sessionId]);
 
+  // ✅ استارت سشن با چک کردن قفل سراسری
   const startSession = useCallback(
     async (filePath: string, totalPages?: number) => {
       if (!filePath) return;
       try {
+        const db = await getDb();
+        const openSessions = await db
+          .select()
+          .from(sessions)
+          .where(isNull(sessions.endTime));
+
+        if (openSessions.length > 0) {
+          const existing = openSessions[0];
+          if (existing.filePath !== filePath) {
+            const recents = await db
+              .select()
+              .from(recentFiles)
+              .where(eq(recentFiles.filePath, existing.filePath));
+            const name = recents.length > 0 ? recents[0].name : "another file";
+            // پرتاب ارور برای نمایش در UI
+            throw new Error(`SESSION_ACTIVE:${name}`);
+          }
+        }
+
         playStartSound();
         const newId = uuidv4();
 
@@ -172,7 +229,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           if (totalPages && targetPage > totalPages) targetPage = totalPages;
         }
 
-        const db = await getDb();
         await db.insert(sessions).values({
           id: newId,
           filePath,
@@ -186,8 +242,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setStartPage(targetPage);
         setCurrentPageState(targetPage);
         setIsActive(true);
-      } catch (error) {
+        setActiveSessionFilePath(filePath); // ✅ ثبت فایل در حال سشن
+      } catch (error: any) {
         console.error("Failed to start session:", error);
+        if (error.message && error.message.startsWith("SESSION_ACTIVE:")) {
+          throw error; // به UI پاس می‌دهیم
+        }
         window.dispatchEvent(
           new CustomEvent("margyn-save-error", {
             detail: "Failed to start session. Please try again.",
@@ -197,6 +257,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     },
     [currentPage, lastFocusPage],
   );
+
+  const stopTimer = useCallback(async () => {
+    setTimerEndsAt(null);
+    setTimerDurationMs(null);
+    setTimerFile(null);
+    await setSetting("timerEndsAt", "");
+    await setSetting("timerDurationMs", "");
+    await setSetting("timerFile", "");
+  }, []);
 
   const endSession = useCallback(async () => {
     if (!sessionId || startPage === null) return;
@@ -209,6 +278,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       pendingPageRef.current = null;
 
       playEndSound();
+      await stopTimer();
       const pagesRead = Math.abs(currentPage - startPage) + 1;
 
       const db = await getDb();
@@ -227,45 +297,46 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setSessionId(null);
       setStartPage(null);
       setLastFocusPage(currentPage);
+      setActiveSessionFilePath(null); // ✅ آزادسازی قفل
     } catch (error) {
       console.error("Failed to end session:", error);
     }
-  }, [sessionId, startPage, currentPage]);
+  }, [sessionId, startPage, currentPage, stopTimer]);
 
-  const startTimer = useCallback(async (durationMs: number) => {
-    const endsAt = Date.now() + durationMs;
-    setTimerEndsAt(endsAt);
-    setTimerDurationMs(durationMs);
-    await setSetting("timerEndsAt", endsAt.toString());
-    await setSetting("timerDurationMs", durationMs.toString());
-  }, []);
-
-  const stopTimer = useCallback(async () => {
-    setTimerEndsAt(null);
-    setTimerDurationMs(null);
-    await setSetting("timerEndsAt", "");
-    await setSetting("timerDurationMs", "");
-  }, []);
+  // ✅ استارت تایمر با ثبت نام فایل
+  const startTimer = useCallback(
+    async (durationMs: number) => {
+      const endsAt = Date.now() + durationMs;
+      setTimerEndsAt(endsAt);
+      setTimerDurationMs(durationMs);
+      setTimerFile(currentFilePath);
+      await setSetting("timerEndsAt", endsAt.toString());
+      await setSetting("timerDurationMs", durationMs.toString());
+      await setSetting("timerFile", currentFilePath || "");
+    },
+    [currentFilePath],
+  );
 
   useEffect(() => {
     const loadTimer = async () => {
       try {
         const endsAtStr = await getSetting("timerEndsAt");
         const durationStr = await getSetting("timerDurationMs");
+        const fileStr = await getSetting("timerFile");
         if (endsAtStr && durationStr) {
           const endsAtNum = parseInt(endsAtStr, 10);
           if (endsAtNum > Date.now()) {
             setTimerEndsAt(endsAtNum);
             setTimerDurationMs(parseInt(durationStr, 10));
+            setTimerFile(fileStr || null);
           } else {
-            await setSetting("timerEndsAt", "");
-            await setSetting("timerDurationMs", "");
+            await stopTimer();
           }
         }
       } catch {}
     };
     loadTimer();
-  }, []);
+  }, [stopTimer]);
 
   const value = useMemo(
     () => ({
@@ -284,6 +355,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       timerDurationMs,
       startTimer,
       stopTimer,
+      activeSessionFilePath, // ✅
+      timerFile, // ✅
     }),
     [
       isActive,
@@ -301,6 +374,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       clearSessionState,
       startTimer,
       stopTimer,
+      activeSessionFilePath,
+      timerFile,
     ],
   );
 

@@ -36,5 +36,6 @@ export const recentFiles = sqliteTable("recent_files", {
   completed: integer("completed").default(0),
   projectPath: text("project_path"),
   lastPage: integer("last_page").default(1),
-  scale: real("scale").default(1.3), // ✅ ستون جدید
+  scale: real("scale").default(1.3),
+  canvasBg: text("canvas_bg").default("#ffffff"),
 });

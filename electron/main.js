@@ -21,6 +21,10 @@ let isRecordingShortcut = false;
 const isDev = process.env.NODE_ENV === "development";
 const devUrl = process.env.ELECTRON_START_URL || "http://localhost:3000";
 
+if (isDev) {
+  app.setPath("userData", path.join(app.getPath("appData"), "margyn-dev"));
+}
+
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
   app.quit();
@@ -62,6 +66,7 @@ const getPdfPath = () =>
   path.join(app.getPath("userData"), "active_document.pdf");
 const getLibraryPath = () => path.join(app.getPath("userData"), "library");
 const getKeyPath = () => path.join(app.getPath("userData"), "margyn.key");
+const getLastDirPath = () => path.join(app.getPath("userData"), "last_dir.txt");
 
 if (!fs.existsSync(getLibraryPath())) {
   try {
@@ -69,7 +74,21 @@ if (!fs.existsSync(getLibraryPath())) {
   } catch (e) {}
 }
 
-// ✅ کلید رمزنگاری per-install با safeStorage
+// ✅ توابع مدیریت آخرین مسیر
+const getLastDir = () => {
+  try {
+    const p = getLastDirPath();
+    if (fs.existsSync(p)) return fs.readFileSync(p, "utf-8");
+  } catch (e) {}
+  return app.getPath("documents");
+};
+
+const setLastDir = (dir) => {
+  try {
+    fs.writeFileSync(getLastDirPath(), dir);
+  } catch (e) {}
+};
+
 ipcMain.handle("crypto-get-key", async () => {
   try {
     const keyPath = getKeyPath();
@@ -122,7 +141,10 @@ ipcMain.handle("window-is-maximized", () =>
 
 ipcMain.on("app-force-close", () => {
   forceQuit = true;
-  if (mainWindow) mainWindow.close();
+  if (mainWindow) {
+    mainWindow.destroy();
+  }
+  app.quit();
 });
 
 ipcMain.handle("db-load", async () => {
@@ -169,7 +191,6 @@ ipcMain.handle("pdf-clear-active", async () => {
   return true;
 });
 
-// ✅ تابع کمکی برای ذخیره فایل در پوشه library
 const saveBufferToLibrary = (dataBuffer, originalName) => {
   const hash = crypto.createHash("md5").update(dataBuffer).digest("hex");
   const safeName = originalName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
@@ -181,7 +202,6 @@ const saveBufferToLibrary = (dataBuffer, originalName) => {
   return libraryFilePath;
 };
 
-// ✅ هندلر جدید برای ذخیره امن فایل‌ها در کتابخانه از سمت Renderer
 ipcMain.handle("library-save-file", async (event, { data, name }) => {
   try {
     const dataBuffer = Buffer.from(data);
@@ -192,25 +212,30 @@ ipcMain.handle("library-save-file", async (event, { data, name }) => {
   }
 });
 
+// ✅ هندلر باز کردن PDF با قابلیت انتخاب چندگانه و ذخیره مسیر
 ipcMain.handle("dialog:openPdf", async () => {
   try {
     const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
-      properties: ["openFile"],
+      properties: ["openFile", "multiSelections"],
       filters: [{ name: "PDF Documents", extensions: ["pdf"] }],
+      defaultPath: getLastDir(),
     });
     if (canceled || filePaths.length === 0) return null;
 
-    const originalPath = filePaths[0];
-    const originalName = path.basename(originalPath);
-    const dataBuffer = fs.readFileSync(originalPath);
+    setLastDir(path.dirname(filePaths[0]));
 
-    const libraryFilePath = saveBufferToLibrary(dataBuffer, originalName);
-
-    return {
-      data: new Uint8Array(dataBuffer),
-      name: originalName,
-      libraryPath: libraryFilePath,
-    };
+    const results = [];
+    for (const originalPath of filePaths) {
+      const originalName = path.basename(originalPath);
+      const dataBuffer = fs.readFileSync(originalPath);
+      const libraryFilePath = saveBufferToLibrary(dataBuffer, originalName);
+      results.push({
+        data: new Uint8Array(dataBuffer),
+        name: originalName,
+        libraryPath: libraryFilePath,
+      });
+    }
+    return results;
   } catch (error) {
     return null;
   }
@@ -222,7 +247,6 @@ ipcMain.handle("pdf:read-path", async (event, filePath) => {
 
     const originalName = path.basename(filePath);
     const dataBuffer = fs.readFileSync(filePath);
-
     const libraryFilePath = saveBufferToLibrary(dataBuffer, originalName);
 
     return {
@@ -260,8 +284,10 @@ ipcMain.handle("library-clear-all", async () => {
 ipcMain.handle("dialog:selectDirectory", async () => {
   const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
     properties: ["openDirectory", "createDirectory"],
+    defaultPath: getLastDir(),
   });
   if (canceled || filePaths.length === 0) return null;
+  setLastDir(filePaths[0]);
   return filePaths[0];
 });
 
@@ -274,7 +300,7 @@ ipcMain.handle("project:export", async (event, { data, defaultDir }) => {
 
     const defaultPath = defaultDir
       ? path.join(defaultDir, defaultName)
-      : path.join(app.getPath("documents"), defaultName);
+      : path.join(getLastDir(), defaultName);
 
     const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
       title: "Export Margyn Project",
@@ -283,6 +309,7 @@ ipcMain.handle("project:export", async (event, { data, defaultDir }) => {
     });
     if (canceled || !filePath) return null;
 
+    setLastDir(path.dirname(filePath));
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
     return filePath;
   } catch (error) {
@@ -303,7 +330,7 @@ ipcMain.handle(
 
         const defaultPath = defaultDir
           ? path.join(defaultDir, defaultName)
-          : path.join(app.getPath("documents"), defaultName);
+          : path.join(getLastDir(), defaultName);
 
         const { canceled, filePath: savePath } = await dialog.showSaveDialog(
           mainWindow,
@@ -316,6 +343,7 @@ ipcMain.handle(
         if (canceled || !savePath) return null;
         targetPath = savePath;
       }
+      setLastDir(path.dirname(targetPath));
       fs.writeFileSync(targetPath, JSON.stringify(data, null, 2));
       return targetPath;
     } catch (error) {
@@ -326,7 +354,7 @@ ipcMain.handle(
 
 ipcMain.handle("project:import", async (event, { defaultDir }) => {
   try {
-    const defaultPath = defaultDir ? defaultDir : app.getPath("documents");
+    const defaultPath = defaultDir ? defaultDir : getLastDir();
 
     const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
       title: "Import Margyn Project",
@@ -335,6 +363,8 @@ ipcMain.handle("project:import", async (event, { defaultDir }) => {
       filters: [{ name: "Margyn Project", extensions: ["margyn"] }],
     });
     if (canceled || filePaths.length === 0) return null;
+
+    setLastDir(path.dirname(filePaths[0]));
 
     const rawData = fs.readFileSync(filePaths[0], "utf-8");
     if (!rawData || rawData.trim() === "")
@@ -361,6 +391,25 @@ ipcMain.handle("project:read-from-path", async (event, filePath) => {
     return { data: JSON.parse(rawData), filePath };
   } catch (error) {
     console.error("Failed to read project file:", error);
+    return null;
+  }
+});
+
+ipcMain.handle("dialog:savePdf", async (event, { data, defaultName }) => {
+  try {
+    const defaultPath = path.join(getLastDir(), defaultName);
+    const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+      title: "Export as PDF",
+      defaultPath: defaultPath,
+      filters: [{ name: "PDF Document", extensions: ["pdf"] }],
+    });
+    if (canceled || !filePath) return null;
+    
+    setLastDir(path.dirname(filePath));
+    fs.writeFileSync(filePath, Buffer.from(data));
+    return filePath;
+  } catch (error) {
+    console.error("Failed to save PDF:", error);
     return null;
   }
 });
@@ -439,7 +488,6 @@ function createWindow() {
   });
 }
 
-// ✅ اصلاح پروتکل برای لود شدن صحیح تصاویر و فایل‌های استاتیک
 function registerCustomProtocol() {
   protocol.handle("app", (request) => {
     try {
@@ -483,7 +531,6 @@ app.whenReady().then(() => {
   });
 });
 
-// ✅ اطمینان از flush نهایی قبل از بستن
 app.on("before-quit", (e) => {
   if (!forceQuit && mainWindow) {
     e.preventDefault();

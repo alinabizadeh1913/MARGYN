@@ -37,7 +37,7 @@ export async function getDb() {
         CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, file_path TEXT, start_time INTEGER NOT NULL, end_time INTEGER, start_page INTEGER NOT NULL, end_page INTEGER, last_page INTEGER, pages_read INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
         CREATE TABLE IF NOT EXISTS drawings (id TEXT PRIMARY KEY, session_id TEXT, file_path TEXT, page_number INTEGER NOT NULL, target TEXT NOT NULL DEFAULT 'margin', data TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
         CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-        CREATE TABLE IF NOT EXISTS recent_files (id TEXT PRIMARY KEY, name TEXT NOT NULL, file_path TEXT NOT NULL, last_opened INTEGER NOT NULL, completed INTEGER DEFAULT 0, project_path TEXT, last_page INTEGER DEFAULT 1, scale REAL DEFAULT 1.3);
+        CREATE TABLE IF NOT EXISTS recent_files (id TEXT PRIMARY KEY, name TEXT NOT NULL, file_path TEXT NOT NULL, last_opened INTEGER NOT NULL, completed INTEGER DEFAULT 0, project_path TEXT, last_page INTEGER DEFAULT 1, scale REAL DEFAULT 1.3, canvas_bg TEXT DEFAULT '#ffffff');
       `);
 
       try {
@@ -90,6 +90,14 @@ export async function getDb() {
           "ALTER TABLE recent_files ADD COLUMN scale REAL DEFAULT 1.3",
         );
       }
+      // ✅ مایگریشن جدید برای بک‌گراند
+      try {
+        sqliteInstance.run("SELECT canvas_bg FROM recent_files LIMIT 1");
+      } catch (e) {
+        sqliteInstance.run(
+          "ALTER TABLE recent_files ADD COLUMN canvas_bg TEXT DEFAULT '#ffffff'",
+        );
+      }
 
       db = drizzle(sqliteInstance, { schema });
       await saveDb(true);
@@ -127,7 +135,6 @@ export async function saveDb(immediate = false) {
   saveTimeout = setTimeout(performSave, 3000);
 }
 
-// ✅ saveDrawing با retry
 export async function saveDrawing(
   filePath: string,
   pageNumber: number,
@@ -295,7 +302,7 @@ export async function resetDatabase() {
     CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, file_path TEXT, start_time INTEGER NOT NULL, end_time INTEGER, start_page INTEGER NOT NULL, end_page INTEGER, last_page INTEGER, pages_read INTEGER, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS drawings (id TEXT PRIMARY KEY, session_id TEXT, file_path TEXT, page_number INTEGER NOT NULL, target TEXT NOT NULL DEFAULT 'margin', data TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS recent_files (id TEXT PRIMARY KEY, name TEXT NOT NULL, file_path TEXT NOT NULL, last_opened INTEGER NOT NULL, completed INTEGER DEFAULT 0, project_path TEXT, last_page INTEGER DEFAULT 1, scale REAL DEFAULT 1.3);
+    CREATE TABLE IF NOT EXISTS recent_files (id TEXT PRIMARY KEY, name TEXT NOT NULL, file_path TEXT NOT NULL, last_opened INTEGER NOT NULL, completed INTEGER DEFAULT 0, project_path TEXT, last_page INTEGER DEFAULT 1, scale REAL DEFAULT 1.3, canvas_bg TEXT DEFAULT '#ffffff');
   `);
   await saveDb(true);
 }
@@ -361,6 +368,7 @@ export async function addRecentFile(
         projectPath: projectPath,
         lastPage: 1,
         scale: 1.3,
+        canvasBg: "#ffffff",
       });
       await saveDb();
       return {
@@ -371,6 +379,7 @@ export async function addRecentFile(
         projectPath: projectPath,
         lastPage: 1,
         scale: 1.3,
+        canvasBg: "#ffffff",
       };
     }
   } catch (e) {
@@ -442,4 +451,19 @@ export async function deleteSessionById(id: string) {
   } catch (e) {
     console.error("Failed to delete session:", e);
   }
+}
+
+// ✅ تابع جدید برای آپدیت بک‌گراند
+export async function updateRecentFileCanvasBg(
+  filePath: string,
+  canvasBg: string,
+) {
+  try {
+    const database = await getDb();
+    await database
+      .update(recentFiles)
+      .set({ canvasBg })
+      .where(eq(recentFiles.filePath, filePath));
+    await saveDb();
+  } catch (e) {}
 }

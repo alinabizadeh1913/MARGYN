@@ -1,7 +1,17 @@
 "use client";
 
 import React, { useRef, useState, useEffect } from "react";
-import { FileText, FolderArchive, X, MoreHorizontal } from "lucide-react";
+import { useContextMenu } from "@/providers/ContextMenuProvider";
+import {
+  FileText,
+  FolderArchive,
+  X,
+  MoreHorizontal,
+  Files,
+  Save,
+  Upload,
+  FilePlus,
+} from "lucide-react";
 import Typography from "@/typography";
 
 export interface OpenTab {
@@ -15,7 +25,8 @@ export interface OpenTab {
   currentPage: number;
   isCompleted: boolean;
   scale: number;
-  // ✅ اسنپ‌شات کامل شامل سشن‌ها
+  canvasBg: string;
+  isBlank?: boolean; // ✅ اضافه شد
   snapshot?: {
     drawings: any[];
     recentFile: any;
@@ -43,6 +54,8 @@ export default function TabsBar({
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const activeTabRef = useRef<HTMLDivElement>(null);
+
+  const { openMenu } = useContextMenu();
 
   useEffect(() => {
     if (activeTabRef.current) {
@@ -105,6 +118,7 @@ export default function TabsBar({
         {tabs.map((tab, index) => {
           const isActive = tab.id === activeTabId;
           const isProject = !!tab.projectPath;
+          const isBlank = !!tab.isBlank;
 
           const projectName = isProject
             ? tab.projectPath!.split(/[/\\]/).pop()?.replace(".margyn", "")
@@ -120,6 +134,61 @@ export default function TabsBar({
               onDragEnd={handleDragEnd}
               onDragOver={(e) => handleDragOver(e, index)}
               onClick={() => onSelectTab(tab.id)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (tab.id !== activeTabId) onSelectTab(tab.id);
+
+                openMenu(e.clientX, e.clientY, [
+                  {
+                    label: "Close Tab",
+                    icon: X,
+                    shortcut: "Ctrl+W",
+                    onClick: () =>
+                      onCloseTab(
+                        { stopPropagation: () => {} } as React.MouseEvent,
+                        tab.id,
+                      ),
+                  },
+                  {
+                    label: "Close Other Tabs",
+                    icon: Files,
+                    onClick: () => {
+                      tabs.forEach((t) => {
+                        if (t.id !== tab.id && !t.isDirty) {
+                          onCloseTab(
+                            { stopPropagation: () => {} } as React.MouseEvent,
+                            t.id,
+                          );
+                        }
+                      });
+                    },
+                  },
+                  { separator: true },
+                  {
+                    label: "Save Project",
+                    icon: Save,
+                    shortcut: "Ctrl+S",
+                    onClick: () =>
+                      window.dispatchEvent(
+                        new CustomEvent("margyn-shortcut", {
+                          detail: "ctrl+s",
+                        }),
+                      ),
+                  },
+                  {
+                    label: "Export Project",
+                    icon: Upload,
+                    shortcut: "Ctrl+E",
+                    onClick: () =>
+                      window.dispatchEvent(
+                        new CustomEvent("margyn-shortcut", {
+                          detail: "ctrl+e",
+                        }),
+                      ),
+                  },
+                ]);
+              }}
               className={`group flex items-center gap-2 px-3 h-9 rounded-lg cursor-pointer transition-all duration-200 border max-w-[240px] shrink-0 ${
                 isActive
                   ? "bg-[#18181b] border-[#27272a] text-[#fafafa]"
@@ -128,12 +197,16 @@ export default function TabsBar({
             >
               <div
                 className={`w-5 h-5 rounded flex items-center justify-center shrink-0 ${
-                  isProject
-                    ? "bg-emerald-500/20 text-emerald-400"
-                    : "bg-rose-500/20 text-rose-400"
+                  isBlank
+                    ? "bg-[#38bdf8]/20 text-[#38bdf8]"
+                    : isProject
+                      ? "bg-emerald-500/20 text-emerald-400"
+                      : "bg-rose-500/20 text-rose-400"
                 }`}
               >
-                {isProject ? (
+                {isBlank ? (
+                  <FilePlus size={12} />
+                ) : isProject ? (
                   <FolderArchive size={12} />
                 ) : (
                   <FileText size={12} />
@@ -149,9 +222,15 @@ export default function TabsBar({
               </Typography>
 
               <span
-                className={`px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider shrink-0 ${isProject ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" : "bg-rose-500/10 text-rose-500 border border-rose-500/20"}`}
+                className={`px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider shrink-0 ${
+                  isBlank
+                    ? "bg-[#38bdf8]/10 text-[#38bdf8] border border-[#38bdf8]/20"
+                    : isProject
+                      ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"
+                      : "bg-rose-500/10 text-rose-500 border border-rose-500/20"
+                }`}
               >
-                {isProject ? "MARGYN" : "PDF"}
+                {isBlank ? "BLANK" : isProject ? "MARGYN" : "PDF"}
               </span>
 
               {tab.isDirty && (
@@ -194,6 +273,7 @@ export default function TabsBar({
             {tabs.map((tab) => {
               const isActive = tab.id === activeTabId;
               const isProject = !!tab.projectPath;
+              const isBlank = !!tab.isBlank;
               const projectName = isProject
                 ? tab.projectPath!.split(/[/\\]/).pop()?.replace(".margyn", "")
                 : null;
@@ -211,9 +291,17 @@ export default function TabsBar({
                   }`}
                 >
                   <div
-                    className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 ${isProject ? "bg-emerald-500/20 text-emerald-400" : "bg-rose-500/20 text-rose-400"}`}
+                    className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 ${
+                      isBlank
+                        ? "bg-[#38bdf8]/20 text-[#38bdf8]"
+                        : isProject
+                          ? "bg-emerald-500/20 text-emerald-400"
+                          : "bg-rose-500/20 text-rose-400"
+                    }`}
                   >
-                    {isProject ? (
+                    {isBlank ? (
+                      <FilePlus size={14} />
+                    ) : isProject ? (
                       <FolderArchive size={14} />
                     ) : (
                       <FileText size={14} />

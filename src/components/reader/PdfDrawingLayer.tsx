@@ -14,6 +14,7 @@ interface PdfDrawingLayerProps {
   pdfHeight: number;
   /** text lines in PDF-page px (see pdfText.ts) – empty for scanned PDFs */
   textLines?: TextLine[];
+  onDeletePage?: () => void; // ✅ این خط اضافه شد تا TypeScript خطا ندهد
 }
 
 export default function PdfDrawingLayer({
@@ -24,6 +25,7 @@ export default function PdfDrawingLayer({
   pdfWidth,
   pdfHeight,
   textLines,
+  onDeletePage, // ✅ دریافت پراپ
 }: PdfDrawingLayerProps) {
   const { tool } = useTool();
 
@@ -53,6 +55,7 @@ export default function PdfDrawingLayer({
     toStored: (x, y) => [(x - pdfLeft) / pdfWidth, (y - pdfTop) / pdfHeight],
     toScreen: (x, y) => [x * pdfWidth + pdfLeft, y * pdfHeight + pdfTop],
     textLines: screenLines,
+    onDeletePage, // ✅ پاس دادن به useInkCanvas برای استفاده در راست‌کلیک
   });
 
   useLayoutEffect(() => {

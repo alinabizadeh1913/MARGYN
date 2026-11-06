@@ -10,17 +10,18 @@ declare global {
       saveDb: (data: Uint8Array) => Promise<boolean>;
       loadWasm: () => Promise<Uint8Array>;
 
-      // ✅ کلید رمزنگاری per-install
       getCryptoKey: () => Promise<string>;
 
       loadActivePdf: () => Promise<Uint8Array | null>;
       saveActivePdf: (data: Uint8Array) => Promise<boolean>;
       clearActivePdf: () => Promise<boolean>;
-      openPdf: () => Promise<{
+
+      // ✅ خروجی به صورت آرایه
+      openPdf: () => Promise<Array<{
         data: Uint8Array;
         name: string;
         libraryPath: string;
-      } | null>;
+      }> | null>;
 
       readPdfPath: (path: string) => Promise<{
         data: Uint8Array;
@@ -36,7 +37,6 @@ declare global {
       deleteLibraryFile: (filePath: string) => Promise<boolean>;
       clearLibraryFolder: () => Promise<boolean>;
 
-      // ✅ تایپ جدید
       saveLibraryFile: (
         data: Uint8Array,
         name: string,
@@ -69,6 +69,11 @@ declare global {
 
       setRecordingShortcut: (isRecording: boolean) => void;
       onShortcutTriggered: (callback: (shortcut: string) => void) => () => void;
+
+      savePdf: (
+        data: Uint8Array,
+        defaultName: string,
+      ) => Promise<string | null>;
     };
   }
 }

@@ -2,7 +2,16 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import { useTool } from "@/providers/ToolProvider";
+import { useContextMenu } from "@/providers/ContextMenuProvider";
 import { saveDrawing, loadDrawing } from "@/db";
+import {
+  Undo2,
+  Redo2,
+  Trash2,
+  Copy,
+  LayoutPanelLeft,
+  Eraser,
+} from "lucide-react";
 import {
   anchorPoint,
   cornerBox,
@@ -54,24 +63,25 @@ interface Options {
   toStored: Mapper;
   toScreen: Mapper;
   textLines?: TextLine[];
+  onDeletePage?: () => void; // ✅ اضافه شد
 }
 
 const SAVE_DELAY_MS = 500;
-// Ignore only sub-pixel noise. NO resampling: raw points go straight in.
 const MIN_DIST2 = 0.3 * 0.3;
 const MAX_HISTORY = 100;
 const MAX_PREDICTED = 3;
-// if the pointer stops, drop the predicted tail after this long
 const PREDICT_TTL_MS = 40;
 
-/* ─── in-progress draw states ─── */
+// ✅ کش سراسری برای نگهداری تاریخچه آندو/ریدو در حافظه (خارج از ری‌اکت)
+const globalHistoryCache = new Map<
+  string,
+  { past: Stroke[][]; future: Stroke[][] }
+>();
 
 interface PenState {
   kind: "pen";
-  pts: number[]; // screen-space x,y pairs (raw, never resampled)
-  /** index of the next control point whose quad has not been committed yet */
+  pts: number[];
   done: number;
-  /** current end of the committed path on the static canvas */
   curX: number;
   curY: number;
   headBox: Box | null;
@@ -180,6 +190,7 @@ export function useInkCanvas({
   toStored,
   toScreen,
   textLines,
+  onDeletePage, // ✅ اضافه شد
 }: Options) {
   const staticRef = useRef<HTMLCanvasElement>(null);
   const dynamicRef = useRef<HTMLCanvasElement>(null);
@@ -187,6 +198,7 @@ export function useInkCanvas({
   const dynamicCtxRef = useRef<CanvasRenderingContext2D | null>(null);
 
   const { tool, color, size } = useTool();
+  const { openMenu } = useContextMenu(); // ✅ اضافه شد
 
   const cfg = useRef({
     tool,
@@ -198,6 +210,7 @@ export function useInkCanvas({
     toStored,
     toScreen,
     textLines,
+    onDeletePage, // ✅ اضافه شد
   });
   cfg.current = {
     tool,
@@ -209,6 +222,7 @@ export function useInkCanvas({
     toStored,
     toScreen,
     textLines,
+    onDeletePage, // ✅ اضافه شد
   };
 
   const linesRef = useRef<Stroke[]>([]);
@@ -246,9 +260,16 @@ export function useInkCanvas({
     clearSelection: () => api.current?.clearSelection(),
   });
 
-  const dpr = () => window.devicePixelRatio || 1;
+  const getCacheKey = useCallback(
+    () => `${kind}:${filePath}:${page}`,
+    [kind, filePath, page],
+  );
 
-  /* ─────────────── helpers ─────────────── */
+  const saveHistoryToCache = useCallback(() => {
+    globalHistoryCache.set(getCacheKey(), hist.current);
+  }, [getCacheKey]);
+
+  const dpr = () => window.devicePixelRatio || 1;
 
   function setLiveTransform(ctx: CanvasRenderingContext2D) {
     const d = dpr();
@@ -270,8 +291,6 @@ export function useInkCanvas({
       dynamicCtxRef.current = dynamicRef.current?.getContext("2d") ?? null;
     return dynamicCtxRef.current;
   };
-
-  /* ─────────────── persistence ─────────────── */
 
   const flush = useCallback(() => {
     if (timerRef.current) {
@@ -323,8 +342,6 @@ export function useInkCanvas({
     }
   }, []);
 
-  /* ─────────────── geometry cache ─────────────── */
-
   function geom(s: Stroke) {
     let g = geomCache.current.get(s);
     if (!g || g.v !== mapVer.current) {
@@ -344,8 +361,6 @@ export function useInkCanvas({
     for (let i = 0; i < out.length; i++) out[i] = store(q[i * 2], q[i * 2 + 1]);
     return out;
   };
-
-  /* ─────────────── full static redraw ─────────────── */
 
   function redrawStatic() {
     const c = staticRef.current;
@@ -383,8 +398,6 @@ export function useInkCanvas({
     ctx.clearRect(0, 0, c.width, c.height);
   }
 
-  /* ─────────────── resize ─────────────── */
-
   const resize = useCallback((w: number, h: number, force = false) => {
     const s = staticRef.current;
     const d = dynamicRef.current;
@@ -412,13 +425,12 @@ export function useInkCanvas({
     }
   }, []);
 
-  /* ─────────────── history / commit ─────────────── */
-
   function pushHistory(prev: Stroke[]) {
     const h = hist.current;
     h.past.push(prev);
     if (h.past.length > MAX_HISTORY) h.past.shift();
     h.future = [];
+    saveHistoryToCache();
   }
 
   function commitLines(next: Stroke[]) {
@@ -452,21 +464,21 @@ export function useInkCanvas({
 
   function undo() {
     const h = hist.current;
-    if (ix.current || !h.past.length) return;
+    if (!loadedRef.current || ix.current || !h.past.length) return;
     h.future.push(linesRef.current);
     linesRef.current = h.past.pop()!;
+    saveHistoryToCache();
     afterHistoryChange();
   }
 
   function redo() {
     const h = hist.current;
-    if (ix.current || !h.future.length) return;
+    if (!loadedRef.current || ix.current || !h.future.length) return;
     h.past.push(linesRef.current);
     linesRef.current = h.future.pop()!;
+    saveHistoryToCache();
     afterHistoryChange();
   }
-
-  /* ─────────────── binding / selection ─────────────── */
 
   function findBind(x: number, y: number, excludeId?: string): BindHit | null {
     const lines = linesRef.current;
@@ -546,8 +558,6 @@ export function useInkCanvas({
           return { type: "handle", id: h.id };
     return null;
   }
-
-  /* ─────────────── transform pipeline ─────────────── */
 
   function findDeps(ids: Set<string>): Stroke[] {
     return linesRef.current.filter(
@@ -635,8 +645,6 @@ export function useInkCanvas({
     );
   }
 
-  /* ─────────────── eraser ─────────────── */
-
   function eraseSegment(
     X: EraseState,
     x0: number,
@@ -688,8 +696,6 @@ export function useInkCanvas({
     }
   }
 
-  /* ─────────────── shape geometry ─────────────── */
-
   function shapeGeom(X: ShapeState) {
     const { tool: t, sx, sy, cx, cy, startB } = X;
     const { shift, alt } = mods.current;
@@ -726,17 +732,6 @@ export function useInkCanvas({
     return { p, endB: null as Binding | null, hint: null as BindHit | null };
   }
 
-  /* ─────────────── pen engine (midpoint quadratic) ─────────────── */
-  /*
-   * Same curve as tracePen() in inkRender: quad(ctrl = p[i], end = mid(p[i], p[i+1])).
-   * What you see while drawing is EXACTLY what is stored/redrawn later,
-   * and a segment needs only ONE point of look-ahead.
-   * - committed quads -> static canvas (appended, never redrawn)
-   * - unfinished tail + predicted points -> live canvas (cleared/redrawn)
-   * Both canvases are presented in the same frame (no desynchronized hint),
-   * so there are no gaps/seams between them.
-   */
-
   function penCommit(X: PenState) {
     const p = X.pts;
     const n = p.length >> 1;
@@ -762,7 +757,6 @@ export function useInkCanvas({
     X.done = i;
   }
 
-  /** Live tail: committed end -> last real point -> predicted points. */
   function drawPenHead(X: PenState, pred: number[]) {
     const ctx = getDynamicCtx();
     if (!ctx) return;
@@ -818,8 +812,6 @@ export function useInkCanvas({
     };
   }
 
-  /* ─────────────── shape live preview ─────────────── */
-
   function drawShapePreview(X: ShapeState) {
     const ctx = getDynamicCtx();
     if (!ctx) return;
@@ -843,8 +835,6 @@ export function useInkCanvas({
     const b = elementBounds(stroke, g.p);
     X.previewBox = inflate(b, 6);
   }
-
-  /* ─────────────── highlighter preview ─────────────── */
 
   function drawHlPreview(X: HlState) {
     const ctx = getDynamicCtx();
@@ -884,8 +874,6 @@ export function useInkCanvas({
     X.previewBox = { x: x0 - 3, y: y0 - 3, w: x1 - x0 + 6, h: y1 - y0 + 6 };
   }
 
-  /* ─────────────── transform live preview ─────────────── */
-
   function drawTransformPreview(X: TransformState) {
     const ctx = getDynamicCtx();
     if (!ctx) return;
@@ -917,8 +905,6 @@ export function useInkCanvas({
     }
     X.previewBox = { x: x0 - 20, y: y0 - 20, w: x1 - x0 + 40, h: y1 - y0 + 40 };
   }
-
-  /* ─────────────── endpoint drag preview ─────────────── */
 
   function drawEndpointPreview(X: EndpointState) {
     const ctx = getDynamicCtx();
@@ -962,8 +948,6 @@ export function useInkCanvas({
     X.previewBox = inflate(b, 12);
   }
 
-  /* ─────────────── idle overlay (eraser ring, arrow hints) ─────────────── */
-
   function scheduleIdle() {
     if (!rafRef.current) rafRef.current = requestAnimationFrame(idleFrame);
   }
@@ -993,8 +977,6 @@ export function useInkCanvas({
     }
   }
 
-  /* ─────────────── pointer logic ─────────────── */
-
   const setCursor = (v: string) => {
     const c = dynamicRef.current;
     if (!c || lastCursor.current === v) return;
@@ -1008,7 +990,6 @@ export function useInkCanvas({
     activeInk = m;
   }
 
-  /** Returns true when a point was really added. Raw points, no resampling. */
   function addPenPoint(X: PenState, x: number, y: number): boolean {
     const p = X.pts;
     const n = p.length;
@@ -1062,7 +1043,7 @@ export function useInkCanvas({
           cy: y,
         };
         ix.current = X;
-        drawPenHead(X, []); // first dot, instantly
+        drawPenHead(X, []);
         break;
       }
 
@@ -1272,7 +1253,6 @@ export function useInkCanvas({
     X.cx = e.clientX - r.left;
     X.cy = e.clientY - r.top;
 
-    /* ── PEN: synchronous, raw coalesced points, 1-point look-ahead ── */
     if (X.kind === "pen") {
       const co = ne.getCoalescedEvents?.();
       const list = co && co.length ? co : [ne];
@@ -1302,7 +1282,6 @@ export function useInkCanvas({
       }
       drawPenHead(X, pred);
 
-      // pointer stopped? remove the guessed tail so no ghost ink stays ahead
       if (X.predTimer) clearTimeout(X.predTimer);
       X.predTimer = pred.length
         ? setTimeout(() => {
@@ -1313,7 +1292,6 @@ export function useInkCanvas({
       return;
     }
 
-    /* ── ERASER: direct erase on static, then redraw ── */
     if (X.kind === "erase") {
       const co = ne.getCoalescedEvents?.();
       const list = co && co.length ? co : [ne];
@@ -1331,31 +1309,26 @@ export function useInkCanvas({
       return;
     }
 
-    /* ── SHAPES: synchronous live preview ── */
     if (X.kind === "shape") {
       drawShapePreview(X);
       return;
     }
 
-    /* ── HIGHLIGHTER ── */
     if (X.kind === "hl") {
       drawHlPreview(X);
       return;
     }
 
-    /* ── MOVE / RESIZE ── */
     if (X.kind === "move" || X.kind === "resize") {
       drawTransformPreview(X);
       return;
     }
 
-    /* ── ENDPOINT DRAG ── */
     if (X.kind === "endpoint") {
       drawEndpointPreview(X);
       return;
     }
 
-    /* ── MARQUEE ── */
     if (X.kind === "marquee") {
       const ctx = getDynamicCtx()!;
       if (X.previewBox) clearLive(X.previewBox);
@@ -1431,13 +1404,11 @@ export function useInkCanvas({
             ctx.arc(X.pts[0], X.pts[1], X.size / 2, 0, Math.PI * 2);
             ctx.fill();
           } else {
-            // last half-segment: committed end -> final point (same as tracePen)
             ctx.beginPath();
             ctx.moveTo(X.curX, X.curY);
             ctx.lineTo(X.pts[(n - 1) * 2], X.pts[(n - 1) * 2 + 1]);
             ctx.stroke();
           }
-          // static and live are presented together, so no flash/gap here
           if (X.headBox) clearLive(X.headBox);
           X.headBox = null;
 
@@ -1594,8 +1565,6 @@ export function useInkCanvas({
     }
   }
 
-  /* ─────────────── actions (public API) ─────────────── */
-
   function clearSelection() {
     if (!selRef.current.size) return;
     selRef.current = new Set();
@@ -1683,6 +1652,16 @@ export function useInkCanvas({
       redo();
       return;
     }
+
+    // ✅ اصلاح: حتی اگر ابزار Select نباشد، اگر استروکی انتخاب شده باشد با Delete پاک می‌شود
+    if (e.code === "Delete" || e.code === "Backspace") {
+      if (selRef.current.size > 0) {
+        e.preventDefault();
+        deleteSelected();
+        return;
+      }
+    }
+
     if (cfg.current.tool !== "select" || ix.current) return;
     if (mod && e.code === "KeyA") {
       e.preventDefault();
@@ -1697,11 +1676,6 @@ export function useInkCanvas({
     }
     const step = e.shiftKey ? 10 : 1;
     switch (e.code) {
-      case "Delete":
-      case "Backspace":
-        e.preventDefault();
-        deleteSelected();
-        break;
       case "Escape":
         clearSelection();
         break;
@@ -1735,8 +1709,6 @@ export function useInkCanvas({
     }
   }
 
-  /* ─────────────── API ref ─────────────── */
-
   api.current = {
     redraw: redrawStatic,
     clearSelection,
@@ -1750,20 +1722,25 @@ export function useInkCanvas({
     finish,
   };
 
-  /* ─────────────── effects ─────────────── */
-
   useEffect(() => {
+    const cacheKey = getCacheKey();
+    hist.current = globalHistoryCache.get(cacheKey) || { past: [], future: [] };
+
     let alive = true;
     loadedRef.current = false;
     ix.current = null;
     hiddenRef.current = null;
     selRef.current = new Set();
-    hist.current = { past: [], future: [] };
     linesRef.current = [];
     clearLiveAll();
     redrawStatic();
 
-    Promise.resolve(loadDrawing(filePath, page, kind))
+    const loadPromise = Promise.resolve(loadDrawing(filePath, page, kind));
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("Load timeout")), 5000),
+    );
+
+    Promise.race([loadPromise, timeoutPromise])
       .then((saved: unknown) => {
         if (!alive) return;
         const arr = Array.isArray(saved) ? (saved as Stroke[]) : [];
@@ -1772,26 +1749,51 @@ export function useInkCanvas({
         loadedRef.current = true;
         redrawStatic();
       })
-      .catch(() => {
-        if (alive) loadedRef.current = true;
+      .catch((err) => {
+        console.error("Failed to load drawing or timed out:", err);
+        if (alive) {
+          loadedRef.current = true;
+        }
       });
 
     return () => {
       alive = false;
       flush();
+      globalHistoryCache.set(cacheKey, hist.current);
     };
-  }, [filePath, page, kind, flush]);
+  }, [filePath, page, kind, flush, getCacheKey]);
 
   useEffect(() => {
-    const resetAll = () => {
+    if (!activeInk || kind === "pdf") {
+      activeInk = me.current;
+    }
+  }, [kind]);
+
+  useEffect(() => {
+    const handleClearPage = () => {
       dropPendingSave();
       linesRef.current = [];
       selRef.current = new Set();
       hist.current = { past: [], future: [] };
-      hiddenRef.current = null;
+      globalHistoryCache.delete(getCacheKey());
       redrawStatic();
       clearLiveAll();
     };
+
+    const handleClearAll = () => {
+      dropPendingSave();
+      linesRef.current = [];
+      selRef.current = new Set();
+      hist.current = { past: [], future: [] };
+      for (const key of globalHistoryCache.keys()) {
+        if (key.startsWith(`${kind}:${filePath}:`)) {
+          globalHistoryCache.delete(key);
+        }
+      }
+      redrawStatic();
+      clearLiveAll();
+    };
+
     const handleReload = () => {
       dropPendingSave();
       Promise.resolve(loadDrawing(filePath, page, kind))
@@ -1801,13 +1803,11 @@ export function useInkCanvas({
           linesRef.current = arr;
           selRef.current = new Set();
           hist.current = { past: [], future: [] };
+          saveHistoryToCache();
           redrawStatic();
           clearLiveAll();
         })
         .catch(console.error);
-    };
-    const handleHide = () => {
-      if (document.visibilityState === "hidden") flush();
     };
 
     const handleDiscard = () => {
@@ -1816,10 +1816,77 @@ export function useInkCanvas({
       selRef.current = new Set();
       hist.current = { past: [], future: [] };
       hiddenRef.current = null;
+      globalHistoryCache.delete(getCacheKey());
       redrawStatic();
       clearLiveAll();
     };
-    window.addEventListener("margyn-discard-changes", handleDiscard);
+
+    const handleGlobalPointerUp = (e: PointerEvent) => {
+      if (ix.current && ix.current.pid === e.pointerId) {
+        const c = dynamicRef.current;
+        if (c) {
+          const fakeEvent = {
+            pointerId: e.pointerId,
+            clientX: e.clientX,
+            clientY: e.clientY,
+            shiftKey: e.shiftKey,
+            altKey: e.altKey,
+            pointerType: e.pointerType,
+            nativeEvent: e,
+            preventDefault: () => {},
+            stopPropagation: () => {},
+          };
+          finish(fakeEvent as any, true);
+        }
+      }
+    };
+
+    const handleGlobalPointerCancel = (e: PointerEvent) => {
+      if (ix.current && ix.current.pid === e.pointerId) {
+        const c = dynamicRef.current;
+        if (c) {
+          const fakeEvent = {
+            pointerId: e.pointerId,
+            clientX: e.clientX,
+            clientY: e.clientY,
+            shiftKey: e.shiftKey,
+            altKey: e.altKey,
+            pointerType: e.pointerType,
+            nativeEvent: e,
+            preventDefault: () => {},
+            stopPropagation: () => {},
+          };
+          finish(fakeEvent as any, false);
+        }
+      }
+    };
+
+    const handleWindowBlur = () => {
+      if (ix.current) {
+        ix.current = null;
+        clearLiveAll();
+        redrawStatic();
+      }
+      hover.current = null;
+      setCursor("");
+    };
+
+    const handleFocus = () => {
+      const d = dynamicRef.current;
+      const s = staticRef.current;
+      if (d && s && d.parentElement) {
+        resize(d.parentElement.clientWidth, d.parentElement.clientHeight, true);
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        flush();
+        handleWindowBlur();
+      } else if (document.visibilityState === "visible") {
+        handleFocus();
+      }
+    };
 
     const mine = () => activeInk?.token === me.current.token;
     const handleUndo = () => mine() && undo();
@@ -1827,8 +1894,21 @@ export function useInkCanvas({
     const key = (e: KeyboardEvent) => api.current.onKey(e);
     const mod = (e: KeyboardEvent) => api.current.onModKey(e);
 
-    window.addEventListener("margyn-clear-all", resetAll);
-    window.addEventListener(`margyn-clear-page-${page}`, resetAll);
+    const handleClearActiveInk = () => {
+      if (activeInk?.token === me.current.token) {
+        activeInk = null;
+        clearSelection();
+      }
+    };
+
+    window.addEventListener("pointerup", handleGlobalPointerUp);
+    window.addEventListener("pointercancel", handleGlobalPointerCancel);
+    window.addEventListener("blur", handleWindowBlur);
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    window.addEventListener("margyn-clear-all", handleClearAll);
+    window.addEventListener(`margyn-clear-page-${page}`, handleClearPage);
     window.addEventListener("margyn-reload-all", handleReload);
     window.addEventListener("margyn-undo", handleUndo);
     window.addEventListener("margyn-redo", handleRedo);
@@ -1836,11 +1916,17 @@ export function useInkCanvas({
     window.addEventListener("keydown", key);
     window.addEventListener("keydown", mod);
     window.addEventListener("keyup", mod);
-    document.addEventListener("visibilitychange", handleHide);
-    if (!activeInk) activeInk = me.current;
+    window.addEventListener("margyn-clear-active-ink", handleClearActiveInk);
+
     return () => {
-      window.removeEventListener("margyn-clear-all", resetAll);
-      window.removeEventListener(`margyn-clear-page-${page}`, resetAll);
+      window.removeEventListener("pointerup", handleGlobalPointerUp);
+      window.removeEventListener("pointercancel", handleGlobalPointerCancel);
+      window.removeEventListener("blur", handleWindowBlur);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+
+      window.removeEventListener("margyn-clear-all", handleClearAll);
+      window.removeEventListener(`margyn-clear-page-${page}`, handleClearPage);
       window.removeEventListener("margyn-reload-all", handleReload);
       window.removeEventListener("margyn-undo", handleUndo);
       window.removeEventListener("margyn-redo", handleRedo);
@@ -1848,11 +1934,22 @@ export function useInkCanvas({
       window.removeEventListener("keydown", key);
       window.removeEventListener("keydown", mod);
       window.removeEventListener("keyup", mod);
-      document.removeEventListener("visibilitychange", handleHide);
-      window.removeEventListener("margyn-discard-changes", handleDiscard);
+      window.removeEventListener(
+        "margyn-clear-active-ink",
+        handleClearActiveInk,
+      );
       if (activeInk === me.current) activeInk = null;
     };
-  }, [page, kind, filePath, flush, dropPendingSave]);
+  }, [
+    page,
+    kind,
+    filePath,
+    flush,
+    dropPendingSave,
+    getCacheKey,
+    saveHistoryToCache,
+    resize,
+  ]);
 
   useEffect(() => {
     if (tool !== "select") selRef.current = new Set();
@@ -1880,8 +1977,6 @@ export function useInkCanvas({
     [],
   );
 
-  /* ─────────────── handlers ─────────────── */
-
   const onPointerDown = useCallback(
     (e: React.PointerEvent<HTMLCanvasElement>) => api.current.down(e),
     [],
@@ -1905,9 +2000,79 @@ export function useInkCanvas({
     hover.current = null;
     if (!ix.current) scheduleIdle();
   }, []);
+
+  // ✅ هندلر راست کلیک با منوی اختصاصی کانواس
   const onContextMenu = useCallback(
-    (e: React.SyntheticEvent) => e.preventDefault(),
-    [],
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const hasSelection = selRef.current.size > 0;
+
+      const menuItems: any[] = [
+        {
+          label: "Undo",
+          icon: Undo2,
+          shortcut: "Ctrl+Z",
+          onClick: () => undo(),
+          disabled: !hist.current.past.length,
+        },
+        {
+          label: "Redo",
+          icon: Redo2,
+          shortcut: "Ctrl+Shift+Z",
+          onClick: () => redo(),
+          disabled: !hist.current.future.length,
+        },
+        { separator: true },
+        {
+          label: "Duplicate Selected",
+          icon: Copy,
+          shortcut: "Ctrl+D",
+          onClick: () => duplicateSelected(),
+          disabled: !hasSelection,
+        },
+        {
+          label: "Delete Selected",
+          icon: Trash2,
+          danger: true,
+          shortcut: "Del",
+          onClick: () => deleteSelected(),
+          disabled: !hasSelection,
+        },
+        { separator: true },
+        {
+          label: "Clear Current Page",
+          icon: Eraser,
+          onClick: () =>
+            window.dispatchEvent(
+              new CustomEvent(`margyn-clear-page-${cfg.current.page}`),
+            ),
+        },
+        {
+          label: "Toggle Margin",
+          icon: LayoutPanelLeft,
+          shortcut: "Ctrl+B",
+          onClick: () =>
+            window.dispatchEvent(
+              new CustomEvent("margyn-shortcut", { detail: "ctrl+b" }),
+            ),
+        },
+      ];
+
+      if (cfg.current.onDeletePage) {
+        menuItems.push({ separator: true });
+        menuItems.push({
+          label: "Delete This Page",
+          icon: Trash2,
+          danger: true,
+          onClick: cfg.current.onDeletePage,
+        });
+      }
+
+      openMenu(e.clientX, e.clientY, menuItems);
+    },
+    [openMenu, undo, redo, duplicateSelected, deleteSelected],
   );
 
   return {

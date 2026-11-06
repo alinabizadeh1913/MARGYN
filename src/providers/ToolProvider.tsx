@@ -52,8 +52,6 @@ interface ToolContextType {
   updateCustomColor: (c: string) => Promise<void>;
   size: number;
   setSize: (s: number) => void;
-  canvasBg: string;
-  setCanvasBg: (c: string) => void;
 }
 
 const ToolContext = createContext<ToolContextType | undefined>(undefined);
@@ -63,7 +61,6 @@ export function ToolProvider({ children }: { children: ReactNode }) {
   const [color, setColor] = useState("#38bdf8");
   const [customColor, setCustomColor] = useState("#ff00ff");
   const [size, setSize] = useState(12);
-  const [canvasBg, setCanvasBgState] = useState("#ffffff");
 
   const { isShortcutsEnabled } = useShortcuts();
   const isShortcutsEnabledRef = useRef(isShortcutsEnabled);
@@ -108,8 +105,6 @@ export function ToolProvider({ children }: { children: ReactNode }) {
       try {
         const savedColor = await getSetting("customColor");
         if (savedColor) setCustomColor(savedColor);
-        const savedBg = localStorage.getItem("margyn_canvas_bg");
-        if (savedBg) setCanvasBgState(savedBg);
       } catch (err) {}
     };
     loadSettings();
@@ -119,11 +114,6 @@ export function ToolProvider({ children }: { children: ReactNode }) {
     setCustomColor(newColor);
     setColor(newColor);
     await setSetting("customColor", newColor);
-  };
-
-  const setCanvasBg = (newColor: string) => {
-    setCanvasBgState(newColor);
-    localStorage.setItem("margyn_canvas_bg", newColor);
   };
 
   return (
@@ -137,8 +127,6 @@ export function ToolProvider({ children }: { children: ReactNode }) {
         updateCustomColor,
         size,
         setSize,
-        canvasBg,
-        setCanvasBg,
       }}
     >
       {children}

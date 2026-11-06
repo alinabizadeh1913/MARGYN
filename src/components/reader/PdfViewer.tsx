@@ -58,6 +58,8 @@ interface PdfViewerProps {
   fileData: Uint8Array | null;
   filePath?: string;
   initialScale?: number;
+  canvasBg: string; // ✅ پراپ جدید
+  onCanvasBgChange: (color: string) => void; // ✅ پراپ جدید
   onDocumentLoad?: (totalPages: number) => void;
   onDropPdf?: (file: File) => void;
   onOpenPdf?: () => void;
@@ -69,6 +71,8 @@ export default function PdfViewer({
   fileData,
   filePath,
   initialScale,
+  canvasBg,
+  onCanvasBgChange,
   onDocumentLoad,
   onDropPdf,
   onOpenPdf,
@@ -93,7 +97,7 @@ export default function PdfViewer({
   const holdInterval = useRef<NodeJS.Timeout | null>(null);
 
   const { isActive, lastFocusPage, currentPage, setCurrentPage } = useSession();
-  const { canvasBg, setCanvasBg } = useTool();
+  const { tool } = useTool(); // ✅ canvasBg و setCanvasBg حذف شدند
 
   const [loadedDoc, setLoadedDoc] = useState<LoadedDoc | null>(null);
   const [scale, setScale] = useState(initialScale || DEFAULT_SCALE);
@@ -120,10 +124,13 @@ export default function PdfViewer({
     if (initialScale) setScale(initialScale);
   }, [initialScale]);
 
-  const changeScale = (newScale: number) => {
-    setScale(newScale);
-    if (onScaleChange) onScaleChange(newScale);
-  };
+  const changeScale = useCallback(
+    (newScale: number) => {
+      setScale(newScale);
+      if (onScaleChange) onScaleChange(newScale);
+    },
+    [onScaleChange],
+  );
 
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
@@ -519,12 +526,24 @@ export default function PdfViewer({
     }
   }, [currentPage, isActive, setCurrentPage, isNavigationLocked]);
 
+  // ✅ اصلاح ایونت Wheel برای پشتیبانی از Ctrl + Wheel
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
     let isScrolling = false;
     const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey) {
+        e.preventDefault();
+        const zoomStep = 0.1;
+        if (e.deltaY < 0) {
+          changeScale(Math.min(3, scale + zoomStep));
+        } else {
+          changeScale(Math.max(0.5, scale - zoomStep));
+        }
+        return;
+      }
+
       e.preventDefault();
       if (isNavigationLocked) return;
       if (isActive) return;
@@ -541,7 +560,14 @@ export default function PdfViewer({
 
     container.addEventListener("wheel", handleWheel, { passive: false });
     return () => container.removeEventListener("wheel", handleWheel);
-  }, [isActive, isNavigationLocked, handleNextPage, handlePrevPage]);
+  }, [
+    isActive,
+    isNavigationLocked,
+    handleNextPage,
+    handlePrevPage,
+    scale,
+    changeScale,
+  ]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -746,7 +772,7 @@ export default function PdfViewer({
             <input
               type="color"
               value={canvasBg}
-              onChange={(e) => setCanvasBg(e.target.value)}
+              onChange={(e) => onCanvasBgChange(e.target.value)}
               className="absolute inset-0 opacity-0 cursor-pointer z-20"
               title="Canvas Background Color"
             />

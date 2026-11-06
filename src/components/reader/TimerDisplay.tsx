@@ -18,9 +18,7 @@ export default function TimerDisplay() {
       return;
     }
     hasEndedRef.current = false;
-    // ✅ فوراً زمان فعلی را ست میکنیم تا از پرش اولیه جلوگیری شود
     setNow(Date.now());
-    // ✅ هر ۲۵۰ میلی‌ثانیه چک میکنیم تا دقیقاً در ثانیه صفر به پایان برسد
     const interval = setInterval(() => setNow(Date.now()), 250);
     return () => clearInterval(interval);
   }, [timerEndsAt]);
@@ -30,6 +28,7 @@ export default function TimerDisplay() {
     if (now >= timerEndsAt) {
       hasEndedRef.current = true;
       playEndSound();
+
       if (isActive && sessionId) {
         endSession();
       }
@@ -40,7 +39,6 @@ export default function TimerDisplay() {
   if (!timerEndsAt) return null;
 
   const remaining = Math.max(0, timerEndsAt - now);
-  // ✅ استفاده از Math.ceil به جای Math.floor برای رفع باگ 28:01
   const totalSeconds = Math.ceil(remaining / 1000);
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;

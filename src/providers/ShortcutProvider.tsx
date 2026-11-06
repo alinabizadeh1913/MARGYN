@@ -35,7 +35,7 @@ export const DEFAULT_SHORTCUTS: Record<ShortcutAction, string> = {
   openPdf: "ctrl+o",
   closePdf: "ctrl+w",
   switchTab: "ctrl+tab",
-  clearPage: "delete",
+  clearPage: "ctrl+shift+delete", // ✅ تغییر یافت تا با دکمه Delete تداخل نداشته باشد
   clearAll: "shift+delete",
   toggleMargin: "ctrl+b",
   saveProject: "ctrl+s",
@@ -77,6 +77,11 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
               (acc, key) => {
                 const k = key as ShortcutAction;
                 let val = parsed[k] || DEFAULT_SHORTCUTS[k];
+
+                // ✅ مایگریشن: اگر از نسخه قبلی "delete" ذخیره شده بود، به میانبر جدید تغییر کند
+                if (k === "clearPage" && val === "delete") {
+                  val = "ctrl+shift+delete";
+                }
 
                 if (val.includes("shiftleft") || val.includes("shiftright")) {
                   val = val
