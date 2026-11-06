@@ -34,13 +34,13 @@ const FONT_SIZES = [
 ];
 
 const COLORS = [
-  "#fafafa", // white
-  "#a1a1aa", // gray
-  "#38bdf8", // blue
-  "#f43f5e", // red
-  "#10b981", // green
-  "#f59e0b", // yellow
-  "#a855f7", // purple
+  "#fafafa",
+  "#a1a1aa",
+  "#38bdf8",
+  "#f43f5e",
+  "#10b981",
+  "#f59e0b",
+  "#a855f7",
 ];
 
 export default function NoteModal({
@@ -65,24 +65,13 @@ export default function NoteModal({
     const html = await getNote(filePath, pageNumber);
     if (editorRef.current) {
       editorRef.current.innerHTML = html || "";
-      setHasContent(!!html && html !== "<br>");
-      checkDir(editorRef.current.innerText);
+      setHasContent(!!html && html !== "<br>" && html !== "<div><br></div>");
     }
-  };
-
-  // تشخیص خودکار جهت متن (فارسی/عربی راست‌چین، انگلیسی چپ‌چین)
-  const checkDir = (text: string) => {
-    if (!editorRef.current || !text) return;
-    const firstChar = text.trim().charAt(0);
-    const isRTL = /[\u0600-\u06FF]/.test(firstChar);
-    editorRef.current.dir = isRTL ? "rtl" : "ltr";
-    editorRef.current.style.textAlign = isRTL ? "right" : "left";
   };
 
   const handleInput = () => {
     if (editorRef.current) {
       setHasContent(editorRef.current.innerText.trim().length > 0);
-      checkDir(editorRef.current.innerText);
     }
   };
 
@@ -103,18 +92,24 @@ export default function NoteModal({
 
   return (
     <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 backdrop-blur-md transition-all duration-300 p-4 sm:p-8">
-      <div className="bg-[#121214] border border-[#27272a] rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] w-full max-w-3xl flex flex-col max-h-[85vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+      <div className="bg-[#121214] border border-[#27272a] rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] w-full max-w-3xl h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#27272a] bg-[#09090b]/50 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
-              <Edit3 size={16} className="text-amber-500" />
+            <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center">
+              <Type size={20} className="text-amber-500" />
             </div>
-            <div>
-              <Typography variant="cardTitle" className="text-[#fafafa]">
+            <div className="flex items-baseline gap-2">
+              <Typography
+                variant="cardTitle"
+                className="text-[#fafafa] text-lg"
+              >
                 Page Notes
               </Typography>
-              <Typography variant="caption" className="text-[#52525b]">
+              <Typography
+                variant="caption"
+                className="text-[#52525b] text-sm font-medium"
+              >
                 Page {pageNumber}
               </Typography>
             </div>
@@ -136,20 +131,21 @@ export default function NoteModal({
                 }}
                 className="flex items-center gap-2 px-4 py-2 bg-[#38bdf8]/10 text-[#38bdf8] hover:bg-[#38bdf8]/20 border border-[#38bdf8]/30 rounded-xl transition-all font-medium text-sm"
               >
-                <Edit3 size={16} />
-                Edit Note
+                <Type size={16} />
+                {/* ✅ تغییر متن دکمه بر اساس وجود متن */}
+                {hasContent ? "Edit Note" : "Add Note"}
               </button>
             )}
             <button
               onClick={onClose}
-              className="p-2 rounded-xl text-[#52525b] hover:text-[#fafafa] hover:bg-[#27272a] transition-all"
+              className="p-2 rounded-xl text-[#52525b] hover:text-[#fafafa] hover:bg-[#27272a] transition-all ml-2"
             >
               <X size={20} />
             </button>
           </div>
         </div>
 
-        {/* Toolbar (Only visible in Edit Mode) */}
+        {/* Toolbar */}
         {isEditing && (
           <div className="flex flex-wrap items-center gap-1 p-2 bg-[#18181b] border-b border-[#27272a] shrink-0">
             <button
@@ -256,23 +252,24 @@ export default function NoteModal({
             onInput={handleInput}
             onBlur={handleInput}
             data-placeholder="Write your notes here..."
-            className={`w-full h-full min-h-[300px] outline-none text-[#fafafa] text-[15px] leading-relaxed break-words whitespace-pre-wrap ${
+            // ✅ استفاده از dir="auto" باعث می‌شود مرورگر خودش جهت هر خط را بر اساس زبان آن تشخیص دهد
+            dir="auto"
+            className={`w-full h-full min-h-full outline-none text-[#fafafa] text-[15px] leading-relaxed break-words whitespace-pre-wrap ${
               !isEditing && !hasContent ? "cursor-default" : ""
             } ${isEditing ? "ring-2 ring-[#38bdf8]/30 rounded-xl p-4 bg-[#121214] transition-all" : ""}`}
-            style={{ direction: "ltr" }}
+            style={{ textAlign: "start" }}
           />
           {!isEditing && !hasContent && (
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none opacity-50">
-              <Edit3 size={40} className="text-[#3f3f46] mb-3" />
+              <Type size={40} className="text-[#3f3f46] mb-3" />
               <Typography variant="body" className="text-[#52525b]">
-                No notes on this page yet. Click "Edit Note" to start.
+                No notes on this page yet. Click "Add Note" to start.
               </Typography>
             </div>
           )}
         </div>
       </div>
 
-      {/* ✅ استایل برای نمایش placeholder در contentEditable */}
       <style jsx global>{`
         [contenteditable]:empty:before {
           content: attr(data-placeholder);

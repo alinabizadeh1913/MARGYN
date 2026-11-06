@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import PdfDrawingLayer from "./PdfDrawingLayer";
-import { Plus, ZoomIn, ZoomOut, RotateCcw, Trash2, Edit3 } from "lucide-react";
+import { Plus, ZoomIn, ZoomOut, RotateCcw, Trash2, Type } from "lucide-react"; // ✅ Type اضافه شد
 import Typography from "@/typography";
 import { useSession } from "@/providers/SessionProvider";
 
@@ -12,11 +12,11 @@ interface BlankPageViewerProps {
   canvasBg?: string;
   onPageAdded: (newTotal: number) => void;
   onDeletePage: (pageNumber: number) => void;
-  onOpenNote?: () => void; // ✅ اضافه شد
+  onOpenNote?: () => void;
 }
 
 const PAGE_WIDTH = 800;
-const PAGE_HEIGHT = 1131; // نسبت A4
+const PAGE_HEIGHT = 1131;
 
 export default function BlankPageViewer({
   filePath,
@@ -24,7 +24,7 @@ export default function BlankPageViewer({
   canvasBg = "#ffffff",
   onPageAdded,
   onDeletePage,
-  onOpenNote, // ✅ اضافه شد
+  onOpenNote,
 }: BlankPageViewerProps) {
   const [scale, setScale] = useState(1);
   const [pages, setPages] = useState(initialPages);
@@ -35,19 +35,17 @@ export default function BlankPageViewer({
     setPages(initialPages);
   }, [initialPages]);
 
-  // محاسبه صفحه فعلی بر اساس اسکرول
   const handleScroll = () => {
     if (!containerRef.current) return;
     const container = containerRef.current;
     const centerY = container.scrollTop + container.clientHeight / 2;
-    const pageHeight = PAGE_HEIGHT * scale + 40; // 40 is mb-10
-    const topPadding = 40; // py-10 is 40px
+    const pageHeight = PAGE_HEIGHT * scale + 40;
+    const topPadding = 40;
     const pageIndex = Math.floor((centerY - topPadding) / pageHeight);
     const newPage = Math.min(pages, Math.max(1, pageIndex + 1));
     setCurrentPage(newPage);
   };
 
-  // مدیریت زوم با Ctrl + Wheel
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -68,7 +66,6 @@ export default function BlankPageViewer({
     setPages(newTotal);
     onPageAdded(newTotal);
 
-    // اسکرول نرم به پایین‌ترین صفحه
     setTimeout(() => {
       containerRef.current?.scrollTo({
         top: containerRef.current.scrollHeight,
@@ -79,19 +76,7 @@ export default function BlankPageViewer({
 
   return (
     <div className="w-full h-full bg-[#09090b] relative flex flex-col overflow-hidden">
-      {/* کنترل‌های زوم شبیه به PDF */}
       <div className="absolute top-8 right-8 flex flex-col gap-4 z-50">
-        {/* ✅ دکمه نوت */}
-        {onOpenNote && (
-          <button
-            onClick={onOpenNote}
-            className="bg-white/95 backdrop-blur-xl border border-zinc-200 p-2.5 rounded-2xl shadow-sm transition-all duration-200 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100"
-            title="Page Notes (Ctrl+T)"
-          >
-            <Edit3 size={18} />
-          </button>
-        )}
-
         <div className="bg-white/95 backdrop-blur-xl border border-zinc-200 p-2 rounded-2xl flex flex-col gap-1.5 shadow-sm">
           <button
             onClick={() => setScale((s) => Math.min(3, s + 0.2))}
@@ -112,6 +97,17 @@ export default function BlankPageViewer({
             <RotateCcw size={18} />
           </button>
         </div>
+
+        {/* ✅ دکمه نوت به پایین‌ترین قسمت منتقل شد و آیکون آن T شد */}
+        {onOpenNote && (
+          <button
+            onClick={onOpenNote}
+            className="bg-white/95 backdrop-blur-xl border border-zinc-200 p-3 rounded-2xl shadow-sm transition-all duration-200 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 flex items-center justify-center"
+            title="Page Notes (Ctrl+T)"
+          >
+            <Type size={20} />
+          </button>
+        )}
       </div>
 
       <div
@@ -133,7 +129,6 @@ export default function BlankPageViewer({
               {i + 1}
             </div>
 
-            {/* دکمه حذف صفحه در UI */}
             {pages > 1 && (
               <button
                 onClick={() => onDeletePage(i + 1)}

@@ -6,6 +6,7 @@
    MARGYN — GLOBAL STYLES
 ========================================================= */
 
+/* --- English Font: Space Grotesk --- */
 @font-face {
   font-family: "Space Grotesk";
   font-style: normal;
@@ -42,8 +43,47 @@
   src: url("/fonts/SpaceGrotesk-Bold.ttf") format("truetype");
 }
 
+/* ✅ --- Persian Font: YekanBakh --- */
+@font-face {
+  font-family: "YekanBakh";
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url("/fonts/YekanBakh-Light.ttf") format("truetype");
+}
+@font-face {
+  font-family: "YekanBakh";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/YekanBakh-Regular.ttf") format("truetype");
+}
+@font-face {
+  font-family: "YekanBakh";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/YekanBakh-Medium.ttf") format("truetype");
+}
+@font-face {
+  font-family: "YekanBakh";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/YekanBakh-SemiBold.ttf") format("truetype");
+}
+@font-face {
+  font-family: "YekanBakh";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/YekanBakh-Bold.ttf") format("truetype");
+}
+
 :root {
-  --font-sans: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  /* ✅ فونت انگلیسی اولویت اول است، اگر کاراکتری نبود (مثل حروف فارسی) به سراغ یکان‌بخ می‌رود */
+  --font-sans:
+    "Space Grotesk", "YekanBakh", ui-sans-serif, system-ui, sans-serif;
   --titlebar-height: 40px;
 }
 

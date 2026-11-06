@@ -24,7 +24,7 @@ import {
   Lock,
   Hash,
   FileDown,
-  Edit3, // ✅ اضافه شد
+  Type,
 } from "lucide-react";
 import Typography from "@/typography";
 import PdfDrawingLayer from "./PdfDrawingLayer";
@@ -66,7 +66,8 @@ interface PdfViewerProps {
   onOpenPdf?: () => void;
   onScaleChange?: (scale: number) => void;
   onTextLayerStatus?: (hasText: boolean) => void;
-  onOpenNote?: () => void; // ✅ اضافه شد
+  onOpenNote?: () => void;
+  isCompleted?: boolean; // ✅ اضافه شد
 }
 
 export default function PdfViewer({
@@ -80,7 +81,8 @@ export default function PdfViewer({
   onOpenPdf,
   onScaleChange,
   onTextLayerStatus,
-  onOpenNote, // ✅ اضافه شد
+  onOpenNote,
+  isCompleted, // ✅ اضافه شد
 }: PdfViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
@@ -146,7 +148,8 @@ export default function PdfViewer({
     return () => window.removeEventListener("keydown", handleEsc);
   }, [showBackModal, showGoToPageModal]);
 
-  const isNavigationLocked = !isActive && lastFocusPage !== null;
+  const isNavigationLocked =
+    !isActive && lastFocusPage !== null && !isCompleted;
 
   const requestKey = loadedDoc
     ? `${loadedDoc.id}:${currentPage}:${scale}`
@@ -762,17 +765,6 @@ export default function PdfViewer({
       style={{ backgroundColor: canvasBg }}
     >
       <div className="absolute top-8 right-8 flex flex-col gap-4 z-50">
-        {/* ✅ دکمه نوت اضافه شد */}
-        {onOpenNote && (
-          <button
-            onClick={onOpenNote}
-            className="bg-white/95 backdrop-blur-xl border border-zinc-200 p-2.5 rounded-2xl shadow-sm transition-all duration-200 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100"
-            title="Page Notes (Ctrl+T)"
-          >
-            <Edit3 size={20} />
-          </button>
-        )}
-
         <div className="bg-white/95 backdrop-blur-xl border border-zinc-200 p-2 rounded-2xl flex flex-col gap-1.5 shadow-sm">
           <button
             onClick={toggleFullscreen}
@@ -848,6 +840,16 @@ export default function PdfViewer({
               <Hash size={20} className="block" />
             </button>
           </>
+        )}
+
+        {onOpenNote && (
+          <button
+            onClick={onOpenNote}
+            className="bg-white/95 backdrop-blur-xl border border-zinc-200 p-3 rounded-2xl shadow-sm transition-all duration-200 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 flex items-center justify-center"
+            title="Page Notes (Ctrl+T)"
+          >
+            <Type size={20} />
+          </button>
         )}
       </div>
 

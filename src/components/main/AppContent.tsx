@@ -11,7 +11,7 @@ import TabsBar, { OpenTab } from "../TabsBar";
 import { AppHeader } from "./AppHeader";
 import { AppReader } from "./AppReader";
 import { AppModals } from "./AppModals";
-import NoteModal from "./NoteModal"; // ✅ اضافه شد
+import NoteModal from "./NoteModal";
 import { REQUIRED_END_PHRASE } from "./constants";
 import {
   clearPageDrawings,
@@ -27,7 +27,7 @@ import {
   updateRecentFileCanvasBg,
 } from "@/db";
 import { prewarmAudio } from "@/lib/audio";
-import { sessions, drawings, recentFiles, notes } from "@/db/schema"; // ✅ notes اضافه شد
+import { sessions, drawings, recentFiles, notes } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 
 export function AppContent() {
@@ -76,7 +76,6 @@ export function AppContent() {
   const [showBackwardErrorModal, setShowBackwardErrorModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
 
-  // ✅ استیت مربوط به نوت‌ها
   const [showNoteModal, setShowNoteModal] = useState(false);
 
   const [exportingType, setExportingType] = useState<"pdf" | "margyn" | null>(
@@ -170,7 +169,7 @@ export function AppContent() {
         else if (showCongratsModal) setShowCongratsModal(false);
         else if (showTimerModal) setShowTimerModal(false);
         else if (showExportModal) setShowExportModal(false);
-        else if (showNoteModal) setShowNoteModal(false); // ✅ اضافه شد
+        else if (showNoteModal) setShowNoteModal(false);
       }
     };
     window.addEventListener("keydown", handleEsc);
@@ -182,7 +181,7 @@ export function AppContent() {
     showCongratsModal,
     showTimerModal,
     showExportModal,
-    showNoteModal, // ✅ اضافه شد
+    showNoteModal,
   ]);
 
   const handleScaleChange = useCallback(
@@ -302,7 +301,7 @@ export function AppContent() {
         scale: t.scale,
         canvasBg: t.canvasBg,
         isBlank: t.isBlank,
-        toolState: t.toolState, // ✅ اضافه شد
+        toolState: t.toolState,
       }));
       await setSetting("openTabsState", JSON.stringify(tabsData));
       await setSetting("activeTabId", activeTabId || "");
@@ -772,11 +771,11 @@ export function AppContent() {
 
         await db.delete(sessions).where(eq(sessions.filePath, newPath));
         await db.delete(drawings).where(eq(drawings.filePath, newPath));
-        await db.delete(notes).where(eq(notes.filePath, newPath)); // ✅ اضافه شد
+        await db.delete(notes).where(eq(notes.filePath, newPath));
 
         let parsedSessions = [];
         let parsedDrawings = [];
-        let parsedNotes = []; // ✅ اضافه شد
+        let parsedNotes = [];
 
         if (typeof projectData.sessions === "string") {
           try {
@@ -911,11 +910,11 @@ export function AppContent() {
 
         await db.delete(sessions).where(eq(sessions.filePath, record.filePath));
         await db.delete(drawings).where(eq(drawings.filePath, record.filePath));
-        await db.delete(notes).where(eq(notes.filePath, record.filePath)); // ✅ اضافه شد
+        await db.delete(notes).where(eq(notes.filePath, record.filePath));
 
         let parsedSessions = [];
         let parsedDrawings = [];
-        let parsedNotes = []; // ✅ اضافه شد
+        let parsedNotes = [];
 
         if (typeof projectData.sessions === "string") {
           try {
@@ -1179,20 +1178,19 @@ export function AppContent() {
     const db = await getDb();
     const [fileSessions, allDrawings, fileRecords, allNotes] =
       await Promise.all([
-        // ✅ allNotes اضافه شد
         db.select().from(sessions).where(eq(sessions.filePath, activeFilePath)),
         db.select().from(drawings).where(eq(drawings.filePath, activeFilePath)),
         db
           .select()
           .from(recentFiles)
           .where(eq(recentFiles.filePath, activeFilePath)),
-        db.select().from(notes).where(eq(notes.filePath, activeFilePath)), // ✅ اضافه شد
+        db.select().from(notes).where(eq(notes.filePath, activeFilePath)),
       ]);
     const fileRecord = fileRecords[0];
 
     const encryptedSessions = await encryptData(fileSessions);
     const encryptedDrawings = await encryptData(allDrawings);
-    const encryptedNotes = await encryptData(allNotes); // ✅ اضافه شد
+    const encryptedNotes = await encryptData(allNotes);
 
     return {
       version: "1.0",
@@ -1207,7 +1205,7 @@ export function AppContent() {
       completed: fileRecord?.completed || 0,
       sessions: encryptedSessions,
       drawings: encryptedDrawings,
-      notes: encryptedNotes, // ✅ اضافه شد
+      notes: encryptedNotes,
     };
   };
 
@@ -1467,7 +1465,6 @@ export function AppContent() {
   useShortcut("eraser", () => setTool("eraser"));
   useShortcut("newBlank", handleCreateBlankDocument);
 
-  // ✅ شورتکات نوت‌ها
   useShortcut("note", () => {
     if (activeFilePath) setShowNoteModal(true);
   });
@@ -1545,10 +1542,21 @@ export function AppContent() {
       setEndText("");
       setEndError(false);
 
-      if (currentPage === totalPages && totalPages > 0) {
+      const isCompletedNow = currentPage === totalPages && totalPages > 0;
+
+      if (isCompletedNow) {
         setIsCurrentPdfCompleted(true);
         if (activeFilePath) await markFileCompleted(activeFilePath);
         setShowCongratsModal(true);
+
+        // ✅ CRITICAL FIX: Update the openTabs state so it persists in the app and DB
+        if (activeTabId) {
+          setOpenTabs((prev) =>
+            prev.map((t) =>
+              t.id === activeTabId ? { ...t, isCompleted: true } : t,
+            ),
+          );
+        }
       }
       await endSession();
       setIsDirty(true);
@@ -1675,7 +1683,8 @@ export function AppContent() {
     setShowTimerModal(false);
   };
 
-  const showResumeButton = !isActive && lastFocusPage !== null;
+  const showResumeButton =
+    !isActive && lastFocusPage !== null && !isCurrentPdfCompleted;
 
   return (
     <>
@@ -1742,7 +1751,7 @@ export function AppContent() {
             syncSessionWithFile={syncSessionWithFile}
             handleSelectLibraryFile={handleSelectLibraryFile}
             handleImportProject={handleImportProject}
-            onOpenNote={() => setShowNoteModal(true)} // ✅ اضافه شد
+            onOpenNote={() => setShowNoteModal(true)}
           />
 
           <AppModals
@@ -1777,7 +1786,6 @@ export function AppContent() {
             handleConfirmEndSession={handleConfirmEndSession}
           />
 
-          {/* ✅ رندر مدال نوت‌ها */}
           <NoteModal
             isOpen={showNoteModal}
             onClose={() => setShowNoteModal(false)}

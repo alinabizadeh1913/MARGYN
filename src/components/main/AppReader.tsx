@@ -33,7 +33,7 @@ interface AppReaderProps {
   syncSessionWithFile: (path: string) => void;
   handleSelectLibraryFile: (path: string) => void;
   handleImportProject: () => void;
-  onOpenNote: () => void; // ✅ اضافه شد
+  onOpenNote: () => void;
 }
 
 export const AppReader: React.FC<AppReaderProps> = ({
@@ -59,7 +59,7 @@ export const AppReader: React.FC<AppReaderProps> = ({
   syncSessionWithFile,
   handleSelectLibraryFile,
   handleImportProject,
-  onOpenNote, // ✅ اضافه شد
+  onOpenNote,
 }) => {
   return (
     <main className="flex-1 flex overflow-hidden relative">
@@ -100,7 +100,6 @@ export const AppReader: React.FC<AppReaderProps> = ({
                 initialPages={totalPages}
                 canvasBg={activeCanvasBg}
                 onPageAdded={(newTotal: number) => {
-                  // ✅ تایپ newTotal مشخص شد
                   setTotalPages(newTotal);
                   if (activeTabId) {
                     setOpenTabs((prev) =>
@@ -113,7 +112,7 @@ export const AppReader: React.FC<AppReaderProps> = ({
                   }
                 }}
                 onDeletePage={handleDeleteBlankPage}
-                onOpenNote={onOpenNote} // ✅ پاس داده شد
+                onOpenNote={onOpenNote}
               />
             ) : (
               <PdfViewer
@@ -137,7 +136,8 @@ export const AppReader: React.FC<AppReaderProps> = ({
                 }}
                 onDropPdf={handleDropPdf}
                 onOpenPdf={handleOpenPdf}
-                onOpenNote={onOpenNote} // ✅ پاس داده شد
+                onOpenNote={onOpenNote}
+                isCompleted={activeTab?.isCompleted} // ✅ اینجا پاس داده شد
               />
             )}
           </div>
