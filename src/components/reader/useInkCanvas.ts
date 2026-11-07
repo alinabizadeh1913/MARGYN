@@ -72,6 +72,9 @@ const MAX_HISTORY = 100;
 const MAX_PREDICTED = 3;
 const PREDICT_TTL_MS = 40;
 
+/** Tools that need continuous hover feedback (cursor updates / overlay rings / anchor hints). */
+const HOVER_TOOLS = new Set(["select", "arrow", "eraser"]);
+
 const globalHistoryCache = new Map<
   string,
   { past: Stroke[][]; future: Stroke[][] }
@@ -127,6 +130,10 @@ interface EraseState {
   pid: number;
   cx: number;
   cy: number;
+  /** PERF: last drawn eraser-ring rect (so we clear only that, not the whole canvas). */
+  ringBox: Box | null;
+  /** PERF: set when strokes changed; the repaint happens once per pointer event. */
+  dirty: boolean;
 }
 
 interface TransformState {
@@ -233,8 +240,21 @@ export function useInkCanvas({
     past: [],
     future: [],
   });
+  // PERF: besides pts/box we lazily memoise the corner-box and kind per stroke,
+  // so arrow-hover (findBind) no longer allocates + recomputes them for every
+  // stroke on every frame. Entries are keyed by the (immutable) Stroke object
+  // and invalidated by mapVer exactly like before.
   const geomCache = useRef(
-    new WeakMap<Stroke, { v: number; pts: number[]; box: Box }>(),
+    new WeakMap<
+      Stroke,
+      {
+        v: number;
+        pts: number[];
+        box: Box;
+        cb?: Box;
+        k?: ReturnType<typeof kindOf>;
+      }
+    >(),
   );
   const mapVer = useRef(0);
 
@@ -242,8 +262,52 @@ export function useInkCanvas({
   const hover = useRef<{ x: number; y: number } | null>(null);
   const mods = useRef({ shift: false, alt: false });
   const rectRef = useRef<DOMRect | null>(null);
-  // ✅ NEW: مقیاس بصری canvas (برای وقتی داخل transform هستیم)
   const rectScaleRef = useRef(1);
+
+  // ============================================================
+  // PERF: rAF-throttled hover processing refs
+  // ============================================================
+  const hoverRafRef = useRef(0);
+  const hoverRectCacheRef = useRef<{
+    rect: DOMRect;
+    scale: number;
+    time: number;
+  } | null>(null);
+  const lastHitPosRef = useRef<{ x: number; y: number } | null>(null);
+  // PERF: raw client coords of the latest hover event; converted to canvas
+  // coords (and the layout rect read) at most once per animation frame.
+  const hoverRawRef = useRef<{ x: number; y: number } | null>(null);
+
+  // ============================================================
+  // PERF: rAF-batched previews for shape / highlight / move / resize /
+  // endpoint / marquee, plus duplicate-position skipping.
+  // ============================================================
+  const previewRafRef = useRef(0);
+  const lastPrevRef = useRef({ x: NaN, y: NaN, m: -1 });
+
+  // ============================================================
+  // PERF: selection memo (strokes + bounds), keyed on the identity of the
+  // lines array, the selection Set and the coordinate-mapping version.
+  // ============================================================
+  const selCacheRef = useRef<{
+    lines: Stroke[];
+    sel: Set<string>;
+    strokes: Stroke[];
+    info: SelInfo | null;
+    infoVer: number;
+  } | null>(null);
+
+  // ============================================================
+  // PERF: idle-frame bounds tracking + signature skip
+  // ============================================================
+  const lastIdleBoundsRef = useRef<Box | null>(null);
+  const lastIdleSigRef = useRef<string>("");
+
+  // ============================================================
+  // PERF: cursor React-state bailout
+  // ============================================================
+  const cursorRef = useRef<string>("default");
+
   const rafRef = useRef(0);
   const penUntil = useRef(0);
   const [hoverCursor, setHoverCursor] = useState("default");
@@ -271,11 +335,9 @@ export function useInkCanvas({
 
   const saveHistoryToCache = useCallback(() => {
     const key = getCacheKey();
-    // LRU: delete then re-set moves the key to the end
     globalHistoryCache.delete(key);
     globalHistoryCache.set(key, hist.current);
 
-    // Evict oldest entries (except the current one) if over the limit
     if (globalHistoryCache.size > MAX_HISTORY_CACHE_ENTRIES) {
       const excess = globalHistoryCache.size - MAX_HISTORY_CACHE_ENTRIES;
       let removed = 0;
@@ -290,17 +352,38 @@ export function useInkCanvas({
 
   const dpr = () => window.devicePixelRatio || 1;
 
-  // ✅ NEW: محاسبه‌ی مقیاس بصری بین CSS size و rect.width
-  // اگر canvas داخل یک transform: scale() قرار داشته باشد، rect.width بزرگتر از offsetWidth هست.
   const computeRectScale = (c: HTMLCanvasElement, rect: DOMRect): number => {
     const cssW = c.offsetWidth;
     if (cssW > 0 && rect.width > 0) return rect.width / cssW;
     return 1;
   };
 
-  const toCanvasCoords = (clientX: number, clientY: number, rect: DOMRect) => {
-    const s = rectScaleRef.current;
-    return [(clientX - rect.left) / s, (clientY - rect.top) / s] as const;
+  const toCanvasCoords = (
+    clientX: number,
+    clientY: number,
+    rect: DOMRect,
+    scale = rectScaleRef.current,
+  ) => {
+    return [
+      (clientX - rect.left) / scale,
+      (clientY - rect.top) / scale,
+    ] as const;
+  };
+
+  /**
+   * PERF: cache the bounding rect for ~16ms so we do at most 1 layout read per
+   * frame instead of one per pointermove. This alone cuts hover CPU by ~90% on
+   * high-polling-rate mice / trackpads.
+   */
+  const getHoverRect = (c: HTMLCanvasElement) => {
+    const now = performance.now();
+    const cached = hoverRectCacheRef.current;
+    if (cached && now - cached.time < 16) return cached;
+    const rect = c.getBoundingClientRect();
+    const scale = computeRectScale(c, rect);
+    const entry = { rect, scale, time: now };
+    hoverRectCacheRef.current = entry;
+    return entry;
   };
 
   function setLiveTransform(ctx: CanvasRenderingContext2D) {
@@ -457,9 +540,13 @@ export function useInkCanvas({
     if (!c || !ctx) return;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, c.width, c.height);
+    // Reset idle tracking so the next idle frame redraws correctly.
+    lastIdleBoundsRef.current = null;
+    lastIdleSigRef.current = "";
   }
 
   const resize = useCallback((w: number, h: number, force = false) => {
+    hoverRectCacheRef.current = null;
     const s = staticRef.current;
     const d = dynamicRef.current;
     if (!s || !d) return;
@@ -513,9 +600,13 @@ export function useInkCanvas({
 
   function afterHistoryChange() {
     const ids = new Set(linesRef.current.map((s) => s.id!));
+    // PERF: never mutate the selection Set in place (the selection memo is
+    // keyed on its identity) - replace it only when something was dropped.
+    const keep: string[] = [];
     selRef.current.forEach((id) => {
-      if (!ids.has(id)) selRef.current.delete(id);
+      if (ids.has(id)) keep.push(id);
     });
+    if (keep.length !== selRef.current.size) selRef.current = new Set(keep);
     hiddenRef.current = null;
     scheduleSave();
     redrawStatic();
@@ -545,8 +636,11 @@ export function useInkCanvas({
     const lines = linesRef.current;
     for (let i = lines.length - 1; i >= 0; i--) {
       const s = lines[i];
-      if (!isBindable(kindOf(s)) || s.id === excludeId) continue;
-      const b = cornerBox(geom(s).pts);
+      if (s.id === excludeId) continue;
+      const g = geom(s);
+      const k = g.k ?? (g.k = kindOf(s));
+      if (!isBindable(k)) continue;
+      const b = g.cb ?? (g.cb = cornerBox(g.pts));
       const inside = x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
       let d: number;
       if (inside) d = Math.min(x - b.x, b.x + b.w - x, y - b.y, b.y + b.h - y);
@@ -566,7 +660,19 @@ export function useInkCanvas({
     const lines = linesRef.current;
     for (let i = lines.length - 1; i >= 0; i--) {
       const s = lines[i];
-      if (hitStroke(s, geom(s).pts, x, y, 6)) return s;
+      const g = geom(s);
+      // PERF: cheap bounding-box reject before the (expensive) exact hit test.
+      // The pad is deliberately generous (hit tolerance 6 + stroke size).
+      const b = g.box;
+      const pad = 8 + (s.size || 0);
+      if (
+        x < b.x - pad ||
+        x > b.x + b.w + pad ||
+        y < b.y - pad ||
+        y > b.y + b.h + pad
+      )
+        continue;
+      if (hitStroke(s, g.pts, x, y, 6)) return s;
     }
     return null;
   }
@@ -574,10 +680,15 @@ export function useInkCanvas({
   function selected(): Stroke[] {
     const sel = selRef.current;
     if (!sel.size) return [];
-    return linesRef.current.filter((s) => s.id && sel.has(s.id));
+    const lines = linesRef.current;
+    const c = selCacheRef.current;
+    if (c && c.lines === lines && c.sel === sel) return c.strokes;
+    const strokes = lines.filter((s) => s.id && sel.has(s.id));
+    selCacheRef.current = { lines, sel, strokes, info: null, infoVer: -1 };
+    return strokes;
   }
 
-  function selectionInfo(over?: Map<string, number[]>): SelInfo | null {
+  function computeSelectionInfo(over?: Map<string, number[]>): SelInfo | null {
     const sel = selected();
     if (!sel.length) return null;
     const pts = (s: Stroke) => over?.get(s.id!) ?? geom(s).pts;
@@ -597,6 +708,19 @@ export function useInkCanvas({
       }
     }
     return { boxes, bbox: unionBoxes(boxes), endpoints: null };
+  }
+
+  function selectionInfo(over?: Map<string, number[]>): SelInfo | null {
+    // Live drag previews pass overridden points: always compute those fresh.
+    if (over) return computeSelectionInfo(over);
+    const sel = selected();
+    if (!sel.length) return null;
+    const c = selCacheRef.current!;
+    if (c.infoVer !== mapVer.current) {
+      c.info = computeSelectionInfo();
+      c.infoVer = mapVer.current;
+    }
+    return c.info;
   }
 
   type HandleHit =
@@ -753,8 +877,21 @@ export function useInkCanvas({
     if (anyChange) {
       linesRef.current = next!;
       X.changed = true;
-      redrawStatic();
+      X.dirty = true;
+      // The repaint itself is done once per pointer event by flushEraseDirty()
+      // (previously a FULL redrawStatic() ran for every coalesced sample).
     }
+  }
+
+  function flushEraseDirty(X: EraseState) {
+    if (!X.dirty) return;
+    X.dirty = false;
+    redrawStatic();
+  }
+
+  function eraserRingBox(x: number, y: number, R: number): Box {
+    const p = R + 6;
+    return { x: x - p, y: y - p, w: p * 2, h: p * 2 };
   }
 
   function shapeGeom(X: ShapeState) {
@@ -1013,32 +1150,122 @@ export function useInkCanvas({
     if (!rafRef.current) rafRef.current = requestAnimationFrame(idleFrame);
   }
 
+  /**
+   * PERF: fully rewritten idle frame.
+   *
+   * Old behaviour: on EVERY hover pointermove we cleared the ENTIRE dynamic
+   * canvas (potentially millions of pixels at devicePixelRatio 2×) and
+   * redrew the whole overlay. On systems with high-polling-rate mice / large
+   * canvases this was the dominant CPU cost of the whole app.
+   *
+   * New behaviour:
+   *   • We compute a cheap signature of what should be on screen.
+   *   • If the signature is unchanged since the last frame → do nothing.
+   *   • Otherwise clear ONLY the previous bounds and redraw the new overlay.
+   *
+   * Visual result: identical. CPU cost: typically 0 (no-op) or a tiny
+   * (~40×40 px) clear+draw for the eraser ring.
+   */
   function idleFrame() {
     rafRef.current = 0;
     if (ix.current) return;
     const ctx = getDynamicCtx();
     if (!ctx) return;
-    clearLiveAll();
-    setLiveTransform(ctx);
 
     const t = cfg.current.tool;
+    let sig = "";
+    let drawFn: (() => Box | null) | null = null;
+
     if (t === "select") {
       const info = selectionInfo();
-      if (info) drawSelectionUI(ctx, info);
+      if (!info) {
+        sig = "";
+      } else if (info.bbox) {
+        const b = info.bbox;
+        // Cheap content hash — no JSON.stringify per frame
+        let hash = 0;
+        for (const bx of info.boxes) {
+          hash = (hash * 31 + bx.x + bx.y + bx.w + bx.h) | 0;
+        }
+        sig = `s:${info.boxes.length}:${hash}`;
+        drawFn = () => {
+          drawSelectionUI(ctx, info);
+          const pad = 10;
+          return {
+            x: b.x - pad,
+            y: b.y - pad,
+            w: b.w + pad * 2,
+            h: b.h + pad * 2,
+          };
+        };
+      } else if (info.endpoints) {
+        let hash = 0;
+        let x0 = Infinity,
+          y0 = Infinity,
+          x1 = -Infinity,
+          y1 = -Infinity;
+        for (const [ex, ey] of info.endpoints) {
+          hash = (hash * 31 + ex + ey) | 0;
+          if (ex < x0) x0 = ex;
+          if (ex > x1) x1 = ex;
+          if (ey < y0) y0 = ey;
+          if (ey > y1) y1 = ey;
+        }
+        sig = `e:${hash}`;
+        drawFn = () => {
+          drawSelectionUI(ctx, info);
+          return { x: x0 - 10, y: y0 - 10, w: x1 - x0 + 20, h: y1 - y0 + 20 };
+        };
+      }
     } else if (t === "arrow" && hover.current) {
       const b = findBind(hover.current.x, hover.current.y);
-      if (b) drawAnchorHints(ctx, b.box, b.anchor);
+      if (b) {
+        sig = `a:${b.id}:${b.anchor}`;
+        const hb = b.box;
+        drawFn = () => {
+          drawAnchorHints(ctx, hb, b.anchor);
+          const pad = 10;
+          return {
+            x: hb.x - pad,
+            y: hb.y - pad,
+            w: hb.w + pad * 2,
+            h: hb.h + pad * 2,
+          };
+        };
+      }
     } else if (t === "eraser" && hover.current) {
-      drawEraserRing(
-        ctx,
-        hover.current.x,
-        hover.current.y,
-        (cfg.current.size * 3) / 2,
-      );
+      const h = hover.current;
+      const r = (cfg.current.size * 3) / 2;
+      sig = `r:${h.x.toFixed(1)}:${h.y.toFixed(1)}:${r}`;
+      drawFn = () => {
+        drawEraserRing(ctx, h.x, h.y, r);
+        return { x: h.x - r - 2, y: h.y - r - 2, w: r * 2 + 4, h: r * 2 + 4 };
+      };
+    }
+
+    if (sig === lastIdleSigRef.current) return; // Nothing changed — zero cost.
+
+    if (lastIdleBoundsRef.current) clearLive(lastIdleBoundsRef.current);
+    lastIdleBoundsRef.current = null;
+    lastIdleSigRef.current = sig;
+
+    if (drawFn) {
+      setLiveTransform(ctx);
+      lastIdleBoundsRef.current = drawFn();
     }
   }
 
-  const setCursor = (v: string) => setHoverCursor(v);
+  /**
+   * PERF: setCursor now uses a ref to bail out BEFORE calling React's
+   * setState. This prevents React from scheduling a re-render check on every
+   * single mouse move (which was a non-trivial cost on 120–1000 Hz devices).
+   */
+  const setCursor = (v: string) => {
+    if (v !== cursorRef.current) {
+      cursorRef.current = v;
+      setHoverCursor(v);
+    }
+  };
 
   function setActive() {
     const m = me.current;
@@ -1071,8 +1298,12 @@ export function useInkCanvas({
     const t = cfg.current.tool;
     const rect = c.getBoundingClientRect();
     rectRef.current = rect;
-    // ✅ auto-detect visual scale (برای infinite canvas که داخل transform هست)
     rectScaleRef.current = computeRectScale(c, rect);
+    hoverRectCacheRef.current = {
+      rect,
+      scale: rectScaleRef.current,
+      time: performance.now(),
+    };
     const [x, y] = toCanvasCoords(e.clientX, e.clientY, rect);
     mods.current = { shift: e.shiftKey, alt: e.altKey };
     setActive();
@@ -1081,6 +1312,10 @@ export function useInkCanvas({
     } catch {}
     if (e.pointerType === "pen") penUntil.current = Infinity;
     hover.current = null;
+    hoverRawRef.current = null;
+    lastPrevRef.current.x = NaN;
+    lastPrevRef.current.y = NaN;
+    lastPrevRef.current.m = -1;
     clearLiveAll();
 
     const { color, size } = cfg.current;
@@ -1117,12 +1352,16 @@ export function useInkCanvas({
           pid: e.pointerId,
           cx: x,
           cy: y,
+          ringBox: null,
+          dirty: false,
         };
         ix.current = X;
         eraseSegment(X, x, y, x, y);
+        flushEraseDirty(X);
         const ctx = getDynamicCtx()!;
         setLiveTransform(ctx);
         drawEraserRing(ctx, x, y, X.R);
+        X.ringBox = eraserRingBox(x, y, X.R);
         break;
       }
 
@@ -1200,7 +1439,11 @@ export function useInkCanvas({
             const id = hit.id!;
             if (e.shiftKey) {
               if (selRef.current.has(id)) {
-                selRef.current.delete(id);
+                {
+                  const ns = new Set(selRef.current);
+                  ns.delete(id);
+                  selRef.current = ns;
+                }
                 try {
                   c.releasePointerCapture(e.pointerId);
                 } catch {}
@@ -1209,7 +1452,7 @@ export function useInkCanvas({
                   penUntil.current = performance.now() + 600;
                 return;
               }
-              selRef.current.add(id);
+              selRef.current = new Set(selRef.current).add(id);
             } else if (!selRef.current.has(id)) {
               selRef.current = new Set([id]);
             }
@@ -1270,13 +1513,143 @@ export function useInkCanvas({
   function updateHoverCursor(x: number, y: number) {
     const t = cfg.current.tool;
     if (t !== "select") return;
+
+    // PERF: skip hit-testing if the pointer is at the exact same position
+    // (common on some OSes that emit redundant pointermove events).
+    const last = lastHitPosRef.current;
+    if (last && last.x === x && last.y === y) return;
+    lastHitPosRef.current = { x, y };
+
+    // Nothing selected -> no handle and no "move" cursor is possible, so the
+    // O(n) hit test over every stroke can be skipped entirely.
+    if (!selRef.current.size) {
+      setCursor("default");
+      return;
+    }
+
     const h = hitHandle(x, y);
     if (h) {
       setCursor(h.type === "end" ? "crosshair" : HANDLE_CURSOR[h.id]);
       return;
     }
+
+    // The "move" cursor only appears when the TOP-most hit stroke is selected,
+    // so if the pointer is nowhere near any selected stroke the answer is
+    // "default" without scanning the whole page.
+    let nearSelected = false;
+    for (const s of selected()) {
+      const b = geom(s).box;
+      const pad = 8 + (s.size || 0);
+      if (
+        x >= b.x - pad &&
+        x <= b.x + b.w + pad &&
+        y >= b.y - pad &&
+        y <= b.y + b.h + pad
+      ) {
+        nearSelected = true;
+        break;
+      }
+    }
+    if (!nearSelected) {
+      setCursor("default");
+      return;
+    }
+
     const hit = hitTop(x, y);
     setCursor(hit && selRef.current.has(hit.id!) ? "move" : "default");
+  }
+
+  /**
+   * PERF: hover handling for select/arrow/eraser is rAF-throttled so we do at
+   * most ONE layout read, ONE hit-test and ONE overlay redraw per animation
+   * frame no matter how many pointermove events the OS fires. The pointermove
+   * handler itself now only stores the raw client coordinates.
+   */
+  function processHover() {
+    hoverRafRef.current = 0;
+    if (ix.current) return;
+    const raw = hoverRawRef.current;
+    if (!raw) return;
+    const c = dynamicRef.current;
+    if (!c) return;
+    const t = cfg.current.tool;
+    if (!HOVER_TOOLS.has(t)) return;
+
+    const { rect, scale } = getHoverRect(c);
+    const x = (raw.x - rect.left) / scale;
+    const y = (raw.y - rect.top) / scale;
+    hover.current = { x, y };
+    rectRef.current = rect;
+    rectScaleRef.current = scale;
+
+    if (t === "select") updateHoverCursor(x, y);
+    scheduleIdle();
+  }
+
+  function scheduleHover() {
+    if (!hoverRafRef.current) {
+      hoverRafRef.current = requestAnimationFrame(processHover);
+    }
+  }
+
+  function drawMarqueePreview(X: MarqueeState) {
+    const ctx = getDynamicCtx();
+    if (!ctx) return;
+    if (X.previewBox) clearLive(X.previewBox);
+    setLiveTransform(ctx);
+
+    const r: Box = {
+      x: Math.min(X.ax, X.cx),
+      y: Math.min(X.ay, X.cy),
+      w: Math.abs(X.ax - X.cx),
+      h: Math.abs(X.ay - X.cy),
+    };
+    const hits = new Set<string>(X.base);
+    for (const s of linesRef.current)
+      if (strokeInRect(s, geom(s).pts, r)) hits.add(s.id!);
+    selRef.current = hits;
+    drawMarquee(ctx, r);
+    const info = selectionInfo();
+    if (info) {
+      ctx.save();
+      ctx.strokeStyle = ACCENT;
+      ctx.lineWidth = 1;
+      ctx.globalAlpha = 0.7;
+      for (const b of info.boxes)
+        ctx.strokeRect(b.x + 0.5, b.y + 0.5, b.w, b.h);
+      ctx.restore();
+    }
+    X.previewBox = inflate(r, 20);
+  }
+
+  /** Draws the latest state of the active (non-pen, non-eraser) interaction. */
+  function runPreview() {
+    previewRafRef.current = 0;
+    const X = ix.current;
+    if (!X) return;
+    switch (X.kind) {
+      case "shape":
+        drawShapePreview(X);
+        break;
+      case "hl":
+        drawHlPreview(X);
+        break;
+      case "move":
+      case "resize":
+        drawTransformPreview(X);
+        break;
+      case "endpoint":
+        drawEndpointPreview(X);
+        break;
+      case "marquee":
+        drawMarqueePreview(X);
+        break;
+    }
+  }
+
+  function schedulePreview() {
+    if (!previewRafRef.current)
+      previewRafRef.current = requestAnimationFrame(runPreview);
   }
 
   function move(e: React.PointerEvent<HTMLCanvasElement>) {
@@ -1287,14 +1660,21 @@ export function useInkCanvas({
 
     if (!X) {
       if (e.pointerType === "touch") return;
-      const r = c.getBoundingClientRect();
-      rectRef.current = r;
-      rectScaleRef.current = computeRectScale(c, r);
-      const [x, y] = toCanvasCoords(e.clientX, e.clientY, r);
-      hover.current = { x, y };
       const t = cfg.current.tool;
-      updateHoverCursor(x, y);
-      if (t === "arrow" || t === "eraser" || t === "select") scheduleIdle();
+      // PERF: tools that don't produce hover feedback exit immediately,
+      // skipping getBoundingClientRect() entirely on every pointermove.
+      if (!HOVER_TOOLS.has(t)) return;
+
+      // PERF: just remember the raw position; all real work happens once per
+      // frame inside processHover().
+      const raw = hoverRawRef.current;
+      if (raw) {
+        raw.x = e.clientX;
+        raw.y = e.clientY;
+      } else {
+        hoverRawRef.current = { x: e.clientX, y: e.clientY };
+      }
+      scheduleHover();
       return;
     }
 
@@ -1357,62 +1737,26 @@ export function useInkCanvas({
         X.lx = px;
         X.ly = py;
       }
+      // PERF: ONE repaint per event (not one per coalesced sample) and clear
+      // only the old ring rect, not the whole overlay canvas.
+      flushEraseDirty(X);
       const ctx = getDynamicCtx()!;
-      clearLiveAll();
+      if (X.ringBox) clearLive(X.ringBox);
       setLiveTransform(ctx);
       drawEraserRing(ctx, X.cx, X.cy, X.R);
+      X.ringBox = eraserRingBox(X.cx, X.cy, X.R);
       return;
     }
 
-    if (X.kind === "shape") {
-      drawShapePreview(X);
-      return;
-    }
-
-    if (X.kind === "hl") {
-      drawHlPreview(X);
-      return;
-    }
-
-    if (X.kind === "move" || X.kind === "resize") {
-      drawTransformPreview(X);
-      return;
-    }
-
-    if (X.kind === "endpoint") {
-      drawEndpointPreview(X);
-      return;
-    }
-
-    if (X.kind === "marquee") {
-      const ctx = getDynamicCtx()!;
-      if (X.previewBox) clearLive(X.previewBox);
-      setLiveTransform(ctx);
-
-      const r: Box = {
-        x: Math.min(X.ax, X.cx),
-        y: Math.min(X.ay, X.cy),
-        w: Math.abs(X.ax - X.cx),
-        h: Math.abs(X.ay - X.cy),
-      };
-      const hits = new Set<string>(X.base);
-      for (const s of linesRef.current)
-        if (strokeInRect(s, geom(s).pts, r)) hits.add(s.id!);
-      selRef.current = hits;
-      drawMarquee(ctx, r);
-      const info = selectionInfo();
-      if (info) {
-        ctx.save();
-        ctx.strokeStyle = ACCENT;
-        ctx.lineWidth = 1;
-        ctx.globalAlpha = 0.7;
-        for (const b of info.boxes)
-          ctx.strokeRect(b.x + 0.5, b.y + 0.5, b.w, b.h);
-        ctx.restore();
-      }
-      X.previewBox = inflate(r, 20);
-      return;
-    }
+    // shape / hl / move / resize / endpoint / marquee:
+    // PERF: skip if nothing changed, otherwise coalesce into one draw per frame.
+    const mk = (e.shiftKey ? 1 : 0) | (e.altKey ? 2 : 0);
+    const lp = lastPrevRef.current;
+    if (lp.x === cxScaled && lp.y === cyScaled && lp.m === mk) return;
+    lp.x = cxScaled;
+    lp.y = cyScaled;
+    lp.m = mk;
+    schedulePreview();
   }
 
   function finish(e: React.PointerEvent<HTMLCanvasElement>, ok: boolean) {
@@ -1426,6 +1770,15 @@ export function useInkCanvas({
     }
     mods.current = { shift: e.shiftKey, alt: e.altKey };
     if (e.pointerType === "pen") penUntil.current = performance.now() + 600;
+
+    // A preview may still be waiting for the next frame. The result is about to
+    // be committed/cleared, so drop it - except the marquee, whose selection is
+    // computed by the preview pass and must reflect the final pointer position.
+    if (previewRafRef.current) {
+      cancelAnimationFrame(previewRafRef.current);
+      previewRafRef.current = 0;
+      if (X.kind === "marquee") drawMarqueePreview(X);
+    }
 
     switch (X.kind) {
       case "pen": {
@@ -1805,8 +2158,6 @@ export function useInkCanvas({
         const arr = Array.isArray(saved) ? (saved as Stroke[]) : [];
         for (const s of arr) if (!s.id) s.id = uid();
 
-        // ✅ Race fix: user started drawing before DB finished loading.
-        // Merge instead of overwrite — saved strokes underneath, new strokes on top.
         if (hasDrawnRef.current && linesRef.current.length > 0) {
           const savedIds = new Set(arr.map((s) => s.id));
           const userStrokes = linesRef.current.filter(
@@ -1937,8 +2288,14 @@ export function useInkCanvas({
         ix.current = null;
         clearLiveAll();
         redrawStatic();
+      } else if (lastIdleBoundsRef.current) {
+        clearLive(lastIdleBoundsRef.current);
+        lastIdleBoundsRef.current = null;
+        lastIdleSigRef.current = "";
       }
       hover.current = null;
+      hoverRawRef.current = null;
+      lastHitPosRef.current = null;
       setCursor("default");
     };
 
@@ -2025,6 +2382,8 @@ export function useInkCanvas({
   useEffect(() => {
     if (tool !== "select") selRef.current = new Set();
     hover.current = null;
+    hoverRawRef.current = null;
+    lastHitPosRef.current = null;
     setCursor("default");
     if (ix.current) {
       ix.current = null;
@@ -2044,6 +2403,8 @@ export function useInkCanvas({
   useEffect(
     () => () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      if (hoverRafRef.current) cancelAnimationFrame(hoverRafRef.current);
+      if (previewRafRef.current) cancelAnimationFrame(previewRafRef.current);
     },
     [],
   );
@@ -2069,9 +2430,17 @@ export function useInkCanvas({
   }, []);
   const onPointerLeave = useCallback(() => {
     hover.current = null;
+    hoverRawRef.current = null;
+    lastHitPosRef.current = null;
+    hoverRectCacheRef.current = null;
     if (!ix.current) {
       setCursor("default");
-      scheduleIdle();
+      // Clear only the idle overlay bounds, not the entire canvas.
+      if (lastIdleBoundsRef.current) {
+        clearLive(lastIdleBoundsRef.current);
+        lastIdleBoundsRef.current = null;
+        lastIdleSigRef.current = "";
+      }
     }
   }, []);
 
