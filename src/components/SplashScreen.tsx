@@ -21,8 +21,9 @@ export default function SplashScreen({ isAppReady }: SplashScreenProps) {
   const [isFadingOut, setIsFadingOut] = useState(false);
   const [isHidden, setIsHidden] = useState(false);
 
-  // شبیه‌سازی روند لودینگ
+  // Simulated loading (fires only while app is NOT yet ready)
   useEffect(() => {
+    if (isAppReady) return;
     const interval = setInterval(() => {
       setProgress((prev) => {
         if (prev >= 100) {
@@ -35,9 +36,16 @@ export default function SplashScreen({ isAppReady }: SplashScreenProps) {
     }, 120);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [isAppReady]);
 
-  // تغییر متن‌های لودینگ
+  // ✅ NEW: fast-forward to 100% the moment the app is ready
+  useEffect(() => {
+    if (isAppReady && progress < 100) {
+      setProgress(100);
+    }
+  }, [isAppReady, progress]);
+
+  // Rotate the phrase
   useEffect(() => {
     if (progress >= 100) return;
     const phraseInterval = setInterval(() => {
@@ -46,16 +54,16 @@ export default function SplashScreen({ isAppReady }: SplashScreenProps) {
     return () => clearInterval(phraseInterval);
   }, [progress]);
 
-  // محو شدن نهایی
+  // ✅ FASTER fade-out: 200ms hold, 700ms fade, hide at 900ms
   useEffect(() => {
     if (isAppReady && progress >= 100) {
       const fadeTimer = setTimeout(() => {
         setIsFadingOut(true);
-      }, 600);
+      }, 200);
 
       const hideTimer = setTimeout(() => {
         setIsHidden(true);
-      }, 1600);
+      }, 900);
 
       return () => {
         clearTimeout(fadeTimer);
@@ -68,7 +76,7 @@ export default function SplashScreen({ isAppReady }: SplashScreenProps) {
 
   return (
     <div
-      className={`fixed inset-0 z-[99999] bg-[#09090b] flex flex-col items-center justify-center overflow-hidden transition-all duration-1000 cubic-bezier(0.4, 0, 0.2, 1) ${
+      className={`fixed inset-0 z-[99999] bg-[#09090b] flex flex-col items-center justify-center overflow-hidden transition-all duration-700 cubic-bezier(0.4, 0, 0.2, 1) ${
         isFadingOut
           ? "opacity-0 scale-[1.02] pointer-events-none blur-md"
           : "opacity-100 scale-100 blur-0"
@@ -76,19 +84,15 @@ export default function SplashScreen({ isAppReady }: SplashScreenProps) {
     >
       {/* ================= BACKGROUND EFFECTS ================= */}
 
-      {/* گرید پس‌زمینه */}
       <div className="absolute inset-0 bg-[linear-gradient(to_right,#27272a_1px,transparent_1px),linear-gradient(to_bottom,#27272a_1px,transparent_1px)] bg-[size:64px_64px] opacity-[0.02] pointer-events-none" />
 
-      {/* هاله‌های نوری گوشه‌ها (Ambient Corner Glows) */}
       <div className="absolute top-0 left-0 w-[600px] h-[600px] bg-[#38bdf8]/10 rounded-full blur-[150px] -translate-x-1/2 -translate-y-1/2 pointer-events-none" />
       <div className="absolute bottom-0 right-0 w-[600px] h-[600px] bg-[#a855f7]/10 rounded-full blur-[150px] translate-x-1/2 translate-y-1/2 pointer-events-none" />
       <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-[#f43f5e]/5 rounded-full blur-[120px] translate-x-1/3 -translate-y-1/3 pointer-events-none" />
       <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-[#10b981]/5 rounded-full blur-[120px] -translate-x-1/3 translate-y-1/3 pointer-events-none" />
 
-      {/* هاله نورانی مرکزی */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-[#38bdf8]/5 rounded-full blur-[150px] pointer-events-none" />
 
-      {/* گرادیانت‌های لبه‌ها برای عمق دادن */}
       <div className="absolute top-0 inset-x-0 h-40 bg-gradient-to-b from-black/60 to-transparent pointer-events-none" />
       <div className="absolute bottom-0 inset-x-0 h-40 bg-gradient-to-t from-black/60 to-transparent pointer-events-none" />
 
@@ -96,7 +100,6 @@ export default function SplashScreen({ isAppReady }: SplashScreenProps) {
       <div className="relative z-10 flex flex-col items-center animate-in fade-in zoom-in-[0.98] duration-1000 ease-out fill-mode-both">
         {/* Logo Section */}
         <div className="relative mb-10 group">
-          {/* هاله پشت لوگو با انیمیشن تنفس Opacity (کم مصرف) */}
           <div className="absolute inset-0 bg-[#38bdf8]/30 rounded-full blur-2xl animate-[glow-breathe_4s_ease-in-out_infinite]" />
 
           <div className="relative animate-[float_6s_ease-in-out_infinite]">
@@ -116,7 +119,6 @@ export default function SplashScreen({ isAppReady }: SplashScreenProps) {
 
           <div className="flex items-center gap-4">
             <div className="w-8 h-px bg-gradient-to-r from-transparent to-[#38bdf8]/50" />
-            {/* ✅ شعار تغییر یافت */}
             <p className="text-[#71717a] text-[10px] font-bold tracking-[0.5em] uppercase pl-[0.5em]">
               Mindful Reading Workspace
             </p>
@@ -126,7 +128,6 @@ export default function SplashScreen({ isAppReady }: SplashScreenProps) {
 
         {/* ================= PROGRESS BAR SECTION ================= */}
         <div className="w-full max-w-md flex flex-col gap-3">
-          {/* Progress Bar Container */}
           <div className="relative w-full h-2 bg-[#121214] rounded-full overflow-hidden border border-white/5 shadow-inner">
             <div className="absolute inset-0 bg-[linear-gradient(90deg,transparent_0%,rgba(255,255,255,0.03)_50%,transparent_100%)] bg-[length:200%_100%] animate-[shimmer_2s_infinite]" />
 
@@ -139,7 +140,6 @@ export default function SplashScreen({ isAppReady }: SplashScreenProps) {
             </div>
           </div>
 
-          {/* Status Text & Percentage */}
           <div className="flex items-center justify-between w-full px-1">
             <div className="flex items-center gap-2.5">
               {progress < 100 ? (

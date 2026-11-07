@@ -45,6 +45,12 @@ import {
 import { sessions, drawings, recentFiles, notes } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 
+// ✅ Global guard so notifyRendererReady is called exactly once per app lifetime,
+// even under React StrictMode double-mount.
+let __MARGYN_READY_NOTIFIED = false;
+
+type PendingExternalFile = { type: "pdf" | "margyn"; path: string };
+
 export function AppContent() {
   const {
     isActive,
@@ -91,7 +97,6 @@ export function AppContent() {
   const [showBackwardErrorModal, setShowBackwardErrorModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
 
-  // ✅ State جدید برای نمایش مدال ساخت سند
   const [showNewDocumentModal, setShowNewDocumentModal] = useState(false);
 
   const [showResetProgressModal, setShowResetProgressModal] = useState(false);
@@ -123,6 +128,11 @@ export function AppContent() {
   const isInitRef = useRef(false);
   const scaleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const prevActiveTabId = useRef<string | null>(null);
+
+  // ✅ External-file pipeline refs
+  const initCompleteRef = useRef(false);
+  const pendingExternalFilesRef = useRef<PendingExternalFile[]>([]);
+  const loadingPdfPathsRef = useRef<Set<string>>(new Set());
 
   const stateRef = useRef({
     loadProjectFromPath: async (path: string) => {},
@@ -420,8 +430,20 @@ export function AppContent() {
     const existingTab = openTabs.find((t) => t.filePath === path);
 
     if (existingTab) {
+      // ✅ FIX: when tab was lazy-restored (pdfData empty), resolve it from uint8Data
+      const hasData =
+        existingTab.pdfData && existingTab.pdfData.length > 0
+          ? existingTab.pdfData
+          : uint8Data;
       setActiveTabId(existingTab.id);
-      setPdfData(existingTab.pdfData);
+      setPdfData(hasData);
+      if (!existingTab.pdfData || existingTab.pdfData.length === 0) {
+        setOpenTabs((prev) =>
+          prev.map((t) =>
+            t.id === existingTab.id ? { ...t, pdfData: uint8Data } : t,
+          ),
+        );
+      }
       setActiveFileName(existingTab.name);
       setActiveFilePath(existingTab.filePath);
 
@@ -1192,6 +1214,123 @@ export function AppContent() {
 
   stateRef.current.loadProjectFromPath = loadProjectFromPath;
 
+  // ============================================================
+  // ✅ NEW: processExternalFile — single entry point for OS file-open
+  // ============================================================
+  const processExternalFile = useCallback(
+    async (type: "pdf" | "margyn", filePath: string) => {
+      try {
+        if (type === "margyn") {
+          await stateRef.current.loadProjectFromPath(filePath);
+          return;
+        }
+        // PDF
+        if (!window.electronAPI) return;
+        const result = await window.electronAPI.readPdfPath(filePath);
+        if (!result || !result.data) return;
+        const record = await addRecentFile(result.name, result.libraryPath);
+        if (!record) return;
+        await stateRef.current.loadPdfFile(
+          new Uint8Array(result.data),
+          record.name,
+          record.filePath,
+          record.completed || 0,
+          null,
+        );
+        playOpenSound();
+      } catch (e) {
+        console.error(`[MARGYN] Failed to open external ${type}:`, e);
+        showToast(`Failed to open file.`, "error");
+      }
+    },
+    [],
+  );
+
+  // ============================================================
+  // ✅ NEW: EARLY listener registration + EARLY notify ready
+  // This is the critical fix. Runs BEFORE init so main can send
+  // pending files immediately and they get queued.
+  // ============================================================
+  useEffect(() => {
+    if (!window.electronAPI) return;
+
+    let cleanupMargyn: (() => void) | undefined;
+    let cleanupPdf: (() => void) | undefined;
+
+    const handleFile = (type: "pdf" | "margyn", path: string) => {
+      if (!initCompleteRef.current) {
+        pendingExternalFilesRef.current.push({ type, path });
+      } else {
+        void processExternalFile(type, path);
+      }
+    };
+
+    if (window.electronAPI.onOpenMargynFile) {
+      cleanupMargyn = window.electronAPI.onOpenMargynFile((filePath) => {
+        handleFile("margyn", filePath);
+      });
+    }
+    if (window.electronAPI.onOpenPdfFile) {
+      cleanupPdf = window.electronAPI.onOpenPdfFile((filePath) => {
+        handleFile("pdf", filePath);
+      });
+    }
+
+    // ✅ Signal main IMMEDIATELY that listeners exist.
+    // Main can now flush any pending file it was holding.
+    if (!__MARGYN_READY_NOTIFIED) {
+      __MARGYN_READY_NOTIFIED = true;
+      window.electronAPI.notifyRendererReady?.();
+    }
+
+    return () => {
+      if (cleanupMargyn) cleanupMargyn();
+      if (cleanupPdf) cleanupPdf();
+    };
+  }, [processExternalFile]);
+
+  // ============================================================
+  // ✅ NEW: lazy loading of pdfData when a tab becomes active
+  // ============================================================
+  useEffect(() => {
+    if (!isAppReady) return;
+    const tab = openTabs.find((t) => t.id === activeTabId);
+    if (!tab || tab.isBlank || tab.isInfinite) return;
+    if (tab.pdfData && tab.pdfData.length > 0) return;
+    if (!window.electronAPI) return;
+    if (loadingPdfPathsRef.current.has(tab.filePath)) return;
+
+    loadingPdfPathsRef.current.add(tab.filePath);
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await window.electronAPI!.loadLibraryFile(tab.filePath);
+        if (cancelled || !data) return;
+        setOpenTabs((prev) =>
+          prev.map((t) =>
+            t.id === tab.id && (!t.pdfData || t.pdfData.length === 0)
+              ? { ...t, pdfData: new Uint8Array(data) }
+              : t,
+          ),
+        );
+      } catch (e) {
+        console.error("[MARGYN] Lazy pdf load failed:", e);
+      } finally {
+        loadingPdfPathsRef.current.delete(tab.filePath);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTabId, openTabs, isAppReady]);
+
+  // ============================================================
+  // ✅ REWRITTEN: init effect
+  //    - No longer notifies ready (moved to early effect)
+  //    - Sets isAppReady as soon as DB is up (before loading tabs)
+  //    - Processes pending external files FIRST
+  //    - Restores tab METADATA only (lazy pdfData)
+  // ============================================================
   useEffect(() => {
     if (!isInitRef.current) {
       isInitRef.current = true;
@@ -1205,61 +1344,63 @@ export function AppContent() {
           } else {
             setAudioEnabled(false);
           }
+        } catch (err) {
+          console.error("[MARGYN] DB init failed:", err);
+        }
 
+        // ✅ SHOW APP NOW. Splash fast-forwards, UI mounts, files get processed.
+        setIsAppReady(true);
+        initCompleteRef.current = true;
+
+        // ✅ Process any external file queued while init was running.
+        const pending = pendingExternalFilesRef.current;
+        pendingExternalFilesRef.current = [];
+        const hadPendingFiles = pending.length > 0;
+        for (const item of pending) {
+          try {
+            await processExternalFile(item.type, item.path);
+          } catch (e) {
+            console.error("[MARGYN] Pending file failed:", e);
+          }
+        }
+
+        // ✅ Restore previously-open tabs — METADATA ONLY (lazy pdfData).
+        try {
           const savedTabsStr = await getSetting("openTabsState");
           const savedActiveId = await getSetting("activeTabId");
-          let loadedAnyTabs = false;
 
           if (savedTabsStr) {
-            try {
-              const parsedTabs = JSON.parse(savedTabsStr);
-              if (Array.isArray(parsedTabs) && parsedTabs.length > 0) {
-                const loadedTabs: OpenTab[] = [];
-                for (const tab of parsedTabs) {
-                  if (window.electronAPI) {
-                    if (tab.isBlank || tab.isInfinite) {
-                      loadedTabs.push({
-                        ...tab,
-                        pdfData: new Uint8Array(),
-                        isDirty: false,
-                      });
-                    } else {
-                      const data = await window.electronAPI.loadLibraryFile(
-                        tab.filePath,
-                      );
-                      if (data) {
-                        loadedTabs.push({
-                          ...tab,
-                          pdfData: new Uint8Array(data),
-                          isDirty: false,
-                        });
-                      }
-                    }
-                  }
-                }
+            const parsedTabs = JSON.parse(savedTabsStr);
+            if (Array.isArray(parsedTabs) && parsedTabs.length > 0) {
+              const restoredTabs: OpenTab[] = parsedTabs.map((tab: any) => ({
+                ...tab,
+                pdfData: new Uint8Array(), // lazy
+                isDirty: false,
+              }));
 
-                if (loadedTabs.length > 0) {
-                  setOpenTabs(loadedTabs);
-                  loadedAnyTabs = true;
-                  const validActive = loadedTabs.find(
-                    (t) => t.id === savedActiveId,
-                  );
-                  if (validActive) {
-                    setActiveTabId(validActive.id);
-                  } else {
-                    setActiveTabId(loadedTabs[0].id);
-                  }
-                }
+              setOpenTabs((prev) => {
+                const existingIds = new Set(prev.map((t) => t.id));
+                const existingPaths = new Set(prev.map((t) => t.filePath));
+                const toAdd = restoredTabs.filter(
+                  (t) =>
+                    !existingIds.has(t.id) && !existingPaths.has(t.filePath),
+                );
+                return [...prev, ...toAdd];
+              });
+
+              // Don't steal active tab if an external file already opened.
+              if (!hadPendingFiles && !stateRef.current.activeTabId) {
+                const validActive = restoredTabs.find(
+                  (t) => t.id === savedActiveId,
+                );
+                setActiveTabId(validActive?.id || restoredTabs[0]?.id || null);
               }
-            } catch (e) {
-              console.error("Failed to parse saved tabs", e);
             }
-          }
-
-          if (!loadedAnyTabs && window.electronAPI) {
+          } else if (window.electronAPI && !hadPendingFiles) {
+            // Fallback: legacy single-pdf restore
             const data = await window.electronAPI.loadActivePdf();
             const savedPath = await getSetting("activeFilePath");
-            if (data && savedPath) {
+            if (data && savedPath && !stateRef.current.activeTabId) {
               const recents = await getRecentFiles();
               const currentFile = recents.find(
                 (f: any) => f.filePath === savedPath,
@@ -1276,9 +1417,7 @@ export function AppContent() {
             }
           }
         } catch (err) {
-        } finally {
-          setIsAppReady(true);
-          window.electronAPI?.notifyRendererReady?.();
+          console.error("[MARGYN] Failed to restore tabs:", err);
         }
       };
       init();
@@ -1308,40 +1447,11 @@ export function AppContent() {
     };
     window.addEventListener("margyn-data-changed", handleDataChange);
 
-    let cleanupFileOpen: (() => void) | undefined;
-    if (window.electronAPI?.onOpenMargynFile) {
-      cleanupFileOpen = window.electronAPI.onOpenMargynFile((filePath) => {
-        stateRef.current.loadProjectFromPath(filePath);
-      });
-    }
-
-    let cleanupPdfOpen: (() => void) | undefined;
-    if (window.electronAPI?.onOpenPdfFile) {
-      cleanupPdfOpen = window.electronAPI.onOpenPdfFile(async (filePath) => {
-        const result = await window.electronAPI?.readPdfPath(filePath);
-        if (result && result.data) {
-          const record = await addRecentFile(result.name, result.libraryPath);
-          if (record) {
-            await stateRef.current.loadPdfFile(
-              new Uint8Array(result.data),
-              record.name,
-              record.filePath,
-              record.completed || 0,
-              null,
-            );
-            playOpenSound();
-          }
-        }
-      });
-    }
-
     return () => {
       window.removeEventListener("click", handleFirstClick);
       window.removeEventListener("margyn-data-changed", handleDataChange);
-      if (cleanupFileOpen) cleanupFileOpen();
-      if (cleanupPdfOpen) cleanupPdfOpen();
     };
-  }, []);
+  }, [processExternalFile]);
 
   useEffect(() => {
     if (!window.electronAPI) return;
@@ -1735,7 +1845,6 @@ export function AppContent() {
     if (activeTab?.isInfinite) setTool("pan");
   });
 
-  // ✅ آپدیت شد: حالا مدال را باز می‌کند
   useShortcut("newBlank", () => {
     if (view !== "reader") {
       setView("reader");
@@ -2027,7 +2136,7 @@ export function AppContent() {
             handleClearCurrentPage={handleClearCurrentPage}
             handleClearAllPages={handleClearAllPages}
             hasText={hasText}
-            onOpenNewDocument={() => setShowNewDocumentModal(true)} // ✅ پاس دادن تابع
+            onOpenNewDocument={() => setShowNewDocumentModal(true)}
             handleOpenPdf={handleOpenPdf}
             handleImportProject={handleImportProject}
             setShowExportModal={setShowExportModal}

@@ -13,18 +13,75 @@ const fs = require("fs");
 const crypto = require("crypto");
 const { pathToFileURL } = require("url");
 
-let mainWindow;
+let mainWindow = null;
 let forceQuit = false;
-let pendingFilePath = null;
 let isRecordingShortcut = false;
+
+// ✅ Tracks whether the CURRENT renderer has registered its IPC listeners.
+// Reset to false whenever the window closes, so a newly-created window's
+// `renderer-ready` is honored correctly.
 let isRendererReady = false;
 
+// ✅ Array (not single string) so multiple concurrent file-open requests
+// are never dropped. Two `second-instance` events firing in quick
+// succession would otherwise overwrite each other.
+let pendingFiles = [];
+
+/**
+ * Enqueue a file path, ignoring duplicates.
+ * Duplicates can occur on macOS where both `open-file` and `process.argv`
+ * may carry the same launch file.
+ */
+function enqueueFile(filePath) {
+  if (!filePath || typeof filePath !== "string") return;
+  if (!fs.existsSync(filePath)) return;
+  if (pendingFiles.includes(filePath)) return;
+  pendingFiles.push(filePath);
+}
+
+/**
+ * Safely send a file to the renderer. Returns `false` if the renderer
+ * isn't ready or the webContents isn't usable, in which case the caller
+ * should keep the file in the queue.
+ */
 function dispatchFileToRenderer(filePath) {
-  if (!mainWindow || !filePath) return;
-  if (filePath.endsWith(".margyn")) {
-    mainWindow.webContents.send("open-margyn-file", filePath);
-  } else if (filePath.toLowerCase().endsWith(".pdf")) {
-    mainWindow.webContents.send("open-pdf-file", filePath);
+  if (!filePath) return false;
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  if (!mainWindow.webContents || mainWindow.webContents.isDestroyed())
+    return false;
+
+  try {
+    if (filePath.endsWith(".margyn")) {
+      mainWindow.webContents.send("open-margyn-file", filePath);
+    } else if (filePath.toLowerCase().endsWith(".pdf")) {
+      mainWindow.webContents.send("open-pdf-file", filePath);
+    } else {
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error("dispatchFileToRenderer failed:", e);
+    return false;
+  }
+}
+
+/**
+ * Drain the pending queue. Stops if dispatch fails (e.g., window destroyed
+ * between events); the next `renderer-ready` will retry.
+ */
+function flushPendingFiles() {
+  if (!isRendererReady) return;
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+
+  let guard = 0;
+  while (pendingFiles.length > 0 && guard < 100) {
+    guard++;
+    const file = pendingFiles[0];
+    if (dispatchFileToRenderer(file)) {
+      pendingFiles.shift();
+    } else {
+      break;
+    }
   }
 }
 
@@ -39,26 +96,65 @@ const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
   app.quit();
 } else {
+  /**
+   * ✅ FIX: Previously this early-returned when `mainWindow` was null,
+   * silently dropping the file (happens on macOS after all windows are
+   * closed, or during the brief startup window before createWindow).
+   * Now: recreate the window if needed, and queue files until the
+   * renderer signals readiness.
+   */
   app.on("second-instance", (event, commandLine) => {
-    if (!mainWindow) return;
-
-    if (mainWindow.isMinimized()) mainWindow.restore();
-    mainWindow.focus();
-
-    const filePath = commandLine.find(
+    const files = commandLine.filter(
       (arg) =>
+        arg &&
+        typeof arg === "string" &&
         (arg.endsWith(".margyn") || arg.toLowerCase().endsWith(".pdf")) &&
         fs.existsSync(arg),
     );
-    if (!filePath) return;
 
-    if (isRendererReady) {
-      dispatchFileToRenderer(filePath);
+    // Bring the window forward, or recreate it if there is none
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    } else if (app.isReady() && BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
+
+    if (files.length === 0) return;
+
+    if (isRendererReady && mainWindow && !mainWindow.isDestroyed()) {
+      for (const file of files) {
+        if (!dispatchFileToRenderer(file)) enqueueFile(file);
+      }
     } else {
-      pendingFilePath = filePath;
+      for (const file of files) enqueueFile(file);
     }
   });
 }
+
+/**
+ * ✅ NEW: macOS `open-file` handler.
+ * On macOS the OS delivers file-open requests through this event, NOT
+ * through `second-instance`. It can fire before `app.whenReady()`, which
+ * is exactly when we need the queue.
+ */
+app.on("open-file", (event, filePath) => {
+  event.preventDefault();
+  if (!filePath || !fs.existsSync(filePath)) return;
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  } else if (app.isReady() && BrowserWindow.getAllWindows().length === 0) {
+    createWindow();
+  }
+
+  if (isRendererReady && mainWindow && !mainWindow.isDestroyed()) {
+    if (!dispatchFileToRenderer(filePath)) enqueueFile(filePath);
+  } else {
+    enqueueFile(filePath);
+  }
+});
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -167,13 +263,12 @@ ipcMain.on("set-recording-shortcut", (event, isRecording) => {
   isRecordingShortcut = isRecording;
 });
 
+/**
+ * ✅ FIX: drain the full queue instead of a single pendingFilePath.
+ */
 ipcMain.on("renderer-ready", () => {
   isRendererReady = true;
-  if (pendingFilePath) {
-    const p = pendingFilePath;
-    pendingFilePath = null;
-    dispatchFileToRenderer(p);
-  }
+  flushPendingFiles();
 });
 
 ipcMain.on("window-minimize", () => {
@@ -524,8 +619,13 @@ function createWindow() {
   else mainWindow.loadURL("app://bundle/index.html");
 
   mainWindow.once("ready-to-show", () => mainWindow.show());
+
   mainWindow.on("closed", () => {
     mainWindow = null;
+    // ✅ FIX: reset ready flag so the NEXT window's renderer-ready is
+    // honored. Also keep pendingFiles intact — they'll be flushed when
+    // the new window becomes ready.
+    isRendererReady = false;
   });
 }
 
@@ -577,13 +677,18 @@ function registerCustomProtocol() {
   });
 }
 
+// ✅ FIX: handle MULTIPLE files in startup argv, not just the first
 const args = process.argv.slice(1);
-const fileArg = args.find(
-  (arg) =>
+for (const arg of args) {
+  if (
+    arg &&
+    typeof arg === "string" &&
     (arg.endsWith(".margyn") || arg.toLowerCase().endsWith(".pdf")) &&
-    fs.existsSync(arg),
-);
-if (fileArg) pendingFilePath = fileArg;
+    fs.existsSync(arg)
+  ) {
+    enqueueFile(arg);
+  }
+}
 
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
