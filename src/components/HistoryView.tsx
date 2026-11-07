@@ -131,14 +131,13 @@ export default function HistoryView({
     }
   }, []);
 
-  const fetchHistory = async () => {
+  const fetchHistory = useCallback(async () => {
     setIsLoading(true);
     if (!filePath) {
       setAllSessions([]);
       setIsLoading(false);
       return;
     }
-
     try {
       const db = await getDb();
       const data = await db
@@ -148,18 +147,28 @@ export default function HistoryView({
           and(isNotNull(sessions.endTime), eq(sessions.filePath, filePath)),
         )
         .orderBy(desc(sessions.startTime));
-
       setAllSessions(data as SessionData[]);
     } catch (err) {
       console.error("Failed to fetch history:", err);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [filePath]);
 
   useEffect(() => {
     fetchHistory();
-  }, [filePath]);
+  }, [fetchHistory]);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ filePath: string }>).detail;
+      if (detail?.filePath === filePath) {
+        fetchHistory();
+      }
+    };
+    window.addEventListener("margyn-session-ended", handler);
+    return () => window.removeEventListener("margyn-session-ended", handler);
+  }, [filePath, fetchHistory]);
 
   const formatDateKey = useCallback((date: Date) => {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;

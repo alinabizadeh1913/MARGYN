@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useLayoutEffect, useMemo } from "react";
+import React, { useLayoutEffect, useMemo, useCallback } from "react";
 import { useTool } from "@/providers/ToolProvider";
 import { useInkCanvas } from "./useInkCanvas";
 import { getToolCursor } from "./inkGeometry";
@@ -15,6 +15,10 @@ interface PdfDrawingLayerProps {
   pdfHeight: number;
   textLines?: TextLine[];
   onDeletePage?: () => void;
+  // ✅ NEW: optional custom mappers for infinite canvas
+  toStored?: (x: number, y: number) => [number, number];
+  toScreen?: (x: number, y: number) => [number, number];
+  invalidateKey?: string | number;
 }
 
 export default function PdfDrawingLayer({
@@ -26,6 +30,9 @@ export default function PdfDrawingLayer({
   pdfHeight,
   textLines,
   onDeletePage,
+  toStored,
+  toScreen,
+  invalidateKey,
 }: PdfDrawingLayerProps) {
   const { tool, color } = useTool();
 
@@ -47,13 +54,32 @@ export default function PdfDrawingLayer({
     [textLines, pdfLeft, pdfTop],
   );
 
+  const defaultToStored = useCallback(
+    (x: number, y: number): [number, number] => [
+      (x - pdfLeft) / pdfWidth,
+      (y - pdfTop) / pdfHeight,
+    ],
+    [pdfLeft, pdfTop, pdfWidth, pdfHeight],
+  );
+
+  const defaultToScreen = useCallback(
+    (x: number, y: number): [number, number] => [
+      x * pdfWidth + pdfLeft,
+      y * pdfHeight + pdfTop,
+    ],
+    [pdfLeft, pdfTop, pdfWidth, pdfHeight],
+  );
+
+  const storedMapper = toStored ?? defaultToStored;
+  const screenMapper = toScreen ?? defaultToScreen;
+
   const { staticRef, dynamicRef, resize, handlers, hoverCursor } = useInkCanvas(
     {
       kind: "pdf",
       filePath,
       page: pageNumber,
-      toStored: (x, y) => [(x - pdfLeft) / pdfWidth, (y - pdfTop) / pdfHeight],
-      toScreen: (x, y) => [x * pdfWidth + pdfLeft, y * pdfHeight + pdfTop],
+      toStored: storedMapper,
+      toScreen: screenMapper,
       textLines: screenLines,
       onDeletePage,
     },
@@ -61,11 +87,11 @@ export default function PdfDrawingLayer({
 
   useLayoutEffect(() => {
     resize(width, height, true);
-  }, [width, height, pdfWidth, pdfHeight, resize]);
+    // invalidateKey در deps → با تغییر pan/zoom، cache هندسه باطل و redraw انجام میشود
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [width, height, pdfWidth, pdfHeight, resize, invalidateKey]);
 
-  // Declarative cursor: pen + shapes → coloured pen, eraser → eraser cursor.
   const toolCursor = useMemo(() => getToolCursor(tool, color), [tool, color]);
-  // Select tool: "default", plus move/resize feedback coming from the hook's state.
   const cursor = tool === "select" ? hoverCursor : toolCursor;
 
   return (

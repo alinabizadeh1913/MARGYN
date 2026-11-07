@@ -19,7 +19,6 @@ let pendingFilePath = null;
 let isRecordingShortcut = false;
 let isRendererReady = false;
 
-// ✅ ارسال فایل به Renderer — فقط وقتی که React آماده باشد
 function dispatchFileToRenderer(filePath) {
   if (!mainWindow || !filePath) return;
   if (filePath.endsWith(".margyn")) {
@@ -56,7 +55,6 @@ if (!gotTheLock) {
     if (isRendererReady) {
       dispatchFileToRenderer(filePath);
     } else {
-      // React هنوز آماده نیست — نگه‌دار تا renderer-ready برسه
       pendingFilePath = filePath;
     }
   });
@@ -88,7 +86,6 @@ if (!fs.existsSync(getLibraryPath())) {
   } catch (e) {}
 }
 
-// ✅ توابع مدیریت آخرین مسیر
 const getLastDir = () => {
   try {
     const p = getLastDirPath();
@@ -103,6 +100,20 @@ const setLastDir = (dir) => {
   } catch (e) {}
 };
 
+/**
+ * ✅ FIX (P0): Crypto key regeneration destroys old data.
+ *
+ * OLD BEHAVIOR:
+ *   - safeStorage fails to decrypt (keychain reset / OS migration / password change)
+ *   - We generated a brand-new key AND overwrote the old file
+ *   - ALL previously exported .margyn projects became permanently unrecoverable
+ *
+ * NEW BEHAVIOR:
+ *   - On decrypt failure we PRESERVE the old encrypted key as `.legacy-<ts>`
+ *   - We then generate a new key for future use
+ *   - The original key stays on disk, so if the user restores their keychain,
+ *     their old .margyn projects remain recoverable
+ */
 ipcMain.handle("crypto-get-key", async () => {
   try {
     const keyPath = getKeyPath();
@@ -111,12 +122,30 @@ ipcMain.handle("crypto-get-key", async () => {
       const stored = fs.readFileSync(keyPath);
       if (safeStorage.isEncryptionAvailable()) {
         try {
-          return safeStorage.decryptString(stored);
+          const decrypted = safeStorage.decryptString(stored);
+          if (decrypted && decrypted.length >= 32) {
+            return decrypted;
+          }
+          console.error(
+            "Decrypted key has unexpected length. Treating as invalid.",
+          );
         } catch (e) {
-          console.error("Failed to decrypt key, regenerating:", e);
+          console.error(
+            "Failed to decrypt encryption key. Preserving old key as `.legacy-*` so previously exported projects remain recoverable if the OS keychain is restored.",
+            e,
+          );
+          try {
+            const legacyPath = `${keyPath}.legacy-${Date.now()}`;
+            fs.copyFileSync(keyPath, legacyPath);
+            console.error("Old key preserved at:", legacyPath);
+          } catch (backupErr) {
+            console.error("Failed to back up old key:", backupErr);
+          }
+          // Fall through: generate a fresh key for future exports.
         }
       } else {
-        return stored.toString("utf-8");
+        const asString = stored.toString("utf-8");
+        if (asString && asString.length >= 32) return asString;
       }
     }
 
@@ -129,6 +158,7 @@ ipcMain.handle("crypto-get-key", async () => {
     return newKey;
   } catch (error) {
     console.error("crypto-get-key failed:", error);
+    // Last resort: hand out a temp key so the app keeps running.
     return crypto.randomBytes(32).toString("hex");
   }
 });
@@ -137,7 +167,6 @@ ipcMain.on("set-recording-shortcut", (event, isRecording) => {
   isRecordingShortcut = isRecording;
 });
 
-// ✅ Renderer بعد از ثبت شنونده‌ها به ما خبر می‌دهد که آماده است
 ipcMain.on("renderer-ready", () => {
   isRendererReady = true;
   if (pendingFilePath) {
@@ -236,7 +265,6 @@ ipcMain.handle("library-save-file", async (event, { data, name }) => {
   }
 });
 
-// ✅ هندلر باز کردن PDF با قابلیت انتخاب چندگانه و ذخیره مسیر
 ipcMain.handle("dialog:openPdf", async () => {
   try {
     const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
@@ -495,22 +523,41 @@ function createWindow() {
   if (isDev) mainWindow.loadURL(devUrl);
   else mainWindow.loadURL("app://bundle/index.html");
 
-  // ⚠️ بلوک did-finish-load حذف شد — حالا ارسال فایل از طریق هندلر
-  // renderer-ready انجام می‌شود تا از Race Condition جلوگیری شود.
-
   mainWindow.once("ready-to-show", () => mainWindow.show());
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
 }
 
+/**
+ * ✅ FIX (P0): Path traversal in custom protocol.
+ *
+ * OLD BEHAVIOR:
+ *   `path.join(__dirname, "..", "out", pathname)` — a crafted URL like
+ *   `app://bundle/../../../../etc/passwd` escapes the `out/` directory.
+ *
+ * NEW BEHAVIOR:
+ *   Resolve the target, then verify it stays strictly inside `out/`.
+ *   Anything else returns 403.
+ */
 function registerCustomProtocol() {
+  const outDir = path.resolve(__dirname, "..", "out");
+
   protocol.handle("app", (request) => {
     try {
       const parsedUrl = new URL(request.url);
       const pathname = decodeURIComponent(parsedUrl.pathname);
 
-      let filePath = path.join(__dirname, "..", "out", pathname);
+      // Resolve against out/ (leading "." + path keeps the join local)
+      const requested = path.resolve(outDir, "." + pathname);
+
+      // Strict containment check — no escape allowed.
+      if (requested !== outDir && !requested.startsWith(outDir + path.sep)) {
+        console.error("Blocked path traversal attempt:", requested);
+        return new Response("Forbidden", { status: 403 });
+      }
+
+      let filePath = requested;
 
       if (!path.extname(filePath) && !filePath.endsWith("index.html")) {
         const indexCheck = path.join(filePath, "index.html");
@@ -530,7 +577,6 @@ function registerCustomProtocol() {
   });
 }
 
-// ✅ اسکن اولیه process.argv برای فایلی که با آن اپ باز شده
 const args = process.argv.slice(1);
 const fileArg = args.find(
   (arg) =>

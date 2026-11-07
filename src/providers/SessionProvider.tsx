@@ -293,15 +293,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         .where(eq(sessions.id, sessionId));
       await saveDb(true);
 
+      window.dispatchEvent(
+        new CustomEvent("margyn-session-ended", {
+          detail: { filePath: activeSessionFilePath, sessionId },
+        }),
+      );
+
       setIsActive(false);
       setSessionId(null);
       setStartPage(null);
       setLastFocusPage(currentPage);
-      setActiveSessionFilePath(null); // ✅ آزادسازی قفل
+      setActiveSessionFilePath(null);
     } catch (error) {
       console.error("Failed to end session:", error);
     }
-  }, [sessionId, startPage, currentPage, stopTimer]);
+  }, [sessionId, startPage, currentPage, stopTimer, activeSessionFilePath]);
 
   // ✅ استارت تایمر با ثبت نام فایل
   const startTimer = useCallback(

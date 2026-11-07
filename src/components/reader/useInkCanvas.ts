@@ -242,10 +242,10 @@ export function useInkCanvas({
   const hover = useRef<{ x: number; y: number } | null>(null);
   const mods = useRef({ shift: false, alt: false });
   const rectRef = useRef<DOMRect | null>(null);
+  // ✅ NEW: مقیاس بصری canvas (برای وقتی داخل transform هستیم)
+  const rectScaleRef = useRef(1);
   const rafRef = useRef(0);
   const penUntil = useRef(0);
-  // Cursor for the Select tool's hover feedback (move / resize handles).
-  // It is React state handed to the canvas via `style`, never written to the DOM.
   const [hoverCursor, setHoverCursor] = useState("default");
 
   const pendingRef = useRef<{
@@ -267,11 +267,41 @@ export function useInkCanvas({
     [kind, filePath, page],
   );
 
+  const MAX_HISTORY_CACHE_ENTRIES = 40;
+
   const saveHistoryToCache = useCallback(() => {
-    globalHistoryCache.set(getCacheKey(), hist.current);
+    const key = getCacheKey();
+    // LRU: delete then re-set moves the key to the end
+    globalHistoryCache.delete(key);
+    globalHistoryCache.set(key, hist.current);
+
+    // Evict oldest entries (except the current one) if over the limit
+    if (globalHistoryCache.size > MAX_HISTORY_CACHE_ENTRIES) {
+      const excess = globalHistoryCache.size - MAX_HISTORY_CACHE_ENTRIES;
+      let removed = 0;
+      for (const k of globalHistoryCache.keys()) {
+        if (removed >= excess) break;
+        if (k === key) continue;
+        globalHistoryCache.delete(k);
+        removed++;
+      }
+    }
   }, [getCacheKey]);
 
   const dpr = () => window.devicePixelRatio || 1;
+
+  // ✅ NEW: محاسبه‌ی مقیاس بصری بین CSS size و rect.width
+  // اگر canvas داخل یک transform: scale() قرار داشته باشد، rect.width بزرگتر از offsetWidth هست.
+  const computeRectScale = (c: HTMLCanvasElement, rect: DOMRect): number => {
+    const cssW = c.offsetWidth;
+    if (cssW > 0 && rect.width > 0) return rect.width / cssW;
+    return 1;
+  };
+
+  const toCanvasCoords = (clientX: number, clientY: number, rect: DOMRect) => {
+    const s = rectScaleRef.current;
+    return [(clientX - rect.left) / s, (clientY - rect.top) / s] as const;
+  };
 
   function setLiveTransform(ctx: CanvasRenderingContext2D) {
     const d = dpr();
@@ -294,15 +324,15 @@ export function useInkCanvas({
     return dynamicCtxRef.current;
   };
 
-  const flush = useCallback(() => {
+  const flush = useCallback((): Promise<void> => {
     if (timerRef.current) {
       clearTimeout(timerRef.current);
       timerRef.current = null;
     }
     const p = pendingRef.current;
     pendingRef.current = null;
-    if (!p) return;
-    Promise.resolve(saveDrawing(p.filePath, p.page, p.kind, p.lines))
+    if (!p) return Promise.resolve();
+    return Promise.resolve(saveDrawing(p.filePath, p.page, p.kind, p.lines))
       .then((ok) => {
         if (ok === false) {
           window.dispatchEvent(
@@ -334,6 +364,8 @@ export function useInkCanvas({
     };
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(flush, SAVE_DELAY_MS);
+
+    window.dispatchEvent(new Event("margyn-data-changed"));
   }, [flush]);
 
   const dropPendingSave = useCallback(() => {
@@ -343,6 +375,18 @@ export function useInkCanvas({
       timerRef.current = null;
     }
   }, []);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const evt = e as CustomEvent<{ register: (p: Promise<void>) => void }>;
+      const promise = flush();
+      if (evt.detail && typeof evt.detail.register === "function") {
+        evt.detail.register(promise);
+      }
+    };
+    window.addEventListener("margyn-flush-ink", handler);
+    return () => window.removeEventListener("margyn-flush-ink", handler);
+  }, [flush]);
 
   function geom(s: Stroke) {
     let g = geomCache.current.get(s);
@@ -368,13 +412,28 @@ export function useInkCanvas({
     const c = staticRef.current;
     const ctx = getStaticCtx();
     if (!c || !ctx) return;
+
+    const d = dpr();
+    const cw = c.width / d;
+    const ch = c.height / d;
+
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, c.width, c.height);
     setStaticTransform(ctx);
+
     const hide = hiddenRef.current;
+    const M = 80;
+
     for (const s of linesRef.current) {
       if (hide && s.id && hide.has(s.id)) continue;
-      paintStroke(ctx, s, geom(s).pts);
+
+      const g = geom(s);
+      const b = g.box;
+
+      if (b.x + b.w + M < 0 || b.x - M > cw) continue;
+      if (b.y + b.h + M < 0 || b.y - M > ch) continue;
+
+      paintStroke(ctx, s, g.pts);
     }
   }
 
@@ -979,8 +1038,6 @@ export function useInkCanvas({
     }
   }
 
-  // State setter bails out on equal values, so calling this on every
-  // pointermove does not cause extra renders.
   const setCursor = (v: string) => setHoverCursor(v);
 
   function setActive() {
@@ -1014,8 +1071,9 @@ export function useInkCanvas({
     const t = cfg.current.tool;
     const rect = c.getBoundingClientRect();
     rectRef.current = rect;
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    // ✅ auto-detect visual scale (برای infinite canvas که داخل transform هست)
+    rectScaleRef.current = computeRectScale(c, rect);
+    const [x, y] = toCanvasCoords(e.clientX, e.clientY, rect);
     mods.current = { shift: e.shiftKey, alt: e.altKey };
     setActive();
     try {
@@ -1231,8 +1289,8 @@ export function useInkCanvas({
       if (e.pointerType === "touch") return;
       const r = c.getBoundingClientRect();
       rectRef.current = r;
-      const x = e.clientX - r.left,
-        y = e.clientY - r.top;
+      rectScaleRef.current = computeRectScale(c, r);
+      const [x, y] = toCanvasCoords(e.clientX, e.clientY, r);
       hover.current = { x, y };
       const t = cfg.current.tool;
       updateHoverCursor(x, y);
@@ -1243,21 +1301,22 @@ export function useInkCanvas({
     if (e.pointerId !== X.pid) return;
     const r = rectRef.current;
     if (!r) return;
+    const [cxScaled, cyScaled] = toCanvasCoords(e.clientX, e.clientY, r);
 
     const ne = e.nativeEvent as PointerEvent & {
       getPredictedEvents?: () => PointerEvent[];
       getCoalescedEvents?: () => PointerEvent[];
     };
-    X.cx = e.clientX - r.left;
-    X.cy = e.clientY - r.top;
+    X.cx = cxScaled;
+    X.cy = cyScaled;
 
     if (X.kind === "pen") {
       const co = ne.getCoalescedEvents?.();
       const list = co && co.length ? co : [ne];
       let added = false;
       for (const ev of list) {
-        if (addPenPoint(X, ev.clientX - r.left, ev.clientY - r.top))
-          added = true;
+        const [ex, ey] = toCanvasCoords(ev.clientX, ev.clientY, r);
+        if (addPenPoint(X, ex, ey)) added = true;
       }
       if (!added) return;
 
@@ -1270,8 +1329,7 @@ export function useInkCanvas({
         let lx = X.pts[n - 2],
           ly = X.pts[n - 1];
         for (let i = 0; i < pe.length && i < MAX_PREDICTED; i++) {
-          const qx = pe[i].clientX - r.left,
-            qy = pe[i].clientY - r.top;
+          const [qx, qy] = toCanvasCoords(pe[i].clientX, pe[i].clientY, r);
           if ((qx - lx) ** 2 + (qy - ly) ** 2 < 0.25) continue;
           pred.push(qx, qy);
           lx = qx;
@@ -1294,8 +1352,7 @@ export function useInkCanvas({
       const co = ne.getCoalescedEvents?.();
       const list = co && co.length ? co : [ne];
       for (const ev of list) {
-        const px = ev.clientX - r.left,
-          py = ev.clientY - r.top;
+        const [px, py] = toCanvasCoords(ev.clientX, ev.clientY, r);
         eraseSegment(X, X.lx, X.ly, px, py);
         X.lx = px;
         X.ly = py;
@@ -1363,8 +1420,9 @@ export function useInkCanvas({
     if (!X || e.pointerId !== X.pid) return;
     const r = rectRef.current;
     if (r) {
-      X.cx = e.clientX - r.left;
-      X.cy = e.clientY - r.top;
+      const [cxScaled, cyScaled] = toCanvasCoords(e.clientX, e.clientY, r);
+      X.cx = cxScaled;
+      X.cy = cyScaled;
     }
     mods.current = { shift: e.shiftKey, alt: e.altKey };
     if (e.pointerType === "pen") penUntil.current = performance.now() + 600;
@@ -1381,8 +1439,10 @@ export function useInkCanvas({
         };
         const finalSamples = native.getCoalescedEvents?.();
         if (ok && finalSamples && r) {
-          for (const sample of finalSamples)
-            addPenPoint(X, sample.clientX - r.left, sample.clientY - r.top);
+          for (const sample of finalSamples) {
+            const [sx, sy] = toCanvasCoords(sample.clientX, sample.clientY, r);
+            addPenPoint(X, sx, sy);
+          }
         }
         if (ok) addPenPoint(X, X.cx, X.cy);
 
@@ -1741,11 +1801,22 @@ export function useInkCanvas({
     Promise.race([loadPromise, timeoutPromise])
       .then((saved: unknown) => {
         if (!alive) return;
-        if (hasDrawnRef.current) return;
-        
+
         const arr = Array.isArray(saved) ? (saved as Stroke[]) : [];
         for (const s of arr) if (!s.id) s.id = uid();
-        linesRef.current = arr;
+
+        // ✅ Race fix: user started drawing before DB finished loading.
+        // Merge instead of overwrite — saved strokes underneath, new strokes on top.
+        if (hasDrawnRef.current && linesRef.current.length > 0) {
+          const savedIds = new Set(arr.map((s) => s.id));
+          const userStrokes = linesRef.current.filter(
+            (s) => !savedIds.has(s.id!),
+          );
+          linesRef.current = [...arr, ...userStrokes];
+        } else {
+          linesRef.current = arr;
+        }
+
         loadedRef.current = true;
         redrawStatic();
       })
@@ -1913,7 +1984,7 @@ export function useInkCanvas({
     window.addEventListener("margyn-undo", handleUndo);
     window.addEventListener("margyn-redo", handleRedo);
     window.addEventListener("pagehide", flush);
-    window.addEventListener("keydown", key);
+    window.addEventListener("keydown", key, true);
     window.addEventListener("keydown", mod);
     window.addEventListener("keyup", mod);
     window.addEventListener("margyn-clear-active-ink", handleClearActiveInk);
@@ -1931,7 +2002,7 @@ export function useInkCanvas({
       window.removeEventListener("margyn-undo", handleUndo);
       window.removeEventListener("margyn-redo", handleRedo);
       window.removeEventListener("pagehide", flush);
-      window.removeEventListener("keydown", key);
+      window.removeEventListener("keydown", key, true);
       window.removeEventListener("keydown", mod);
       window.removeEventListener("keyup", mod);
       window.removeEventListener(

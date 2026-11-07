@@ -26,6 +26,8 @@ import {
   updateRecentFileProjectPath,
   updateRecentFileCanvasBg,
   resetDocumentProgress,
+  runInTransaction,
+  cleanupFileData,
 } from "@/db";
 import {
   prewarmAudio,
@@ -88,6 +90,9 @@ export function AppContent() {
   const [showCloseModal, setShowCloseModal] = useState(false);
   const [showBackwardErrorModal, setShowBackwardErrorModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
+
+  // ✅ State جدید برای نمایش مدال ساخت سند
+  const [showNewDocumentModal, setShowNewDocumentModal] = useState(false);
 
   const [showResetProgressModal, setShowResetProgressModal] = useState(false);
   const [resetProgressText, setResetProgressText] = useState("");
@@ -205,6 +210,7 @@ export function AppContent() {
         else if (showExportModal) setShowExportModal(false);
         else if (showNoteModal) setShowNoteModal(false);
         else if (showResetProgressModal) setShowResetProgressModal(false);
+        else if (showNewDocumentModal) setShowNewDocumentModal(false);
       }
     };
     window.addEventListener("keydown", handleEsc);
@@ -218,6 +224,7 @@ export function AppContent() {
     showExportModal,
     showNoteModal,
     showResetProgressModal,
+    showNewDocumentModal,
   ]);
 
   const handleScaleChange = useCallback(
@@ -308,6 +315,13 @@ export function AppContent() {
   }, [activeTabId, openTabs]);
 
   useEffect(() => {
+    const tab = openTabs.find((t) => t.id === activeTabId);
+    if (tab && (tab.isBlank || tab.isInfinite)) {
+      setHasText(true);
+    }
+  }, [activeTabId, openTabs]);
+
+  useEffect(() => {
     syncSessionWithFile(activeFilePath);
   }, [activeFilePath, syncSessionWithFile]);
 
@@ -338,6 +352,7 @@ export function AppContent() {
         scale: t.scale,
         canvasBg: t.canvasBg,
         isBlank: t.isBlank,
+        isInfinite: t.isInfinite,
         toolState: t.toolState,
       }));
       await setSetting("openTabsState", JSON.stringify(tabsData));
@@ -487,42 +502,52 @@ export function AppContent() {
     setView("reader");
   };
 
-  const handleCreateBlankDocument = useCallback(() => {
-    const newTabId =
-      Date.now().toString() + Math.random().toString(36).substring(2, 5);
-    const newPath = `blank-${newTabId}`;
+  const handleCreateBlankDocument = useCallback(
+    (mode: "page" | "infinite" = "page") => {
+      const newTabId =
+        Date.now().toString() + Math.random().toString(36).substring(2, 5);
+      const prefix = mode === "infinite" ? "infinite" : "blank";
+      const newPath = `${prefix}-${newTabId}`;
 
-    const newTab: OpenTab = {
-      id: newTabId,
-      name: "Untitled Blank",
-      filePath: newPath,
-      pdfData: new Uint8Array(),
-      projectPath: null,
-      isDirty: false,
-      totalPages: 1,
-      currentPage: 1,
-      isCompleted: false,
-      scale: 1,
-      canvasBg: "#ffffff",
-      isBlank: true,
-      snapshot: { drawings: [], recentFile: null, sessions: [] },
-    };
+      const newTab: OpenTab = {
+        id: newTabId,
+        name: mode === "infinite" ? "Untitled Canvas" : "Untitled Blank",
+        filePath: newPath,
+        pdfData: new Uint8Array(),
+        projectPath: null,
+        isDirty: false,
+        totalPages: 1,
+        currentPage: 1,
+        isCompleted: false,
+        scale: 1,
+        canvasBg: "#ffffff",
+        isBlank: true,
+        isInfinite: mode === "infinite",
+        snapshot: { drawings: [], recentFile: null, sessions: [] },
+      };
 
-    setOpenTabs((prev) => [...prev, newTab]);
-    setActiveTabId(newTabId);
-    setPdfData(new Uint8Array());
-    setActiveFileName("Untitled Blank");
-    setActiveFilePath(newPath);
-    setActiveProjectPath(null);
-    setTotalPages(1);
-    setIsCurrentPdfCompleted(false);
-    setIsDirty(false);
-    setActiveScale(1);
-    setActiveCanvasBg("#ffffff");
-    setView("reader");
-    playOpenSound();
-    showToast("Blank document created!", "success");
-  }, []);
+      setOpenTabs((prev) => [...prev, newTab]);
+      setActiveTabId(newTabId);
+      setPdfData(new Uint8Array());
+      setActiveFileName(newTab.name);
+      setActiveFilePath(newPath);
+      setActiveProjectPath(null);
+      setTotalPages(1);
+      setIsCurrentPdfCompleted(false);
+      setIsDirty(false);
+      setActiveScale(1);
+      setActiveCanvasBg("#ffffff");
+      setView("reader");
+      playOpenSound();
+      showToast(
+        mode === "infinite"
+          ? "Infinite canvas created!"
+          : "Blank document created!",
+        "success",
+      );
+    },
+    [],
+  );
 
   stateRef.current = {
     loadProjectFromPath: async (path: string) => {},
@@ -654,7 +679,7 @@ export function AppContent() {
       const tabToClose = openTabs.find((t) => t.id === tabId);
       if (!tabToClose) return;
 
-      const doClose = () => {
+      if (tabToClose.isInfinite) {
         playCloseSound();
         setOpenTabs((prev) => {
           const remaining = prev.filter((t) => t.id !== tabId);
@@ -667,8 +692,36 @@ export function AppContent() {
           }
           return remaining;
         });
-      };
 
+        cleanupFileData(tabToClose.filePath).catch((e) => {
+          console.error("Failed to cleanup infinite tab data:", e);
+        });
+        return;
+      }
+
+      const doClose = async () => {
+        playCloseSound();
+        const tab = stateRef.current.openTabs.find((t) => t.id === tabId);
+        setOpenTabs((prev) => {
+          const remaining = prev.filter((t) => t.id !== tabId);
+          if (remaining.length > 0) {
+            if (tabId === stateRef.current.activeTabId) {
+              setActiveTabId(remaining[remaining.length - 1].id);
+            }
+          } else {
+            resetActiveTabState();
+          }
+          return remaining;
+        });
+
+        if (tab && (tab.isBlank || tab.isInfinite)) {
+          try {
+            await cleanupFileData(tab.filePath);
+          } catch (e) {
+            console.error("Failed to cleanup tab data:", e);
+          }
+        }
+      };
       if (tabToClose.isDirty) {
         if (tabId !== activeTabId) {
           setActiveTabId(tabId);
@@ -697,6 +750,9 @@ export function AppContent() {
         .map((t) => t.id);
 
       if (cleanTabIds.length > 0) {
+        const tabsToCleanup = stateRef.current.openTabs.filter(
+          (t) => cleanTabIds.includes(t.id) && (t.isBlank || t.isInfinite),
+        );
         playCloseSound();
         setOpenTabs((prev) => {
           const remaining = prev.filter((t) => !cleanTabIds.includes(t.id));
@@ -712,6 +768,10 @@ export function AppContent() {
           }
           return remaining;
         });
+
+        Promise.all(
+          tabsToCleanup.map((t) => cleanupFileData(t.filePath).catch(() => {})),
+        );
       }
 
       if (dirtyTabs.length > 0) {
@@ -769,6 +829,32 @@ export function AppContent() {
       const nextIndex = (currentIndex + 1) % stateRef.current.openTabs.length;
       playSwitchSound();
       setActiveTabId(stateRef.current.openTabs[nextIndex].id);
+    }
+  });
+
+  useShortcut("nextTab", () => {
+    if (stateRef.current.openTabs.length < 2) return;
+    const currentIndex = stateRef.current.openTabs.findIndex(
+      (t) => t.id === stateRef.current.activeTabId,
+    );
+    if (currentIndex !== -1) {
+      const nextIndex = (currentIndex + 1) % stateRef.current.openTabs.length;
+      playSwitchSound();
+      setActiveTabId(stateRef.current.openTabs[nextIndex].id);
+    }
+  });
+
+  useShortcut("prevTab", () => {
+    if (stateRef.current.openTabs.length < 2) return;
+    const currentIndex = stateRef.current.openTabs.findIndex(
+      (t) => t.id === stateRef.current.activeTabId,
+    );
+    if (currentIndex !== -1) {
+      const prevIndex =
+        (currentIndex - 1 + stateRef.current.openTabs.length) %
+        stateRef.current.openTabs.length;
+      playSwitchSound();
+      setActiveTabId(stateRef.current.openTabs[prevIndex].id);
     }
   });
 
@@ -860,8 +946,11 @@ export function AppContent() {
       if (isBlankDoc) {
         const newTabId =
           Date.now().toString() + Math.random().toString(36).substring(2, 5);
-        const newPath = `blank-${newTabId}`;
-        const displayName = projectData.fileName || "Untitled Blank";
+        const prefix = projectData.isInfinite ? "infinite" : "blank";
+        const newPath = `${prefix}-${newTabId}`;
+        const displayName =
+          projectData.fileName ||
+          (projectData.isInfinite ? "Untitled Canvas" : "Untitled Blank");
 
         const newTab: OpenTab = {
           id: newTabId,
@@ -876,6 +965,7 @@ export function AppContent() {
           scale: 1,
           canvasBg: "#ffffff",
           isBlank: true,
+          isInfinite: !!projectData.isInfinite,
           snapshot: { drawings: [], recentFile: null, sessions: [] },
         };
 
@@ -891,13 +981,9 @@ export function AppContent() {
         setActiveScale(1);
         setView("reader");
 
-        await db.delete(sessions).where(eq(sessions.filePath, newPath));
-        await db.delete(drawings).where(eq(drawings.filePath, newPath));
-        await db.delete(notes).where(eq(notes.filePath, newPath));
-
-        let parsedSessions = [];
-        let parsedDrawings = [];
-        let parsedNotes = [];
+        let parsedSessions: any[] = [];
+        let parsedDrawings: any[] = [];
+        let parsedNotes: any[] = [];
 
         if (typeof projectData.sessions === "string") {
           try {
@@ -924,40 +1010,39 @@ export function AppContent() {
         }
 
         const sessionIdMap: Record<string, string> = {};
-        if (parsedSessions.length > 0) {
-          const newSessions = parsedSessions.map((s: any) => {
-            const newId =
-              Date.now().toString() +
-              Math.random().toString(36).substring(2, 9);
-            sessionIdMap[s.id] = newId;
-            return { ...s, id: newId, filePath: newPath };
-          });
-          await db.insert(sessions).values(newSessions);
-        }
-        if (parsedDrawings.length > 0) {
-          const newDrawings = parsedDrawings.map((d: any) => ({
-            ...d,
-            id:
-              Date.now().toString() +
-              Math.random().toString(36).substring(2, 9),
-            filePath: newPath,
-            sessionId:
-              d.sessionId && sessionIdMap[d.sessionId]
-                ? sessionIdMap[d.sessionId]
-                : null,
-          }));
-          await db.insert(drawings).values(newDrawings);
-        }
-        if (parsedNotes.length > 0) {
-          const newNotes = parsedNotes.map((n: any) => ({
-            ...n,
-            id:
-              Date.now().toString() +
-              Math.random().toString(36).substring(2, 9),
-            filePath: newPath,
-          }));
-          await db.insert(notes).values(newNotes);
-        }
+        const newSessions = parsedSessions.map((s: any) => {
+          const newId =
+            Date.now().toString() + Math.random().toString(36).substring(2, 9);
+          sessionIdMap[s.id] = newId;
+          return { ...s, id: newId, filePath: newPath };
+        });
+        const newDrawings = parsedDrawings.map((d: any) => ({
+          ...d,
+          id:
+            Date.now().toString() + Math.random().toString(36).substring(2, 9),
+          filePath: newPath,
+          sessionId:
+            d.sessionId && sessionIdMap[d.sessionId]
+              ? sessionIdMap[d.sessionId]
+              : null,
+        }));
+        const newNotes = parsedNotes.map((n: any) => ({
+          ...n,
+          id:
+            Date.now().toString() + Math.random().toString(36).substring(2, 9),
+          filePath: newPath,
+        }));
+
+        await runInTransaction(async () => {
+          await db.delete(sessions).where(eq(sessions.filePath, newPath));
+          await db.delete(drawings).where(eq(drawings.filePath, newPath));
+          await db.delete(notes).where(eq(notes.filePath, newPath));
+          if (newSessions.length > 0)
+            await db.insert(sessions).values(newSessions);
+          if (newDrawings.length > 0)
+            await db.insert(drawings).values(newDrawings);
+          if (newNotes.length > 0) await db.insert(notes).values(newNotes);
+        });
         await saveDb(true);
         playOpenSound();
         showToast("Blank document loaded successfully!", "success");
@@ -1031,73 +1116,70 @@ export function AppContent() {
           actualPath,
         );
 
-        await db.delete(sessions).where(eq(sessions.filePath, record.filePath));
-        await db.delete(drawings).where(eq(drawings.filePath, record.filePath));
-        await db.delete(notes).where(eq(notes.filePath, record.filePath));
-
-        let parsedSessions = [];
-        let parsedDrawings = [];
-        let parsedNotes = [];
+        let parsedSessions: any[] = [];
+        let parsedDrawings: any[] = [];
+        let parsedNotes: any[] = [];
 
         if (typeof projectData.sessions === "string") {
           try {
             parsedSessions = await decryptData(projectData.sessions);
-          } catch (err) {}
+          } catch {}
         } else if (Array.isArray(projectData.sessions)) {
           parsedSessions = projectData.sessions;
         }
-
         if (typeof projectData.drawings === "string") {
           try {
             parsedDrawings = await decryptData(projectData.drawings);
-          } catch (err) {}
+          } catch {}
         } else if (Array.isArray(projectData.drawings)) {
           parsedDrawings = projectData.drawings;
         }
-
         if (typeof projectData.notes === "string") {
           try {
             parsedNotes = await decryptData(projectData.notes);
-          } catch (err) {}
+          } catch {}
         } else if (Array.isArray(projectData.notes)) {
           parsedNotes = projectData.notes;
         }
 
         const sessionIdMap: Record<string, string> = {};
-        if (parsedSessions.length > 0) {
-          const newSessions = parsedSessions.map((s: any) => {
-            const newId =
-              Date.now().toString() +
-              Math.random().toString(36).substring(2, 9);
-            sessionIdMap[s.id] = newId;
-            return { ...s, id: newId, filePath: record.filePath };
-          });
-          await db.insert(sessions).values(newSessions);
-        }
-        if (parsedDrawings.length > 0) {
-          const newDrawings = parsedDrawings.map((d: any) => ({
-            ...d,
-            id:
-              Date.now().toString() +
-              Math.random().toString(36).substring(2, 9),
-            filePath: record.filePath,
-            sessionId:
-              d.sessionId && sessionIdMap[d.sessionId]
-                ? sessionIdMap[d.sessionId]
-                : null,
-          }));
-          await db.insert(drawings).values(newDrawings);
-        }
-        if (parsedNotes.length > 0) {
-          const newNotes = parsedNotes.map((n: any) => ({
-            ...n,
-            id:
-              Date.now().toString() +
-              Math.random().toString(36).substring(2, 9),
-            filePath: record.filePath,
-          }));
-          await db.insert(notes).values(newNotes);
-        }
+        const newSessions = parsedSessions.map((s: any) => {
+          const newId =
+            Date.now().toString() + Math.random().toString(36).substring(2, 9);
+          sessionIdMap[s.id] = newId;
+          return { ...s, id: newId, filePath: record.filePath };
+        });
+        const newDrawings = parsedDrawings.map((d: any) => ({
+          ...d,
+          id:
+            Date.now().toString() + Math.random().toString(36).substring(2, 9),
+          filePath: record.filePath,
+          sessionId:
+            d.sessionId && sessionIdMap[d.sessionId]
+              ? sessionIdMap[d.sessionId]
+              : null,
+        }));
+        const newNotes = parsedNotes.map((n: any) => ({
+          ...n,
+          id:
+            Date.now().toString() + Math.random().toString(36).substring(2, 9),
+          filePath: record.filePath,
+        }));
+
+        await runInTransaction(async () => {
+          await db
+            .delete(sessions)
+            .where(eq(sessions.filePath, record.filePath));
+          await db
+            .delete(drawings)
+            .where(eq(drawings.filePath, record.filePath));
+          await db.delete(notes).where(eq(notes.filePath, record.filePath));
+          if (newSessions.length > 0)
+            await db.insert(sessions).values(newSessions);
+          if (newDrawings.length > 0)
+            await db.insert(drawings).values(newDrawings);
+          if (newNotes.length > 0) await db.insert(notes).values(newNotes);
+        });
         await saveDb(true);
         playOpenSound();
         showToast("Project loaded successfully!", "success");
@@ -1135,7 +1217,7 @@ export function AppContent() {
                 const loadedTabs: OpenTab[] = [];
                 for (const tab of parsedTabs) {
                   if (window.electronAPI) {
-                    if (tab.isBlank) {
+                    if (tab.isBlank || tab.isInfinite) {
                       loadedTabs.push({
                         ...tab,
                         pdfData: new Uint8Array(),
@@ -1209,6 +1291,12 @@ export function AppContent() {
     window.addEventListener("click", handleFirstClick);
 
     const handleDataChange = () => {
+      if (stateRef.current.activeTabId) {
+        const activeTab = stateRef.current.openTabs.find(
+          (t) => t.id === stateRef.current.activeTabId,
+        );
+        if (activeTab?.isInfinite) return;
+      }
       setIsDirty(true);
       if (stateRef.current.activeTabId) {
         setOpenTabs((prev) =>
@@ -1262,6 +1350,35 @@ export function AppContent() {
       isClosingRef.current = true;
 
       try {
+        await new Promise<void>((resolve) => {
+          const promises: Promise<void>[] = [];
+          const timeout = setTimeout(() => resolve(), 3000);
+
+          window.dispatchEvent(
+            new CustomEvent("margyn-flush-ink", {
+              detail: {
+                register: (p: Promise<void>) => {
+                  promises.push(Promise.resolve(p).catch(() => {}));
+                },
+              },
+            }),
+          );
+
+          if (promises.length === 0) {
+            clearTimeout(timeout);
+            resolve();
+            return;
+          }
+          Promise.all(promises).finally(() => {
+            clearTimeout(timeout);
+            resolve();
+          });
+        });
+      } catch (e) {
+        console.error("Failed to flush ink on close:", e);
+      }
+
+      try {
         await saveDb(true);
       } catch (e) {
         console.error("Failed to flush DB before close:", e);
@@ -1282,16 +1399,13 @@ export function AppContent() {
           window.electronAPI?.forceCloseApp();
           return;
         }
-
         const currentTabToProcess = remainingDirty[0];
         setActiveTabId(currentTabToProcess.id);
         setView("reader");
-
         setPendingAction(() => () => {
           const newRemaining = remainingDirty.slice(1);
           processNextDirtyTab(newRemaining);
         });
-
         setShowCloseModal(true);
       };
 
@@ -1345,6 +1459,7 @@ export function AppContent() {
           ? Buffer.from(pdfData).toString("base64")
           : "",
       isBlank: !!activeTab?.isBlank,
+      isInfinite: !!activeTab?.isInfinite,
       totalPages: totalPages,
       completed: fileRecord?.completed || 0,
       sessions: encryptedSessions,
@@ -1355,6 +1470,7 @@ export function AppContent() {
 
   const handleExportMargyn = async (): Promise<boolean> => {
     if (!window.electronAPI) return false;
+    if (activeTab?.isInfinite) return false;
     setExportingType("margyn");
     try {
       const projectData = await getProjectData();
@@ -1462,6 +1578,7 @@ export function AppContent() {
 
   const handleSaveProject = async (): Promise<boolean> => {
     if (!window.electronAPI) return false;
+    if (activeTab?.isInfinite) return false;
 
     if (!activeProjectPath) {
       const defaultDir = await getSetting("defaultExportDir");
@@ -1613,7 +1730,18 @@ export function AppContent() {
 
   useShortcut("pen", () => setTool("pen"));
   useShortcut("eraser", () => setTool("eraser"));
-  useShortcut("newBlank", handleCreateBlankDocument);
+
+  useShortcut("pan", () => {
+    if (activeTab?.isInfinite) setTool("pan");
+  });
+
+  // ✅ آپدیت شد: حالا مدال را باز می‌کند
+  useShortcut("newBlank", () => {
+    if (view !== "reader") {
+      setView("reader");
+    }
+    setShowNewDocumentModal(true);
+  });
 
   useShortcut("increaseSize", () => {
     setSize((prev) => Math.min(prev + 2, 36));
@@ -1623,7 +1751,7 @@ export function AppContent() {
   });
 
   useShortcut("note", () => {
-    if (activeFilePath) setShowNoteModal(true);
+    if (activeFilePath && !activeTab?.isInfinite) setShowNoteModal(true);
   });
 
   const requestStartSession = useCallback(async () => {
@@ -1654,6 +1782,7 @@ export function AppContent() {
   }, [activeSessionFilePath, activeFilePath, startSession, totalPages]);
 
   useShortcut("startSession", () => {
+    if (activeTab?.isInfinite) return;
     if (
       !isActive &&
       !showEndModal &&
@@ -1677,6 +1806,7 @@ export function AppContent() {
   };
 
   useShortcut("endSession", () => {
+    if (activeTab?.isInfinite) return;
     if (isActive && !showEndModal && !showBackwardErrorModal) {
       if (startPage !== null && currentPage < startPage) {
         playWarningSound();
@@ -1692,7 +1822,7 @@ export function AppContent() {
   useShortcut("saveProject", handleSaveProject);
   useShortcut("importProject", handleImportProject);
   useShortcut("exportProject", () => {
-    if (pdfData) setShowExportModal(true);
+    if (pdfData && !activeTab?.isInfinite) setShowExportModal(true);
   });
 
   const handleConfirmEndSession = async () => {
@@ -1897,7 +2027,7 @@ export function AppContent() {
             handleClearCurrentPage={handleClearCurrentPage}
             handleClearAllPages={handleClearAllPages}
             hasText={hasText}
-            handleCreateBlankDocument={handleCreateBlankDocument}
+            onOpenNewDocument={() => setShowNewDocumentModal(true)} // ✅ پاس دادن تابع
             handleOpenPdf={handleOpenPdf}
             handleImportProject={handleImportProject}
             setShowExportModal={setShowExportModal}
@@ -1993,10 +2123,13 @@ export function AppContent() {
             setResetProgressError={setResetProgressError}
             resetProgressInputRef={resetProgressInputRef}
             handleConfirmResetProgress={handleConfirmResetProgress}
+            showNewDocumentModal={showNewDocumentModal}
+            setShowNewDocumentModal={setShowNewDocumentModal}
+            handleCreateBlankDocument={handleCreateBlankDocument}
           />
 
           <NoteModal
-            isOpen={showNoteModal}
+            isOpen={showNoteModal && !activeTab?.isInfinite}
             onClose={() => setShowNoteModal(false)}
             filePath={activeFilePath}
             pageNumber={currentPage}

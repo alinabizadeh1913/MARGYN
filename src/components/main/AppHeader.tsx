@@ -30,7 +30,7 @@ interface AppHeaderProps {
   handleClearCurrentPage: () => void;
   handleClearAllPages: () => void;
   hasText: boolean;
-  handleCreateBlankDocument: () => void;
+  onOpenNewDocument: () => void; // ✅ تغییر یافت
   handleOpenPdf: () => void;
   handleImportProject: () => void;
   setShowExportModal: (v: boolean) => void;
@@ -57,7 +57,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   handleClearCurrentPage,
   handleClearAllPages,
   hasText,
-  handleCreateBlankDocument,
+  onOpenNewDocument,
   handleOpenPdf,
   handleImportProject,
   setShowExportModal,
@@ -77,10 +77,11 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   pdfData,
   handleResetProgress,
 }) => {
+  const isInfinite = !!activeTab?.isInfinite;
+
   return (
     <header className="h-16 flex items-center justify-between px-4 border-b border-white/5 bg-black/40 backdrop-blur-2xl shrink-0 z-[100] shadow-[0_4px_30px_rgba(0,0,0,0.5)] gap-2">
-      {/* بخش سمت چپ: نویگیشن و تولبار */}
-      <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
+      <div className="flex items-center gap-2 min-w-0 flex-1 overflow-visible">
         <div className="flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/5 shrink-0 overflow-x-auto scrollbar-hide">
           <button
             onClick={() => setView("reader")}
@@ -121,7 +122,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
         </div>
 
         {view === "reader" && pdfData && (
-          <div className="flex items-center animate-in fade-in slide-in-from-left-4 duration-300 border-l border-white/10 pl-2 flex-1 min-w-0 overflow-x-auto scrollbar-hide">
+          <div className="flex items-center animate-in fade-in slide-in-from-left-4 duration-300 border-l border-white/10 pl-2 flex-1 min-w-0 overflow-visible">
             <Toolbar
               onClearCurrentPage={handleClearCurrentPage}
               onClearAllPages={handleClearAllPages}
@@ -131,12 +132,12 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
         )}
       </div>
 
-      {/* بخش سمت راست: اکشن‌ها */}
       <div className="flex items-center gap-1.5 shrink-0 ml-auto">
         {view === "reader" && (
           <>
+            {/* ✅ دکمه New Blank اکنون مدال را باز می‌کند */}
             <button
-              onClick={handleCreateBlankDocument}
+              onClick={onOpenNewDocument}
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[#38bdf8] hover:text-white hover:bg-[#38bdf8]/20 transition-all duration-300 text-xs font-medium border border-transparent hover:border-[#38bdf8]/30 shrink-0"
             >
               <FilePlus size={15} />
@@ -155,36 +156,43 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
 
         {view === "reader" && pdfData && (
           <>
-            <button
-              onClick={handleImportProject}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[#38bdf8] hover:text-white hover:bg-[#38bdf8]/20 transition-all duration-300 text-xs font-medium border border-[#38bdf8]/30 shrink-0"
-            >
-              <Download size={15} />
-              <span className="hidden xl:inline">Import</span>
-            </button>
+            {!isInfinite && (
+              <>
+                <button
+                  onClick={handleImportProject}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[#38bdf8] hover:text-white hover:bg-[#38bdf8]/20 transition-all duration-300 text-xs font-medium border border-[#38bdf8]/30 shrink-0"
+                >
+                  <Download size={15} />
+                  <span className="hidden xl:inline">Import</span>
+                </button>
 
-            <button
-              onClick={() => setShowExportModal(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[#38bdf8] hover:text-white hover:bg-[#38bdf8]/20 transition-all duration-300 text-xs font-medium border border-[#38bdf8]/30 shrink-0"
-            >
-              <Upload size={15} />
-              <span className="hidden xl:inline">Export</span>
-            </button>
+                <button
+                  onClick={() => setShowExportModal(true)}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[#38bdf8] hover:text-white hover:bg-[#38bdf8]/20 transition-all duration-300 text-xs font-medium border border-[#38bdf8]/30 shrink-0"
+                >
+                  <Upload size={15} />
+                  <span className="hidden xl:inline">Export</span>
+                </button>
 
-            {activeProjectPath && (
-              <button
-                onClick={handleSaveProject}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all duration-300 text-xs font-medium border shrink-0 ${isDirty ? "text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.2)]" : "text-[#52525b] border-transparent cursor-default"}`}
-                disabled={!isDirty}
-              >
-                <Save size={15} className={isDirty ? "animate-pulse" : ""} />
-                <span className="hidden xl:inline">Save</span>
-              </button>
+                {activeProjectPath && (
+                  <button
+                    onClick={handleSaveProject}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all duration-300 text-xs font-medium border shrink-0 ${isDirty ? "text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.2)]" : "text-[#52525b] border-transparent cursor-default"}`}
+                    disabled={!isDirty}
+                  >
+                    <Save
+                      size={15}
+                      className={isDirty ? "animate-pulse" : ""}
+                    />
+                    <span className="hidden xl:inline">Save</span>
+                  </button>
+                )}
+              </>
             )}
 
             <div className="w-px h-6 bg-white/10 mx-0.5 shrink-0" />
 
-            {activeTab?.isBlank ? (
+            {activeTab?.isBlank || isInfinite ? (
               <div className="flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-[#18181b] text-[#52525b] border border-[#27272a] cursor-not-allowed shrink-0">
                 <Lock size={14} />
                 <span className="hidden xl:inline">

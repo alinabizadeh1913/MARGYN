@@ -48,7 +48,6 @@ export default function SettingsView() {
   const [isResetting, setIsResetting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // ✅ استیت برای مدال توسعه‌دهنده
   const [showDevModal, setShowDevModal] = useState(false);
 
   useEffect(() => {
@@ -148,6 +147,7 @@ export default function SettingsView() {
   const shortcutLabels: Record<ShortcutAction, string> = {
     pen: "Select Pen Tool",
     eraser: "Select Eraser Tool",
+    pan: "Select Pan Tool (Hand)",
     increaseSize: "Increase Tool Size",
     decreaseSize: "Decrease Tool Size",
     startSession: "Start Session",
@@ -155,6 +155,8 @@ export default function SettingsView() {
     openPdf: "Open PDF File",
     closePdf: "Close Current Tab",
     switchTab: "Switch Tab",
+    nextTab: "Next Tab",
+    prevTab: "Previous Tab",
     clearPage: "Clear Current Page Drawings",
     clearAll: "Clear All Pages Drawings",
     toggleMargin: "Toggle Margin Sidebar",
@@ -355,7 +357,6 @@ export default function SettingsView() {
             </div>
           </section>
 
-          {/* ✅ Danger Zone */}
           <section className="bg-[#121214] border border-rose-500/20 rounded-2xl p-6">
             <div className="flex items-center gap-3 mb-4">
               <Shield size={20} className="text-rose-500" />
@@ -391,11 +392,7 @@ export default function SettingsView() {
             </div>
           </section>
 
-          {/* =========================================================
-              ✅ بخش جدید: معرفی توسعه‌دهنده (Developer & Creator)
-          ========================================================= */}
           <section className="relative bg-[#121214] border border-[#38bdf8]/30 rounded-2xl p-6 overflow-hidden group">
-            {/* Glow پس‌زمینه کارت */}
             <div className="absolute inset-0 bg-gradient-to-r from-[#38bdf8]/5 via-transparent to-[#a855f7]/5 opacity-50 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
             <div className="absolute -inset-x-10 -top-10 h-32 bg-[#38bdf8]/10 blur-[50px] pointer-events-none" />
 
@@ -434,7 +431,6 @@ export default function SettingsView() {
               </button>
             </div>
           </section>
-          {/* ========================================================= */}
 
           <section className="bg-[#121214] border border-[#27272a] rounded-2xl p-6">
             <div className="flex items-center gap-3 mb-4">
@@ -459,15 +455,12 @@ export default function SettingsView() {
         </div>
       </div>
 
-      {/* ✅ مدال معرفی توسعه‌دهنده */}
       {showDevModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-md transition-all duration-300 p-4 sm:p-8">
-          {/* هاله‌های نورانی پشت مدال */}
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-[#38bdf8]/10 rounded-full blur-[120px] pointer-events-none animate-pulse" />
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] bg-[#a855f7]/10 rounded-full blur-[100px] pointer-events-none" />
 
           <div className="relative bg-[#121214] border border-[#38bdf8]/30 rounded-3xl shadow-[0_20px_80px_-15px_rgba(56,189,248,0.15)] w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-300 flex flex-col max-h-[90vh]">
-            {/* هدر مدال با گرادیانت */}
             <div className="h-32 bg-gradient-to-r from-[#0c0c0e] to-[#18181b] relative border-b border-[#27272a] shrink-0">
               <div className="absolute inset-0 bg-[linear-gradient(to_right,#27272a_1px,transparent_1px),linear-gradient(to_bottom,#27272a_1px,transparent_1px)] bg-[size:24px_24px] opacity-20 pointer-events-none" />
               <button
@@ -477,18 +470,15 @@ export default function SettingsView() {
                 <X size={20} />
               </button>
 
-              {/* آواتار */}
               <div className="absolute -bottom-12 left-8">
                 <div className="w-24 h-24 rounded-2xl bg-gradient-to-tr from-[#38bdf8] via-[#a855f7] to-[#f43f5e] p-[3px] shadow-[0_0_30px_rgba(56,189,248,0.3)] rotate-3 hover:rotate-0 transition-transform duration-300">
                   <div className="w-full h-full bg-[#09090b] rounded-xl flex items-center justify-center overflow-hidden">
-                    {/* اینجا می‌تونید تصویر خودتون رو قرار بدید، فعلا از آیکون استفاده میکنیم */}
                     <User size={40} className="text-[#fafafa]" />
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* بدنه مدال */}
             <div className="pt-16 px-8 pb-8 overflow-y-auto custom-scrollbar flex-1">
               <div className="flex justify-between items-start flex-wrap gap-4 mb-6">
                 <div>
@@ -509,7 +499,6 @@ export default function SettingsView() {
                   </Typography>
                 </div>
 
-                {/* شبکه‌های اجتماعی */}
                 <div className="flex items-center gap-2">
                   <a
                     href="https://github.com/alinabizadeh1913"
@@ -549,7 +538,6 @@ export default function SettingsView() {
               </div>
 
               <div className="space-y-6">
-                {/* درباره من و پروژه */}
                 <div>
                   <Typography
                     variant="microLabel"
@@ -580,7 +568,6 @@ export default function SettingsView() {
                   </Typography>
                 </div>
 
-                {/* مهارت‌ها */}
                 <div>
                   <Typography
                     variant="microLabel"
@@ -611,7 +598,6 @@ export default function SettingsView() {
                   </div>
                 </div>
 
-                {/* لینک‌های سریع */}
                 <div className="pt-4 border-t border-[#27272a]">
                   <a
                     href="https://www.linkedin.com/in/ali-nabizadeh-884866280/"
@@ -650,7 +636,6 @@ export default function SettingsView() {
         </div>
       )}
 
-      {/* مدال ریست داده‌ها */}
       {showResetModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-md transition-all duration-300">
           <div className="bg-[#121214] border border-rose-500/30 p-8 rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] w-full max-w-lg flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">

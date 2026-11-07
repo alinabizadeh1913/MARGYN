@@ -13,7 +13,10 @@ import {
   ChevronRight,
   CheckCircle2,
   XCircle,
-  RotateCcw, // ✅ اضافه شد
+  RotateCcw,
+  FilePlus,
+  FileText,
+  Move,
 } from "lucide-react";
 import Typography from "@/typography";
 import { REQUIRED_END_PHRASE, REQUIRED_RESET_PHRASE } from "./constants";
@@ -48,7 +51,6 @@ interface AppModalsProps {
   setEndError: (v: boolean) => void;
   endInputRef: React.RefObject<HTMLInputElement | null>;
   handleConfirmEndSession: () => void;
-  // ✅ پراپ‌های جدید برای ریست
   showResetProgressModal: boolean;
   setShowResetProgressModal: (v: boolean) => void;
   resetProgressText: string;
@@ -57,6 +59,10 @@ interface AppModalsProps {
   setResetProgressError: (v: boolean) => void;
   resetProgressInputRef: React.RefObject<HTMLInputElement | null>;
   handleConfirmResetProgress: () => void;
+  // ✅ پراپ‌های جدید برای مدال ساخت سند جدید
+  showNewDocumentModal: boolean;
+  setShowNewDocumentModal: (v: boolean) => void;
+  handleCreateBlankDocument: (mode: "page" | "infinite") => void;
 }
 
 export const AppModals: React.FC<AppModalsProps> = ({
@@ -97,9 +103,104 @@ export const AppModals: React.FC<AppModalsProps> = ({
   setResetProgressError,
   resetProgressInputRef,
   handleConfirmResetProgress,
+  showNewDocumentModal,
+  setShowNewDocumentModal,
+  handleCreateBlankDocument,
 }) => {
   return (
     <>
+      {/* ✅ NEW: مدال ساخت سند جدید */}
+      {showNewDocumentModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-md transition-all duration-300">
+          <div className="bg-[#121214] border border-[#38bdf8]/30 p-8 rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] w-full max-w-md flex flex-col items-center animate-in fade-in zoom-in-95 duration-200">
+            <div className="w-16 h-16 bg-[#38bdf8]/10 rounded-full flex items-center justify-center mb-6 shadow-inner">
+              <FilePlus size={32} className="text-[#38bdf8]" />
+            </div>
+            <Typography
+              variant="pageTitle"
+              as="h2"
+              className="text-[#fafafa] mb-2 font-semibold tracking-tight"
+            >
+              Create New Document
+            </Typography>
+            <Typography
+              variant="body"
+              as="p"
+              className="text-[#a1a1aa] mb-8 text-center leading-relaxed"
+            >
+              Choose the type of workspace you want to start with.
+            </Typography>
+
+            <div className="flex flex-col gap-3 w-full">
+              <button
+                onClick={() => {
+                  handleCreateBlankDocument("page");
+                  setShowNewDocumentModal(false);
+                }}
+                className="w-full flex items-center justify-between p-4 rounded-xl bg-[#18181b] border border-[#27272a] hover:bg-[#27272a] hover:border-rose-500/50 transition-all group"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-rose-500/10 flex items-center justify-center shrink-0">
+                    <FileText
+                      size={20}
+                      className="text-rose-400 group-hover:scale-110 transition-transform"
+                    />
+                  </div>
+                  <div className="flex flex-col text-left gap-1">
+                    <Typography variant="cardTitle" className="text-[#fafafa]">
+                      Regular Page
+                    </Typography>
+                    <Typography variant="caption" className="text-[#a1a1aa]">
+                      Single blank A4 page
+                    </Typography>
+                  </div>
+                </div>
+                <ChevronRight
+                  size={18}
+                  className="text-[#52525b] group-hover:text-rose-400 transition-colors"
+                />
+              </button>
+
+              <button
+                onClick={() => {
+                  handleCreateBlankDocument("infinite");
+                  setShowNewDocumentModal(false);
+                }}
+                className="w-full flex items-center justify-between p-4 rounded-xl bg-[#18181b] border border-[#27272a] hover:bg-[#27272a] hover:border-[#a855f7]/50 transition-all group"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-[#a855f7]/10 flex items-center justify-center shrink-0">
+                    <Move
+                      size={20}
+                      className="text-[#a855f7] group-hover:scale-110 transition-transform"
+                    />
+                  </div>
+                  <div className="flex flex-col text-left gap-1">
+                    <Typography variant="cardTitle" className="text-[#fafafa]">
+                      Infinite Canvas
+                    </Typography>
+                    <Typography variant="caption" className="text-[#a1a1aa]">
+                      Pan and draw anywhere
+                    </Typography>
+                  </div>
+                </div>
+                <ChevronRight
+                  size={18}
+                  className="text-[#52525b] group-hover:text-[#a855f7] transition-colors"
+                />
+              </button>
+            </div>
+
+            <button
+              onClick={() => setShowNewDocumentModal(false)}
+              className="w-full mt-6 px-4 py-3.5 rounded-xl bg-[#18181b] text-[#a1a1aa] hover:text-[#fafafa] hover:bg-[#27272a] border border-[#27272a] transition-all font-medium active:scale-[0.98]"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {showEndModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-md transition-all duration-300">
           <div className="bg-[#121214] border border-rose-500/30 p-8 rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] w-full max-w-lg flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">
@@ -449,7 +550,6 @@ export const AppModals: React.FC<AppModalsProps> = ({
         </div>
       )}
 
-      {/* ✅ مودال جدید ریست پیشرفت */}
       {showResetProgressModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-md transition-all duration-300">
           <div className="bg-[#121214] border border-rose-500/30 p-8 rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] w-full max-w-lg flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">

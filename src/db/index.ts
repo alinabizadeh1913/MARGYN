@@ -8,6 +8,7 @@ let db: any = null;
 let sqliteInstance: SqlJsDatabase | null = null;
 let dbInitPromise: Promise<any> | null = null;
 let saveTimeout: NodeJS.Timeout | null = null;
+let transactionDepth = 0;
 
 export async function getDb() {
   if (typeof window === "undefined") throw new Error("Database is client-only");
@@ -41,6 +42,7 @@ export async function getDb() {
         CREATE TABLE IF NOT EXISTS notes (id TEXT PRIMARY KEY, file_path TEXT NOT NULL, page_number INTEGER NOT NULL, content TEXT NOT NULL, updated_at INTEGER NOT NULL);
       `);
 
+      // Migrations (unchanged)
       try {
         sqliteInstance.run("SELECT file_path FROM sessions LIMIT 1");
       } catch (e) {
@@ -99,6 +101,18 @@ export async function getDb() {
         );
       }
 
+      // ✅ NEW: indexes — big perf win as data grows
+      sqliteInstance.run(`
+        CREATE INDEX IF NOT EXISTS idx_drawings_file_page_target ON drawings(file_path, page_number, target);
+        CREATE INDEX IF NOT EXISTS idx_drawings_file_path ON drawings(file_path);
+        CREATE INDEX IF NOT EXISTS idx_sessions_file_path ON sessions(file_path);
+        CREATE INDEX IF NOT EXISTS idx_sessions_end_time ON sessions(end_time);
+        CREATE INDEX IF NOT EXISTS idx_sessions_file_open ON sessions(file_path, end_time);
+        CREATE INDEX IF NOT EXISTS idx_notes_file_page ON notes(file_path, page_number);
+        CREATE INDEX IF NOT EXISTS idx_recent_files_path ON recent_files(file_path);
+        CREATE INDEX IF NOT EXISTS idx_recent_files_project ON recent_files(project_path);
+      `);
+
       db = drizzle(sqliteInstance, { schema });
       await saveDb(true);
       return db;
@@ -113,6 +127,9 @@ export async function getDb() {
 
 export async function saveDb(immediate = false) {
   if (!sqliteInstance) return;
+
+  // ✅ NEW: never export mid-transaction — commit first.
+  if (transactionDepth > 0) return;
 
   const performSave = async () => {
     try {
@@ -133,6 +150,67 @@ export async function saveDb(immediate = false) {
 
   if (saveTimeout) clearTimeout(saveTimeout);
   saveTimeout = setTimeout(performSave, 3000);
+}
+
+/**
+ * ✅ NEW: atomic multi-step operations.
+ *
+ * Wraps a series of drizzle calls so they either all succeed or all roll back.
+ * Uses SQLite's own BEGIN/COMMIT/ROLLBACK since sql.js has a single in-memory
+ * connection and any pending debounced save is cancelled up-front.
+ */
+export async function runInTransaction<T>(fn: () => Promise<T>): Promise<T> {
+  await getDb();
+  if (!sqliteInstance) throw new Error("DB not initialized");
+
+  // Cancel any debounced save that would export mid-transaction.
+  if (saveTimeout) {
+    clearTimeout(saveTimeout);
+    saveTimeout = null;
+  }
+
+  if (transactionDepth > 0) {
+    transactionDepth++;
+    try {
+      return await fn();
+    } finally {
+      transactionDepth--;
+    }
+  }
+
+  sqliteInstance.run("BEGIN");
+  transactionDepth = 1;
+  try {
+    const result = await fn();
+    sqliteInstance.run("COMMIT");
+    transactionDepth = 0;
+    return result;
+  } catch (err) {
+    try {
+      sqliteInstance.run("ROLLBACK");
+    } catch (rollbackErr) {
+      console.error("Rollback failed:", rollbackErr);
+    }
+    transactionDepth = 0;
+    throw err;
+  }
+}
+
+/**
+ * ✅ NEW: safely remove orphaned data for synthetic paths.
+ * Called when a `blank-*` or `infinite-*` tab is closed.
+ */
+export async function cleanupFileData(filePath: string) {
+  if (!filePath) return;
+  try {
+    const database = await getDb();
+    await database.delete(drawings).where(eq(drawings.filePath, filePath));
+    await database.delete(notes).where(eq(notes.filePath, filePath));
+    await database.delete(sessions).where(eq(sessions.filePath, filePath));
+    await saveDb();
+  } catch (e) {
+    console.error("cleanupFileData failed:", e);
+  }
 }
 
 export async function saveDrawing(
@@ -290,7 +368,6 @@ export async function setSetting(key: string, value: string) {
         .where(eq(settings.key, key));
     else await database.insert(settings).values({ key, value });
 
-    // ✅ تغییر مهم: true را پاس می‌دهیم تا تنظیمات بلافاصله روی دیسک ذخیره شوند
     await saveDb(true);
   } catch (e) {}
 }
@@ -306,6 +383,14 @@ export async function resetDatabase() {
     CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS recent_files (id TEXT PRIMARY KEY, name TEXT NOT NULL, file_path TEXT NOT NULL, last_opened INTEGER NOT NULL, completed INTEGER DEFAULT 0, project_path TEXT, last_page INTEGER DEFAULT 1, scale REAL DEFAULT 1.3, canvas_bg TEXT DEFAULT '#ffffff');
     CREATE TABLE IF NOT EXISTS notes (id TEXT PRIMARY KEY, file_path TEXT NOT NULL, page_number INTEGER NOT NULL, content TEXT NOT NULL, updated_at INTEGER NOT NULL);
+  `);
+  sqliteInstance.run(`
+    CREATE INDEX IF NOT EXISTS idx_drawings_file_page_target ON drawings(file_path, page_number, target);
+    CREATE INDEX IF NOT EXISTS idx_drawings_file_path ON drawings(file_path);
+    CREATE INDEX IF NOT EXISTS idx_sessions_file_path ON sessions(file_path);
+    CREATE INDEX IF NOT EXISTS idx_sessions_end_time ON sessions(end_time);
+    CREATE INDEX IF NOT EXISTS idx_notes_file_page ON notes(file_path, page_number);
+    CREATE INDEX IF NOT EXISTS idx_recent_files_path ON recent_files(file_path);
   `);
   await saveDb(true);
 }
@@ -332,20 +417,6 @@ export async function addRecentFile(
           .where(eq(recentFiles.id, existingProject[0].id));
         await saveDb();
         return existingProject[0];
-      }
-    }
-    if (!projectPath) {
-      const existingName = await database
-        .select()
-        .from(recentFiles)
-        .where(eq(recentFiles.name, name));
-      if (existingName.length > 0) {
-        await database
-          .update(recentFiles)
-          .set({ lastOpened: Date.now(), filePath })
-          .where(eq(recentFiles.id, existingName[0].id));
-        await saveDb();
-        return { ...existingName[0], filePath };
       }
     }
     const existing = await database
@@ -406,6 +477,9 @@ export async function deleteRecentFile(id: string, filePath: string) {
   try {
     const database = await getDb();
     await database.delete(recentFiles).where(eq(recentFiles.id, id));
+    await database.delete(drawings).where(eq(drawings.filePath, filePath));
+    await database.delete(sessions).where(eq(sessions.filePath, filePath));
+    await database.delete(notes).where(eq(notes.filePath, filePath));
     await saveDb(true);
     if (window.electronAPI)
       await window.electronAPI.deleteLibraryFile(filePath);
@@ -416,6 +490,9 @@ export async function clearRecentFiles() {
   try {
     const database = await getDb();
     await database.delete(recentFiles);
+    await database.delete(drawings);
+    await database.delete(sessions);
+    await database.delete(notes);
     await saveDb(true);
     if (window.electronAPI) await window.electronAPI.clearLibraryFolder();
   } catch (e) {}
@@ -528,7 +605,7 @@ export async function resetDocumentProgress(filePath: string) {
     await database.delete(sessions).where(eq(sessions.filePath, filePath));
     await database
       .update(recentFiles)
-      .set({ completed: 0 })
+      .set({ completed: 0, lastPage: 1 })
       .where(eq(recentFiles.filePath, filePath));
     await saveDb(true);
     return true;

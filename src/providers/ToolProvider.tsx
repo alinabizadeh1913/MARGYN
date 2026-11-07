@@ -20,7 +20,8 @@ export type ToolType =
   | "rectangle"
   | "circle"
   | "line"
-  | "arrow";
+  | "arrow"
+  | "pan"; // ✅ NEW: Infinite Canvas فقط
 
 export const DEFAULT_COLORS = [
   "#ffffff",
@@ -61,7 +62,6 @@ interface ToolContextType extends ToolState {
   setTool: (t: ToolType) => void;
   setColor: (c: string) => void;
   updateCustomColor: (c: string) => Promise<void>;
-  // ✅ آپدیت ورودی برای پشتیبانی از تابع (prev => new)
   setSize: (s: number | ((prev: number) => number)) => void;
 }
 
@@ -150,7 +150,6 @@ export function ToolProvider({ children }: { children: ReactNode }) {
     [updateState],
   );
 
-  // ✅ پیاده‌سازی setSize با قابلیت دریافت تابع
   const setSize = useCallback(
     (s: number | ((prev: number) => number)) => {
       const newSize = typeof s === "function" ? s(stateRef.current.size) : s;

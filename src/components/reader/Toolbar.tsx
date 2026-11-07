@@ -100,10 +100,10 @@ export default function Toolbar({
   ];
 
   const shapeTools: ToolItem[] = [
-    { id: "rectangle", icon: Square, label: "Rectangle (R)" },
-    { id: "circle", icon: Circle, label: "Ellipse (O)" },
-    { id: "line", icon: Minus, label: "Line (L) – Shift = 45°" },
-    { id: "arrow", icon: MoveUpRight, label: "Arrow (A) – snaps to shapes" },
+    { id: "rectangle", icon: Square, label: "Rectangle" },
+    { id: "circle", icon: Circle, label: "Ellipse" },
+    { id: "line", icon: Minus, label: "Line" },
+    { id: "arrow", icon: MoveUpRight, label: "Arrow" },
   ];
 
   const activeShape = shapeTools.find((t) => t.id === tool);
@@ -111,7 +111,8 @@ export default function Toolbar({
   const showColors = COLOR_TOOLS.includes(tool);
 
   return (
-    <div className="relative z-[100] flex items-center gap-1 p-1 rounded-xl bg-black/40 backdrop-blur-xl border border-white/10 shadow-lg shrink-0 overflow-x-auto scrollbar-hide max-w-full">
+    // ✅ overflow-x-auto و scrollbar-hide حذف شدند تا دراپ‌دان‌ها بریده نشوند
+    <div className="relative z-[100] flex items-center gap-1 p-1 rounded-xl bg-black/40 backdrop-blur-xl border border-white/10 shadow-lg shrink-0">
       <div className="flex items-center gap-0.5 pr-1 border-r border-white/10 shrink-0">
         {baseTools.map((t) => (
           <button
@@ -157,7 +158,8 @@ export default function Toolbar({
           </button>
 
           {isShapeMenuOpen && (
-            <div className="absolute top-full left-0 mt-3 w-36 bg-[#121214] border border-[#27272a] rounded-xl shadow-2xl flex flex-col z-[999] py-1">
+            // ✅ استایل شیک‌تر و مدرن‌تر برای منوی کشویی اشکال
+            <div className="absolute top-full left-0 mt-2 w-44 bg-[#121214]/95 backdrop-blur-xl border border-[#27272a] rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.8)] flex flex-col z-[999] p-1.5 animate-in fade-in zoom-in-95 duration-150">
               {shapeTools.map((t) => (
                 <button
                   key={t.id}
@@ -165,14 +167,14 @@ export default function Toolbar({
                     setTool(t.id);
                     setIsShapeMenuOpen(false);
                   }}
-                  className={`flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
+                  className={`flex items-center gap-2.5 px-3 py-2 text-sm rounded-lg transition-colors ${
                     tool === t.id
-                      ? "bg-[#38bdf8]/20 text-[#38bdf8]"
+                      ? "bg-[#38bdf8]/15 text-[#38bdf8]"
                       : "text-[#a1a1aa] hover:text-white hover:bg-white/5"
                   }`}
                 >
-                  <t.icon size={14} />
-                  <span>{t.label.split(" (")[0]}</span>
+                  <t.icon size={16} />
+                  <span className="font-medium">{t.label}</span>
                 </button>
               ))}
             </div>
@@ -251,7 +253,7 @@ export default function Toolbar({
         >
           <div className="w-4 h-4 flex items-center justify-center">
             <div
-              className="rounded-full bg-white transition-all"
+              className="rounded-full bg-white transition-all shadow-sm"
               style={{ width: Math.min(size, 14), height: Math.min(size, 14) }}
             />
           </div>
@@ -264,7 +266,8 @@ export default function Toolbar({
         </button>
 
         {isSizeMenuOpen && (
-          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 w-[120px] bg-[#121214] border border-[#27272a] rounded-xl shadow-2xl p-2 grid grid-cols-3 gap-1 z-[999]">
+          // ✅ استایل شیک‌تر و چیدمان گرید ۴ ستونه برای انتخاب سایز
+          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-[160px] bg-[#121214]/95 backdrop-blur-xl border border-[#27272a] rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.8)] p-2 grid grid-cols-4 gap-1.5 z-[999] animate-in fade-in zoom-in-95 duration-150">
             {sizes.map((s) => (
               <button
                 key={s}
@@ -274,16 +277,16 @@ export default function Toolbar({
                 }}
                 title={`${s}px`}
                 className={`aspect-square rounded-lg flex items-center justify-center transition-all ${
-                  size === s ? "bg-white/10" : "hover:bg-white/5"
+                  size === s ? "bg-[#38bdf8]/15" : "hover:bg-white/5"
                 }`}
               >
                 <div
                   className={`rounded-full transition-all ${
                     size === s
-                      ? "bg-[#38bdf8] shadow-[0_0_10px_#38bdf8]"
+                      ? "bg-[#38bdf8] shadow-[0_0_8px_#38bdf8]"
                       : "bg-[#a1a1aa]"
                   }`}
-                  style={{ width: s / 1.5, height: s / 1.5 }}
+                  style={{ width: s / 1.8, height: s / 1.8 }}
                 />
               </button>
             ))}
@@ -302,28 +305,35 @@ export default function Toolbar({
           }`}
         >
           <Trash2 size={14} />
-          <ChevronDown size={10} />
+          <ChevronDown
+            size={10}
+            className={`transition-transform duration-300 ${
+              isDeleteMenuOpen ? "rotate-180" : ""
+            }`}
+          />
         </button>
 
         {isDeleteMenuOpen && (
-          <div className="absolute top-full right-0 mt-3 w-48 bg-[#121214] border border-[#27272a] rounded-xl shadow-2xl overflow-hidden flex flex-col z-[999]">
+          // ✅ استایل شیک‌تر برای منوی پاک کردن
+          <div className="absolute top-full right-0 mt-2 w-52 bg-[#121214]/95 backdrop-blur-xl border border-[#27272a] rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.8)] overflow-hidden flex flex-col z-[999] p-1.5 animate-in fade-in zoom-in-95 duration-150">
             <button
               onClick={() => {
                 onClearCurrentPage();
                 setIsDeleteMenuOpen(false);
               }}
-              className="px-4 py-3 text-left text-sm text-[#a1a1aa] hover:text-white hover:bg-white/5 transition-colors"
+              className="px-3 py-2.5 text-left text-sm font-medium text-[#a1a1aa] rounded-lg hover:text-white hover:bg-white/5 transition-colors flex items-center gap-2"
             >
+              <Square size={14} className="opacity-70" />
               Clear Current Page
             </button>
-            <div className="h-px w-full bg-[#27272a]" />
             <button
               onClick={() => {
                 onClearAllPages();
                 setIsDeleteMenuOpen(false);
               }}
-              className="px-4 py-3 text-left text-sm text-rose-400 hover:bg-rose-500/10 transition-colors"
+              className="px-3 py-2.5 text-left text-sm font-medium text-rose-400 rounded-lg hover:bg-rose-500/10 transition-colors flex items-center gap-2"
             >
+              <Trash2 size={14} className="opacity-70" />
               Clear All Pages
             </button>
           </div>

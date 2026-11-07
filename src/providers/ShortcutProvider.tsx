@@ -15,6 +15,7 @@ import { getSetting, setSetting } from "@/db";
 export type ShortcutAction =
   | "pen"
   | "eraser"
+  | "pan"
   | "increaseSize"
   | "decreaseSize"
   | "startSession"
@@ -22,6 +23,8 @@ export type ShortcutAction =
   | "openPdf"
   | "closePdf"
   | "switchTab"
+  | "nextTab" // ✅ NEW
+  | "prevTab" // ✅ NEW
   | "clearPage"
   | "clearAll"
   | "toggleMargin"
@@ -34,13 +37,16 @@ export type ShortcutAction =
 export const DEFAULT_SHORTCUTS: Record<ShortcutAction, string> = {
   pen: "p",
   eraser: "e",
-  increaseSize: "add",
-  decreaseSize: "subtract",
+  pan: "g",
+  increaseSize: "equal",
+  decreaseSize: "minus",
   startSession: "ctrl+enter",
   endSession: "ctrl+shift+enter",
   openPdf: "ctrl+o",
   closePdf: "ctrl+w",
   switchTab: "ctrl+tab",
+  nextTab: "ctrl+pagedown", // ✅ NEW
+  prevTab: "ctrl+pageup", // ✅ NEW
   clearPage: "delete",
   clearAll: "shift+delete",
   toggleMargin: "ctrl+b",
@@ -151,9 +157,6 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!isShortcutsEnabledRef.current) return;
-      // ✅ FIX: اگه یه لیسنر دیگه (مثل useInkCanvas) این کلید رو هندل کرده
-      // و preventDefault زده، دیگه شورتکات رو شلیک نکن.
-      // (جلوگیری از باگ: Delete روی stroke انتخاب‌شده → کل صفحه پاک می‌شد)
       if (e.defaultPrevented) return;
 
       const target = e.target as HTMLElement;
@@ -176,6 +179,10 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
       else if (key === "Space") key = "space";
       else if (key === "Enter") key = "enter";
       else if (key === "Tab") key = "tab";
+      else if (key === "PageUp")
+        key = "pageup"; // ✅ NEW
+      else if (key === "PageDown")
+        key = "pagedown"; // ✅ NEW
       else if (key === "Equal") key = "equal";
       else if (key === "Minus") key = "minus";
       else key = key.toLowerCase();
@@ -216,6 +223,8 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
         pressedString === "ctrl+n" ||
         pressedString === "ctrl+t" ||
         pressedString === "ctrl+tab" ||
+        pressedString === "ctrl+pagedown" || // ✅ NEW
+        pressedString === "ctrl+pageup" || // ✅ NEW
         pressedString === "ctrl+enter" ||
         pressedString === "ctrl+shift+enter" ||
         pressedString === "ctrl+b" ||

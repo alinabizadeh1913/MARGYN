@@ -13,6 +13,7 @@ import {
   Upload,
   FilePlus,
   ArrowRight,
+  Move, // ✅ NEW
 } from "lucide-react";
 import Typography from "@/typography";
 
@@ -29,6 +30,7 @@ export interface OpenTab {
   scale: number;
   canvasBg: string;
   isBlank?: boolean;
+  isInfinite?: boolean; // ✅ NEW
   toolState?: ToolState;
   snapshot?: {
     drawings: any[];
@@ -114,9 +116,7 @@ export default function TabsBar({
   if (tabs.length === 0) return null;
 
   return (
-    // ✅ اضافه کردن group/tabs برای اعمال افکت روی کل نوار
     <div className="w-full h-12 bg-[#09090b] border-b border-[#27272a] flex items-center relative z-[60] select-none shrink-0 group/tabs transition-colors duration-300">
-      {/* ✅ محو شدن تب‌ها در حالت عادی و نمایان شدن با هاور */}
       <div
         ref={scrollContainerRef}
         onWheel={handleWheel}
@@ -126,6 +126,7 @@ export default function TabsBar({
           const isActive = tab.id === activeTabId;
           const isProject = !!tab.projectPath;
           const isBlank = !!tab.isBlank;
+          const isInfinite = !!tab.isInfinite;
 
           const projectName = isProject
             ? tab.projectPath!.split(/[/\\]/).pop()?.replace(".margyn", "")
@@ -211,14 +212,18 @@ export default function TabsBar({
             >
               <div
                 className={`w-5 h-5 rounded flex items-center justify-center shrink-0 ${
-                  isBlank
-                    ? "bg-[#38bdf8]/20 text-[#38bdf8]"
-                    : isProject
-                      ? "bg-emerald-500/20 text-emerald-400"
-                      : "bg-rose-500/20 text-rose-400"
+                  isInfinite
+                    ? "bg-[#a855f7]/20 text-[#a855f7]"
+                    : isBlank
+                      ? "bg-[#38bdf8]/20 text-[#38bdf8]"
+                      : isProject
+                        ? "bg-emerald-500/20 text-emerald-400"
+                        : "bg-rose-500/20 text-rose-400"
                 }`}
               >
-                {isBlank ? (
+                {isInfinite ? (
+                  <Move size={12} />
+                ) : isBlank ? (
                   <FilePlus size={12} />
                 ) : isProject ? (
                   <FolderArchive size={12} />
@@ -237,14 +242,22 @@ export default function TabsBar({
 
               <span
                 className={`px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider shrink-0 ${
-                  isBlank
-                    ? "bg-[#38bdf8]/10 text-[#38bdf8] border border-[#38bdf8]/20"
-                    : isProject
-                      ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"
-                      : "bg-rose-500/10 text-rose-500 border border-rose-500/20"
+                  isInfinite
+                    ? "bg-[#a855f7]/10 text-[#a855f7] border border-[#a855f7]/20"
+                    : isBlank
+                      ? "bg-[#38bdf8]/10 text-[#38bdf8] border border-[#38bdf8]/20"
+                      : isProject
+                        ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"
+                        : "bg-rose-500/10 text-rose-500 border border-rose-500/20"
                 }`}
               >
-                {isBlank ? "BLANK" : isProject ? "MARGYN" : "PDF"}
+                {isInfinite
+                  ? "CANVAS"
+                  : isBlank
+                    ? "BLANK"
+                    : isProject
+                      ? "MARGYN"
+                      : "PDF"}
               </span>
 
               {tab.isDirty && (
@@ -262,7 +275,6 @@ export default function TabsBar({
         })}
       </div>
 
-      {/* ✅ دکمه سه‌نقطه با افکت محو و نمایان */}
       <div
         className="pl-2 pr-2 border-l border-[#27272a] h-6 flex items-center shrink-0 bg-[#09090b] z-10 opacity-60 group-hover/tabs:opacity-100 transition-opacity duration-300"
         ref={dropdownRef}
@@ -289,6 +301,7 @@ export default function TabsBar({
               const isActive = tab.id === activeTabId;
               const isProject = !!tab.projectPath;
               const isBlank = !!tab.isBlank;
+              const isInfinite = !!tab.isInfinite;
               const projectName = isProject
                 ? tab.projectPath!.split(/[/\\]/).pop()?.replace(".margyn", "")
                 : null;
@@ -307,14 +320,18 @@ export default function TabsBar({
                 >
                   <div
                     className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 ${
-                      isBlank
-                        ? "bg-[#38bdf8]/20 text-[#38bdf8]"
-                        : isProject
-                          ? "bg-emerald-500/20 text-emerald-400"
-                          : "bg-rose-500/20 text-rose-400"
+                      isInfinite
+                        ? "bg-[#a855f7]/20 text-[#a855f7]"
+                        : isBlank
+                          ? "bg-[#38bdf8]/20 text-[#38bdf8]"
+                          : isProject
+                            ? "bg-emerald-500/20 text-emerald-400"
+                            : "bg-rose-500/20 text-rose-400"
                     }`}
                   >
-                    {isBlank ? (
+                    {isInfinite ? (
+                      <Move size={14} />
+                    ) : isBlank ? (
                       <FilePlus size={14} />
                     ) : isProject ? (
                       <FolderArchive size={14} />

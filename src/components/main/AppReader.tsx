@@ -6,6 +6,7 @@ import { OpenTab } from "../TabsBar";
 import MarginCanvas from "../reader/MarginCanvas";
 import PdfViewer from "../reader/PdfViewer";
 import BlankPageViewer from "../reader/BlankPageViewer";
+import InfiniteCanvasViewer from "../reader/InfiniteCanvasViewer"; // ✅ NEW
 import LibraryView from "../LibraryView";
 import HistoryView from "../HistoryView";
 import SettingsView from "../SettingsView";
@@ -79,7 +80,6 @@ export const AppReader: React.FC<AppReaderProps> = ({
                 </div>
               </div>
 
-              {/* ✅ دکمه شیشه‌ای با حذف ترنزیشن جابه‌جایی (فقط ترنزیشن رنگ دارد) */}
               <button
                 onClick={() => setIsMarginOpen(!isMarginOpen)}
                 className="absolute top-1/2 -translate-y-1/2 z-50 flex items-center justify-center w-8 h-24 bg-black/20 backdrop-blur-xl border-y border-r border-white/20 text-white/70 hover:text-zinc-900 hover:bg-white hover:border-zinc-200 rounded-r-xl transition-colors duration-200 shadow-xl group"
@@ -101,7 +101,16 @@ export const AppReader: React.FC<AppReaderProps> = ({
           )}
 
           <div className="flex-1 h-full relative overflow-hidden flex items-center justify-center">
-            {activeTab?.isBlank ? (
+            {activeTab?.isInfinite ? (
+              <InfiniteCanvasViewer
+                key={activeTabId || "empty"}
+                filePath={activeFilePath}
+                canvasBg={activeCanvasBg}
+                onCanvasBgChange={handleCanvasBgChange}
+                initialScale={activeScale}
+                onScaleChange={handleScaleChange}
+              />
+            ) : activeTab?.isBlank ? (
               <BlankPageViewer
                 filePath={activeFilePath}
                 initialPages={totalPages}
