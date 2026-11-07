@@ -142,7 +142,7 @@ npm install
 
 This may take a few minutes. It downloads every library MARGYN needs — from React and Next.js, to Electron and the SQLite engine.
 
->💡 Note: If you encounter issues, make sure you're running a recent Node.js version (node --version), and try again.
+> 💡 **Note:** If you encounter issues, make sure you're running a recent Node.js version (node --version), and try again.
 
 #### 3. Build the Windows Installer
 Once dependencies are installed, run:
@@ -199,11 +199,10 @@ Once MARGYN is running, here's how to get started:
 - Alternatively, load a `.margyn` project from the **Library** view.
 
 ### Reading & Annotating
-Use the toolbar to switch tools: Pen, Highlighter, Eraser, Shapes, Line, Arrow, Select.
 
-Draw directly on the PDF page, or open the writable margin beside it for freeform thinking.
-
-Attach per-page notes using the note icon on the right side.
+- Use the toolbar to switch tools: **Pen**, **Highlighter**, **Eraser**, **Shapes**, **Line**, **Arrow**, **Select**.
+- Draw directly on the PDF page, or open the **writable margin** beside it for freeform thinking.
+- Attach **per-page notes** using the note icon on the right side.
 
 ### Starting a Focus Session
 Click Start Session in the header.
