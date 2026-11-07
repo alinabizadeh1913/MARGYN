@@ -15,6 +15,8 @@ import { getSetting, setSetting } from "@/db";
 export type ShortcutAction =
   | "pen"
   | "eraser"
+  | "increaseSize"
+  | "decreaseSize"
   | "startSession"
   | "endSession"
   | "openPdf"
@@ -27,11 +29,13 @@ export type ShortcutAction =
   | "importProject"
   | "exportProject"
   | "newBlank"
-  | "note"; // ✅ اضافه شد
+  | "note";
 
 export const DEFAULT_SHORTCUTS: Record<ShortcutAction, string> = {
   pen: "p",
   eraser: "e",
+  increaseSize: "add",
+  decreaseSize: "subtract",
   startSession: "ctrl+enter",
   endSession: "ctrl+shift+enter",
   openPdf: "ctrl+o",
@@ -44,12 +48,15 @@ export const DEFAULT_SHORTCUTS: Record<ShortcutAction, string> = {
   importProject: "ctrl+i",
   exportProject: "ctrl+e",
   newBlank: "ctrl+n",
-  note: "ctrl+t", // ✅ اضافه شد
+  note: "ctrl+t",
 };
 
 interface ShortcutContextType {
   shortcuts: Record<ShortcutAction, string>;
-  updateShortcut: (action: ShortcutAction, keys: string) => Promise<void>;
+  updateShortcut: (
+    action: ShortcutAction,
+    keys: string,
+  ) => Promise<{ success: boolean; error?: string }>;
   resetShortcuts: () => Promise<void>;
   isShortcutsEnabled: boolean;
   setShortcutsEnabled: (enabled: boolean) => void;
@@ -77,38 +84,12 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
         if (saved) {
           try {
             const parsed = JSON.parse(saved);
-            const validShortcuts = Object.keys(DEFAULT_SHORTCUTS).reduce(
-              (acc, key) => {
-                const k = key as ShortcutAction;
-                let val = parsed[k] || DEFAULT_SHORTCUTS[k];
-
-                if (
-                  k === "clearPage" &&
-                  (val === "delete" || val === "ctrl+shift+delete")
-                ) {
-                  val = "delete";
-                }
-
-                if (val.includes("shiftleft") || val.includes("shiftright")) {
-                  val = val
-                    .replace("shiftleft", "shift")
-                    .replace("shiftright", "shift");
-                }
-                if (
-                  val.includes("controlleft") ||
-                  val.includes("controlright")
-                ) {
-                  val = val
-                    .replace("controlleft", "ctrl")
-                    .replace("controlright", "ctrl");
-                }
-                acc[k] = val;
-                return acc;
-              },
-              {} as Record<ShortcutAction, string>,
-            );
-
-            setShortcuts(validShortcuts);
+            const normalized: Record<string, string> = {};
+            for (const [k, v] of Object.entries(parsed)) {
+              if (typeof v === "string") normalized[k] = v.toLowerCase();
+            }
+            const validShortcuts = { ...DEFAULT_SHORTCUTS, ...normalized };
+            setShortcuts(validShortcuts as Record<ShortcutAction, string>);
             await setSetting("shortcuts", JSON.stringify(validShortcuts));
           } catch {
             console.error("Corrupted shortcuts data, resetting to default.");
@@ -126,9 +107,21 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
 
   const updateShortcut = useCallback(
     async (action: ShortcutAction, keys: string) => {
+      const isDuplicate = Object.entries(shortcuts).some(
+        ([k, v]) => k !== action && v.toLowerCase() === keys.toLowerCase(),
+      );
+
+      if (isDuplicate) {
+        return {
+          success: false,
+          error: `Shortcut ${keys.toUpperCase()} is already in use.`,
+        };
+      }
+
       const updated = { ...shortcuts, [action]: keys };
       setShortcuts(updated);
       await setSetting("shortcuts", JSON.stringify(updated));
+      return { success: true };
     },
     [shortcuts],
   );
@@ -158,6 +151,10 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!isShortcutsEnabledRef.current) return;
+      // ✅ FIX: اگه یه لیسنر دیگه (مثل useInkCanvas) این کلید رو هندل کرده
+      // و preventDefault زده، دیگه شورتکات رو شلیک نکن.
+      // (جلوگیری از باگ: Delete روی stroke انتخاب‌شده → کل صفحه پاک می‌شد)
+      if (e.defaultPrevented) return;
 
       const target = e.target as HTMLElement;
       const isInput =
@@ -179,7 +176,11 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
       else if (key === "Space") key = "space";
       else if (key === "Enter") key = "enter";
       else if (key === "Tab") key = "tab";
+      else if (key === "Equal") key = "equal";
+      else if (key === "Minus") key = "minus";
       else key = key.toLowerCase();
+
+      key = key.toLowerCase();
 
       if (
         ![
@@ -200,7 +201,10 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
         keys.push(key);
       }
 
-      const pressedString = keys.join("+");
+      let pressedString = keys.join("+");
+
+      if (pressedString === "shift+equal") pressedString = "equal";
+      if (pressedString === "shift+minus") pressedString = "minus";
 
       if (isInput && pressedString.toLowerCase() !== "ctrl+w") {
         return;
@@ -210,14 +214,18 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
         pressedString === "ctrl+o" ||
         pressedString === "ctrl+w" ||
         pressedString === "ctrl+n" ||
-        pressedString === "ctrl+t" || // ✅ اضافه شد
+        pressedString === "ctrl+t" ||
         pressedString === "ctrl+tab" ||
         pressedString === "ctrl+enter" ||
         pressedString === "ctrl+shift+enter" ||
         pressedString === "ctrl+b" ||
         pressedString === "ctrl+s" ||
         pressedString === "ctrl+i" ||
-        pressedString === "ctrl+e"
+        pressedString === "ctrl+e" ||
+        pressedString === "equal" ||
+        pressedString === "minus" ||
+        pressedString === "add" ||
+        pressedString === "subtract"
       ) {
         e.preventDefault();
       }

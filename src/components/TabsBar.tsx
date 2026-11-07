@@ -12,6 +12,7 @@ import {
   Save,
   Upload,
   FilePlus,
+  ArrowRight,
 } from "lucide-react";
 import Typography from "@/typography";
 
@@ -41,6 +42,7 @@ interface TabsBarProps {
   activeTabId: string | null;
   onSelectTab: (id: string) => void;
   onCloseTab: (e: React.MouseEvent, id: string) => void;
+  onCloseMultipleTabs: (tabIds: string[]) => void;
   onReorderTabs: (draggedIndex: number, hoveredIndex: number) => void;
 }
 
@@ -49,6 +51,7 @@ export default function TabsBar({
   activeTabId,
   onSelectTab,
   onCloseTab,
+  onCloseMultipleTabs,
   onReorderTabs,
 }: TabsBarProps) {
   const [showDropdown, setShowDropdown] = useState(false);
@@ -111,11 +114,13 @@ export default function TabsBar({
   if (tabs.length === 0) return null;
 
   return (
-    <div className="w-full h-12 bg-[#09090b] border-b border-[#27272a] flex items-center relative z-[60] select-none shrink-0">
+    // ✅ اضافه کردن group/tabs برای اعمال افکت روی کل نوار
+    <div className="w-full h-12 bg-[#09090b] border-b border-[#27272a] flex items-center relative z-[60] select-none shrink-0 group/tabs transition-colors duration-300">
+      {/* ✅ محو شدن تب‌ها در حالت عادی و نمایان شدن با هاور */}
       <div
         ref={scrollContainerRef}
         onWheel={handleWheel}
-        className="flex-1 flex items-center overflow-x-auto overflow-y-hidden h-full gap-1 px-2 py-1 tabs-scrollbar"
+        className="flex-1 min-w-0 flex items-center overflow-x-auto overflow-y-hidden h-full gap-1 px-2 py-1 tabs-scrollbar opacity-60 group-hover/tabs:opacity-100 transition-opacity duration-300"
       >
         {tabs.map((tab, index) => {
           const isActive = tab.id === activeTabId;
@@ -141,6 +146,12 @@ export default function TabsBar({
                 e.stopPropagation();
                 if (tab.id !== activeTabId) onSelectTab(tab.id);
 
+                const tabIndex = tabs.findIndex((t) => t.id === tab.id);
+                const tabsToRight = tabs.slice(tabIndex + 1).map((t) => t.id);
+                const otherTabs = tabs
+                  .filter((t) => t.id !== tab.id)
+                  .map((t) => t.id);
+
                 openMenu(e.clientX, e.clientY, [
                   {
                     label: "Close Tab",
@@ -156,14 +167,15 @@ export default function TabsBar({
                     label: "Close Other Tabs",
                     icon: Files,
                     onClick: () => {
-                      tabs.forEach((t) => {
-                        if (t.id !== tab.id && !t.isDirty) {
-                          onCloseTab(
-                            { stopPropagation: () => {} } as React.MouseEvent,
-                            t.id,
-                          );
-                        }
-                      });
+                      onCloseMultipleTabs(otherTabs);
+                    },
+                  },
+                  {
+                    label: "Close Tabs to the Right",
+                    icon: ArrowRight,
+                    disabled: tabsToRight.length === 0,
+                    onClick: () => {
+                      onCloseMultipleTabs(tabsToRight);
                     },
                   },
                   { separator: true },
@@ -193,7 +205,7 @@ export default function TabsBar({
               }}
               className={`group flex items-center gap-2 px-3 h-9 rounded-lg cursor-pointer transition-all duration-200 border max-w-[240px] shrink-0 ${
                 isActive
-                  ? "bg-[#18181b] border-[#27272a] text-[#fafafa]"
+                  ? "bg-[#18181b] border-[#27272a] text-[#fafafa] shadow-[0_0_15px_rgba(0,0,0,0.5)] translate-y-[-1px]"
                   : "bg-transparent border-transparent text-[#a1a1aa] hover:bg-[#121214] hover:border-[#27272a]"
               } ${draggedIndex === index ? "opacity-50" : ""}`}
             >
@@ -250,8 +262,9 @@ export default function TabsBar({
         })}
       </div>
 
+      {/* ✅ دکمه سه‌نقطه با افکت محو و نمایان */}
       <div
-        className="pl-2 pr-2 border-l border-[#27272a] h-6 flex items-center shrink-0"
+        className="pl-2 pr-2 border-l border-[#27272a] h-6 flex items-center shrink-0 bg-[#09090b] z-10 opacity-60 group-hover/tabs:opacity-100 transition-opacity duration-300"
         ref={dropdownRef}
       >
         <button

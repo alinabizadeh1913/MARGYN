@@ -1,24 +1,27 @@
 "use client";
 
-import React, { useLayoutEffect, useRef } from "react";
+import React, { useLayoutEffect, useMemo, useRef } from "react";
 import { useSession } from "@/providers/SessionProvider";
 import { useTool } from "@/providers/ToolProvider";
 import { useInkCanvas } from "./useInkCanvas";
+import { getToolCursor } from "./inkGeometry";
 
 const identity = (x: number, y: number): [number, number] => [x, y];
 
 export default function MarginCanvas({ filePath }: { filePath?: string }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const { currentPage } = useSession();
-  const { tool } = useTool();
+  const { tool, color } = useTool();
 
-  const { staticRef, dynamicRef, resize, handlers } = useInkCanvas({
-    kind: "margin",
-    filePath: filePath || "",
-    page: currentPage,
-    toStored: identity,
-    toScreen: identity,
-  });
+  const { staticRef, dynamicRef, resize, handlers, hoverCursor } = useInkCanvas(
+    {
+      kind: "margin",
+      filePath: filePath || "",
+      page: currentPage,
+      toStored: identity,
+      toScreen: identity,
+    },
+  );
 
   useLayoutEffect(() => {
     const el = wrapRef.current;
@@ -31,12 +34,10 @@ export default function MarginCanvas({ filePath }: { filePath?: string }) {
     return () => ro.disconnect();
   }, [resize]);
 
-  const cursorClass =
-    tool === "eraser"
-      ? "cursor-eraser"
-      : tool === "select"
-        ? "cursor-default"
-        : "cursor-pen";
+  // Declarative cursor: pen + shapes → coloured pen, eraser → eraser cursor.
+  const toolCursor = useMemo(() => getToolCursor(tool, color), [tool, color]);
+  // Select tool: "default", plus move/resize feedback coming from the hook's state.
+  const cursor = tool === "select" ? hoverCursor : toolCursor;
 
   return (
     <div
@@ -50,8 +51,8 @@ export default function MarginCanvas({ filePath }: { filePath?: string }) {
       <canvas
         ref={dynamicRef}
         {...handlers}
-        style={{ touchAction: "none" }}
-        className={`absolute inset-0 touch-none ${cursorClass}`}
+        style={{ touchAction: "none", cursor }}
+        className="absolute inset-0 touch-none"
       />
     </div>
   );

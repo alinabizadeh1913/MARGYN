@@ -34,8 +34,6 @@ export function ContextMenuProvider({ children }: { children: ReactNode }) {
   const [isOpen, setIsOpen] = useState(false);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [items, setItems] = useState<ContextMenuItem[]>([]);
-
-  // ✅ یک کلید منحصر به فرد برای فورس کردن ریمونت منو در هر بار باز شدن
   const [menuKey, setMenuKey] = useState(0);
 
   const menuRef = useRef<HTMLDivElement>(null);
@@ -43,8 +41,9 @@ export function ContextMenuProvider({ children }: { children: ReactNode }) {
 
   const openMenu = (x: number, y: number, menuItems: ContextMenuItem[]) => {
     setPosition({ x, y });
+    setAdjustedPos({ x, y }); // ✅ ریست کردن موقعیت اولیه برای جلوگیری از پرش
     setItems(menuItems);
-    setMenuKey((prev) => prev + 1); // ✅ باعث می‌شود منوی قبلی نابود و منوی جدید خلق شود
+    setMenuKey((prev) => prev + 1);
     setIsOpen(true);
   };
 
@@ -77,7 +76,6 @@ export function ContextMenuProvider({ children }: { children: ReactNode }) {
     };
   }, [isOpen]);
 
-  // ✅ استفاده از useLayoutEffect برای جلوگیری از یک فریم پرش (Flicker)
   useLayoutEffect(() => {
     if (isOpen && menuRef.current) {
       const rect = menuRef.current.getBoundingClientRect();
@@ -89,9 +87,6 @@ export function ContextMenuProvider({ children }: { children: ReactNode }) {
       if (newY + rect.height > window.innerHeight) newY -= rect.height;
 
       setAdjustedPos({ x: newX, y: newY });
-    } else if (isOpen && !menuRef.current) {
-      // مقداردهی اولیه در اولین رندر بعد از باز شدن
-      setAdjustedPos(position);
     }
   }, [isOpen, position, items]);
 
@@ -101,9 +96,10 @@ export function ContextMenuProvider({ children }: { children: ReactNode }) {
       {isOpen &&
         createPortal(
           <div
-            key={menuKey} // ✅ راز اصلی: با تغییر این کلید، انیمیشن از نو اجرا می‌شود و منو جابه‌جا نمی‌شود
+            key={menuKey}
             ref={menuRef}
-            className="fixed z-[99999] min-w-[220px] bg-[#121214]/95 backdrop-blur-xl border border-[#27272a] rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.8)] py-1.5 animate-in fade-in zoom-in-[0.98] duration-150 ease-out"
+            // ✅ حذف تمام کلاس‌های انیمیشن برای نمایش آنی (بدون تاخیر و پرش)
+            className="fixed z-[99999] min-w-[220px] bg-[#121214]/95 backdrop-blur-xl border border-[#27272a] rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.8)] py-1.5"
             style={{ top: adjustedPos.y, left: adjustedPos.x }}
             onContextMenu={(e) => e.preventDefault()}
           >

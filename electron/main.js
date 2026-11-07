@@ -17,6 +17,17 @@ let mainWindow;
 let forceQuit = false;
 let pendingFilePath = null;
 let isRecordingShortcut = false;
+let isRendererReady = false;
+
+// ✅ ارسال فایل به Renderer — فقط وقتی که React آماده باشد
+function dispatchFileToRenderer(filePath) {
+  if (!mainWindow || !filePath) return;
+  if (filePath.endsWith(".margyn")) {
+    mainWindow.webContents.send("open-margyn-file", filePath);
+  } else if (filePath.toLowerCase().endsWith(".pdf")) {
+    mainWindow.webContents.send("open-pdf-file", filePath);
+  }
+}
 
 const isDev = process.env.NODE_ENV === "development";
 const devUrl = process.env.ELECTRON_START_URL || "http://localhost:3000";
@@ -30,20 +41,23 @@ if (!gotTheLock) {
   app.quit();
 } else {
   app.on("second-instance", (event, commandLine) => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
+    if (!mainWindow) return;
 
-      const filePath = commandLine.find(
-        (arg) => arg.endsWith(".margyn") || arg.endsWith(".pdf"),
-      );
-      if (filePath) {
-        if (filePath.endsWith(".margyn")) {
-          mainWindow.webContents.send("open-margyn-file", filePath);
-        } else if (filePath.toLowerCase().endsWith(".pdf")) {
-          mainWindow.webContents.send("open-pdf-file", filePath);
-        }
-      }
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+
+    const filePath = commandLine.find(
+      (arg) =>
+        (arg.endsWith(".margyn") || arg.toLowerCase().endsWith(".pdf")) &&
+        fs.existsSync(arg),
+    );
+    if (!filePath) return;
+
+    if (isRendererReady) {
+      dispatchFileToRenderer(filePath);
+    } else {
+      // React هنوز آماده نیست — نگه‌دار تا renderer-ready برسه
+      pendingFilePath = filePath;
     }
   });
 }
@@ -121,6 +135,16 @@ ipcMain.handle("crypto-get-key", async () => {
 
 ipcMain.on("set-recording-shortcut", (event, isRecording) => {
   isRecordingShortcut = isRecording;
+});
+
+// ✅ Renderer بعد از ثبت شنونده‌ها به ما خبر می‌دهد که آماده است
+ipcMain.on("renderer-ready", () => {
+  isRendererReady = true;
+  if (pendingFilePath) {
+    const p = pendingFilePath;
+    pendingFilePath = null;
+    dispatchFileToRenderer(p);
+  }
 });
 
 ipcMain.on("window-minimize", () => {
@@ -404,7 +428,7 @@ ipcMain.handle("dialog:savePdf", async (event, { data, defaultName }) => {
       filters: [{ name: "PDF Document", extensions: ["pdf"] }],
     });
     if (canceled || !filePath) return null;
-    
+
     setLastDir(path.dirname(filePath));
     fs.writeFileSync(filePath, Buffer.from(data));
     return filePath;
@@ -471,16 +495,8 @@ function createWindow() {
   if (isDev) mainWindow.loadURL(devUrl);
   else mainWindow.loadURL("app://bundle/index.html");
 
-  mainWindow.webContents.on("did-finish-load", () => {
-    if (pendingFilePath) {
-      if (pendingFilePath.endsWith(".margyn")) {
-        mainWindow.webContents.send("open-margyn-file", pendingFilePath);
-      } else if (pendingFilePath.toLowerCase().endsWith(".pdf")) {
-        mainWindow.webContents.send("open-pdf-file", pendingFilePath);
-      }
-      pendingFilePath = null;
-    }
-  });
+  // ⚠️ بلوک did-finish-load حذف شد — حالا ارسال فایل از طریق هندلر
+  // renderer-ready انجام می‌شود تا از Race Condition جلوگیری شود.
 
   mainWindow.once("ready-to-show", () => mainWindow.show());
   mainWindow.on("closed", () => {
@@ -514,13 +530,14 @@ function registerCustomProtocol() {
   });
 }
 
+// ✅ اسکن اولیه process.argv برای فایلی که با آن اپ باز شده
 const args = process.argv.slice(1);
 const fileArg = args.find(
-  (arg) => arg.endsWith(".margyn") || arg.toLowerCase().endsWith(".pdf"),
+  (arg) =>
+    (arg.endsWith(".margyn") || arg.toLowerCase().endsWith(".pdf")) &&
+    fs.existsSync(arg),
 );
-if (fileArg && fs.existsSync(fileArg)) {
-  pendingFilePath = fileArg;
-}
+if (fileArg) pendingFilePath = fileArg;
 
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null);

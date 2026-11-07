@@ -4,7 +4,7 @@ import React, { useEffect, useState, useRef } from "react";
 import { Clock, X } from "lucide-react";
 import { useSession } from "@/providers/SessionProvider";
 import Typography from "@/typography";
-import { playEndSound } from "@/lib/audio";
+import { playTimerEndSound } from "@/lib/audio";
 
 export default function TimerDisplay() {
   const { timerEndsAt, stopTimer, isActive, sessionId, endSession } =
@@ -27,7 +27,7 @@ export default function TimerDisplay() {
     if (!timerEndsAt || hasEndedRef.current) return;
     if (now >= timerEndsAt) {
       hasEndedRef.current = true;
-      playEndSound();
+      playTimerEndSound();
 
       if (isActive && sessionId) {
         endSession();

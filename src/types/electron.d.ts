@@ -65,6 +65,9 @@ declare global {
       onAppCloseRequest: (callback: () => void) => () => void;
       forceCloseApp: () => void;
 
+      // ✅ اطلاع‌دادن به Main که React آماده است
+      notifyRendererReady: () => void;
+
       onOpenMargynFile: (callback: (filePath: string) => void) => () => void;
 
       setRecordingShortcut: (isRecording: boolean) => void;

@@ -12,7 +12,7 @@ import { AppHeader } from "./AppHeader";
 import { AppReader } from "./AppReader";
 import { AppModals } from "./AppModals";
 import NoteModal from "./NoteModal";
-import { REQUIRED_END_PHRASE } from "./constants";
+import { REQUIRED_END_PHRASE, REQUIRED_RESET_PHRASE } from "./constants";
 import {
   clearPageDrawings,
   clearAllDrawings,
@@ -25,8 +25,21 @@ import {
   saveDb,
   updateRecentFileProjectPath,
   updateRecentFileCanvasBg,
+  resetDocumentProgress,
 } from "@/db";
-import { prewarmAudio } from "@/lib/audio";
+import {
+  prewarmAudio,
+  setAudioEnabled,
+  playSuccessSound,
+  playErrorSound,
+  playOpenSound,
+  playCloseSound,
+  playSwitchSound,
+  playDeleteSound,
+  playResetSound,
+  playCompleteSound,
+  playWarningSound,
+} from "@/lib/audio";
 import { sessions, drawings, recentFiles, notes } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 
@@ -46,7 +59,7 @@ export function AppContent() {
     activeSessionFilePath,
   } = useSession();
 
-  const { setTool } = useTool();
+  const { setTool, size, setSize } = useTool();
   const { setShortcutsEnabled } = useShortcuts();
 
   const [view, setView] = useState<
@@ -75,6 +88,11 @@ export function AppContent() {
   const [showCloseModal, setShowCloseModal] = useState(false);
   const [showBackwardErrorModal, setShowBackwardErrorModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
+
+  const [showResetProgressModal, setShowResetProgressModal] = useState(false);
+  const [resetProgressText, setResetProgressText] = useState("");
+  const [resetProgressError, setResetProgressError] = useState(false);
+  const resetProgressInputRef = useRef<HTMLInputElement>(null);
 
   const [showNoteModal, setShowNoteModal] = useState(false);
 
@@ -115,6 +133,22 @@ export function AppContent() {
   });
 
   const activeTab = openTabs.find((t) => t.id === activeTabId);
+
+  const resetActiveTabState = useCallback(() => {
+    setActiveTabId(null);
+    setPdfData(null);
+    setActiveFileName("");
+    setActiveFilePath("");
+    setActiveProjectPath(null);
+    setTotalPages(0);
+    setIsCurrentPdfCompleted(false);
+    setIsDirty(false);
+    setActiveScale(1.3);
+    setActiveCanvasBg("#ffffff");
+    setHasText(true);
+    setSetting("activeFilePath", "");
+    window.electronAPI?.clearActivePdf();
+  }, []);
 
   useEffect(() => {
     if (!isAppReady) return;
@@ -170,6 +204,7 @@ export function AppContent() {
         else if (showTimerModal) setShowTimerModal(false);
         else if (showExportModal) setShowExportModal(false);
         else if (showNoteModal) setShowNoteModal(false);
+        else if (showResetProgressModal) setShowResetProgressModal(false);
       }
     };
     window.addEventListener("keydown", handleEsc);
@@ -182,6 +217,7 @@ export function AppContent() {
     showTimerModal,
     showExportModal,
     showNoteModal,
+    showResetProgressModal,
   ]);
 
   const handleScaleChange = useCallback(
@@ -214,6 +250,7 @@ export function AppContent() {
 
   const handleCanvasBgChange = useCallback(
     (newColor: string) => {
+      if (newColor === activeCanvasBg) return;
       setActiveCanvasBg(newColor);
       if (activeTabId) {
         setOpenTabs((prev) =>
@@ -226,7 +263,7 @@ export function AppContent() {
         updateRecentFileCanvasBg(activeFilePath, newColor);
       }
     },
-    [activeTabId, activeFilePath],
+    [activeTabId, activeFilePath, activeCanvasBg],
   );
 
   useEffect(() => {
@@ -311,6 +348,9 @@ export function AppContent() {
 
   const showToast = (message: string, type: "success" | "error") => {
     setToast({ message, type });
+    if (type === "error") {
+      playErrorSound();
+    }
     setTimeout(() => setToast(null), 3000);
   };
 
@@ -369,7 +409,18 @@ export function AppContent() {
       setPdfData(existingTab.pdfData);
       setActiveFileName(existingTab.name);
       setActiveFilePath(existingTab.filePath);
-      setActiveProjectPath(existingTab.projectPath);
+
+      const finalProjPath = projectPath || existingTab.projectPath;
+      setActiveProjectPath(finalProjPath);
+
+      if (finalProjPath && finalProjPath !== existingTab.projectPath) {
+        setOpenTabs((prev) =>
+          prev.map((t) =>
+            t.id === existingTab.id ? { ...t, projectPath: finalProjPath } : t,
+          ),
+        );
+      }
+
       setTotalPages(existingTab.totalPages);
       setIsCurrentPdfCompleted(existingTab.isCompleted);
       setIsDirty(existingTab.isDirty);
@@ -469,6 +520,7 @@ export function AppContent() {
     setActiveScale(1);
     setActiveCanvasBg("#ffffff");
     setView("reader");
+    playOpenSound();
     showToast("Blank document created!", "success");
   }, []);
 
@@ -484,6 +536,7 @@ export function AppContent() {
       try {
         const results = await window.electronAPI.openPdf();
         if (results && results.length > 0) {
+          let openedAny = false;
           for (const result of results) {
             if (result && result.data) {
               const record = await addRecentFile(
@@ -498,9 +551,11 @@ export function AppContent() {
                   record.completed || 0,
                   null,
                 );
+                openedAny = true;
               }
             }
           }
+          if (openedAny) playOpenSound();
         }
       } catch (e) {}
     }
@@ -531,6 +586,7 @@ export function AppContent() {
             record.completed || 0,
             null,
           );
+          playOpenSound();
         }
       } else {
         showToast("Failed to open dropped PDF.", "error");
@@ -567,6 +623,7 @@ export function AppContent() {
             record?.completed || 0,
             record?.projectPath || null,
           );
+          playOpenSound();
         } else {
           const db = await getDb();
           const record = (
@@ -597,33 +654,22 @@ export function AppContent() {
       const tabToClose = openTabs.find((t) => t.id === tabId);
       if (!tabToClose) return;
 
-      const hasUnsaved = tabToClose.isDirty;
-
       const doClose = () => {
+        playCloseSound();
         setOpenTabs((prev) => {
           const remaining = prev.filter((t) => t.id !== tabId);
           if (remaining.length > 0) {
-            setActiveTabId(remaining[remaining.length - 1].id);
+            if (tabId === stateRef.current.activeTabId) {
+              setActiveTabId(remaining[remaining.length - 1].id);
+            }
           } else {
-            setActiveTabId(null);
-            setPdfData(null);
-            setActiveFileName("");
-            setActiveFilePath("");
-            setActiveProjectPath(null);
-            setTotalPages(0);
-            setIsCurrentPdfCompleted(false);
-            setIsDirty(false);
-            setActiveScale(1.3);
-            setActiveCanvasBg("#ffffff");
-            setHasText(true);
-            setSetting("activeFilePath", "");
-            window.electronAPI?.clearActivePdf();
+            resetActiveTabState();
           }
           return remaining;
         });
       };
 
-      if (hasUnsaved) {
+      if (tabToClose.isDirty) {
         if (tabId !== activeTabId) {
           setActiveTabId(tabId);
           setView("reader");
@@ -633,13 +679,76 @@ export function AppContent() {
         return;
       }
 
-      if (tabId !== activeTabId) {
-        setOpenTabs((prev) => prev.filter((t) => t.id !== tabId));
-      } else {
-        doClose();
+      doClose();
+    },
+    [openTabs, activeTabId, resetActiveTabState],
+  );
+
+  const handleCloseMultipleTabs = useCallback(
+    (tabIdsToClose: string[]) => {
+      if (tabIdsToClose.length === 0) return;
+
+      const tabsToClose = stateRef.current.openTabs.filter((t) =>
+        tabIdsToClose.includes(t.id),
+      );
+      const dirtyTabs = tabsToClose.filter((t) => t.isDirty);
+      const cleanTabIds = tabsToClose
+        .filter((t) => !t.isDirty)
+        .map((t) => t.id);
+
+      if (cleanTabIds.length > 0) {
+        playCloseSound();
+        setOpenTabs((prev) => {
+          const remaining = prev.filter((t) => !cleanTabIds.includes(t.id));
+          if (
+            stateRef.current.activeTabId &&
+            cleanTabIds.includes(stateRef.current.activeTabId)
+          ) {
+            if (remaining.length > 0) {
+              setActiveTabId(remaining[remaining.length - 1].id);
+            } else {
+              resetActiveTabState();
+            }
+          }
+          return remaining;
+        });
+      }
+
+      if (dirtyTabs.length > 0) {
+        const processNextDirtyTab = (remainingDirty: OpenTab[]) => {
+          if (remainingDirty.length === 0) return;
+
+          const currentTabToProcess = remainingDirty[0];
+          setActiveTabId(currentTabToProcess.id);
+          setView("reader");
+
+          setPendingAction(() => () => {
+            playCloseSound();
+            setOpenTabs((prev) => {
+              const remaining = prev.filter(
+                (t) => t.id !== currentTabToProcess.id,
+              );
+              if (
+                remaining.length > 0 &&
+                stateRef.current.activeTabId === currentTabToProcess.id
+              ) {
+                setActiveTabId(remaining[remaining.length - 1].id);
+              } else if (remaining.length === 0) {
+                resetActiveTabState();
+              }
+              return remaining;
+            });
+
+            const newRemaining = remainingDirty.slice(1);
+            processNextDirtyTab(newRemaining);
+          });
+
+          setShowCloseModal(true);
+        };
+        processNextDirtyTab(dirtyTabs);
       }
     },
-    [openTabs, activeTabId],
+    [resetActiveTabState],
   );
 
   useShortcut("closePdf", () => {
@@ -658,6 +767,7 @@ export function AppContent() {
     );
     if (currentIndex !== -1) {
       const nextIndex = (currentIndex + 1) % stateRef.current.openTabs.length;
+      playSwitchSound();
       setActiveTabId(stateRef.current.openTabs[nextIndex].id);
     }
   });
@@ -715,6 +825,7 @@ export function AppContent() {
 
       await saveDb(true);
       window.dispatchEvent(new Event("margyn-reload-all"));
+      playDeleteSound();
       showToast("Page deleted successfully.", "success");
     } catch (err) {
       console.error(err);
@@ -724,6 +835,17 @@ export function AppContent() {
 
   const loadProjectFromPath = useCallback(async (filePath: string) => {
     if (!window.electronAPI) return;
+
+    const existingTab = stateRef.current.openTabs.find(
+      (t) => t.projectPath === filePath,
+    );
+    if (existingTab) {
+      setActiveTabId(existingTab.id);
+      setView("reader");
+      showToast("Project is already open.", "success");
+      return;
+    }
+
     try {
       const result = await window.electronAPI.readProjectFromPath(filePath);
       if (!result) {
@@ -837,6 +959,7 @@ export function AppContent() {
           await db.insert(notes).values(newNotes);
         }
         await saveDb(true);
+        playOpenSound();
         showToast("Blank document loaded successfully!", "success");
         return;
       }
@@ -976,6 +1099,7 @@ export function AppContent() {
           await db.insert(notes).values(newNotes);
         }
         await saveDb(true);
+        playOpenSound();
         showToast("Project loaded successfully!", "success");
       }
     } catch (error) {
@@ -992,6 +1116,14 @@ export function AppContent() {
       const init = async () => {
         try {
           await getDb();
+
+          const savedAudio = await getSetting("audioEnabled");
+          if (savedAudio !== null) {
+            setAudioEnabled(savedAudio === "true");
+          } else {
+            setAudioEnabled(false);
+          }
+
           const savedTabsStr = await getSetting("openTabsState");
           const savedActiveId = await getSetting("activeTabId");
           let loadedAnyTabs = false;
@@ -1064,6 +1196,7 @@ export function AppContent() {
         } catch (err) {
         } finally {
           setIsAppReady(true);
+          window.electronAPI?.notifyRendererReady?.();
         }
       };
       init();
@@ -1108,6 +1241,7 @@ export function AppContent() {
               record.completed || 0,
               null,
             );
+            playOpenSound();
           }
         }
       });
@@ -1172,6 +1306,16 @@ export function AppContent() {
       return () => clearTimeout(timer);
     }
   }, [showEndModal]);
+
+  useEffect(() => {
+    if (showResetProgressModal) {
+      const timer = setTimeout(
+        () => resetProgressInputRef.current?.focus(),
+        150,
+      );
+      return () => clearTimeout(timer);
+    }
+  }, [showResetProgressModal]);
 
   const getProjectData = async () => {
     if (!activeFilePath) return null;
@@ -1267,6 +1411,7 @@ export function AppContent() {
             ),
           );
         }
+        playSuccessSound();
         showToast("Project exported successfully!", "success");
         setShowExportModal(false);
         return true;
@@ -1303,6 +1448,7 @@ export function AppContent() {
       const savedPath = await window.electronAPI.savePdf(pdfBytes, defaultName);
 
       if (savedPath) {
+        playSuccessSound();
         showToast("PDF exported successfully with all annotations!", "success");
         setShowExportModal(false);
       }
@@ -1371,6 +1517,7 @@ export function AppContent() {
               ),
             );
           }
+          playSuccessSound();
           showToast("Project saved successfully!", "success");
           return true;
         }
@@ -1423,6 +1570,7 @@ export function AppContent() {
             ),
           );
         }
+        playSuccessSound();
         showToast("Project saved successfully!", "success");
         return true;
       }
@@ -1450,6 +1598,7 @@ export function AppContent() {
     await clearPageDrawings(activeFilePath, currentPage);
     window.dispatchEvent(new CustomEvent(`margyn-clear-page-${currentPage}`));
     setIsDirty(true);
+    playDeleteSound();
   }, [currentPage, activeFilePath]);
 
   const handleClearAllPages = useCallback(async () => {
@@ -1458,12 +1607,20 @@ export function AppContent() {
       await clearAllDrawings(activeFilePath);
       window.dispatchEvent(new CustomEvent("margyn-clear-all"));
       setIsDirty(true);
+      playDeleteSound();
     } catch (error) {}
   }, [activeFilePath]);
 
   useShortcut("pen", () => setTool("pen"));
   useShortcut("eraser", () => setTool("eraser"));
   useShortcut("newBlank", handleCreateBlankDocument);
+
+  useShortcut("increaseSize", () => {
+    setSize((prev) => Math.min(prev + 2, 36));
+  });
+  useShortcut("decreaseSize", () => {
+    setSize((prev) => Math.max(prev - 2, 8));
+  });
 
   useShortcut("note", () => {
     if (activeFilePath) setShowNoteModal(true);
@@ -1510,9 +1667,10 @@ export function AppContent() {
 
   const handleTryEndSession = () => {
     if (isActive) {
-      if (startPage !== null && currentPage < startPage)
+      if (startPage !== null && currentPage < startPage) {
+        playWarningSound();
         setShowBackwardErrorModal(true);
-      else setShowEndModal(true);
+      } else setShowEndModal(true);
     } else {
       requestStartSession();
     }
@@ -1520,9 +1678,10 @@ export function AppContent() {
 
   useShortcut("endSession", () => {
     if (isActive && !showEndModal && !showBackwardErrorModal) {
-      if (startPage !== null && currentPage < startPage)
+      if (startPage !== null && currentPage < startPage) {
+        playWarningSound();
         setShowBackwardErrorModal(true);
-      else setShowEndModal(true);
+      } else setShowEndModal(true);
     }
   });
 
@@ -1548,8 +1707,8 @@ export function AppContent() {
         setIsCurrentPdfCompleted(true);
         if (activeFilePath) await markFileCompleted(activeFilePath);
         setShowCongratsModal(true);
+        playCompleteSound();
 
-        // ✅ CRITICAL FIX: Update the openTabs state so it persists in the app and DB
         if (activeTabId) {
           setOpenTabs((prev) =>
             prev.map((t) =>
@@ -1564,6 +1723,44 @@ export function AppContent() {
       setEndError(true);
       setEndText("");
       endInputRef.current?.focus();
+    }
+  };
+
+  const handleConfirmResetProgress = async () => {
+    if (resetProgressText === REQUIRED_RESET_PHRASE) {
+      setShowResetProgressModal(false);
+      setResetProgressText("");
+      setResetProgressError(false);
+
+      try {
+        await resetDocumentProgress(activeFilePath);
+
+        setIsCurrentPdfCompleted(false);
+        if (activeTabId) {
+          setOpenTabs((prev) =>
+            prev.map((t) =>
+              t.id === activeTabId
+                ? { ...t, isCompleted: false, isDirty: false }
+                : t,
+            ),
+          );
+        }
+
+        await syncSessionWithFile(activeFilePath);
+        window.dispatchEvent(new Event("margyn-reload-all"));
+        playResetSound();
+
+        showToast(
+          "Progress reset successfully. You can start a new session.",
+          "success",
+        );
+      } catch (error) {
+        showToast("Failed to reset progress.", "error");
+      }
+    } else {
+      setResetProgressError(true);
+      setResetProgressText("");
+      resetProgressInputRef.current?.focus();
     }
   };
 
@@ -1584,6 +1781,7 @@ export function AppContent() {
   const handleModalDiscard = async () => {
     setShowCloseModal(false);
     setIsDirty(false);
+    playResetSound();
 
     const tabToDiscard = openTabs.find((t) => t.id === activeTabId);
     if (tabToDiscard && tabToDiscard.snapshot) {
@@ -1681,6 +1879,7 @@ export function AppContent() {
     }
     startTimer(mins * 60 * 1000);
     setShowTimerModal(false);
+    playSuccessSound();
   };
 
   const showResumeButton =
@@ -1716,6 +1915,7 @@ export function AppContent() {
             handleTryEndSession={handleTryEndSession}
             handleStartTimer={handleStartTimer}
             pdfData={pdfData}
+            handleResetProgress={() => setShowResetProgressModal(true)}
           />
 
           {view === "reader" && openTabs.length > 0 && (
@@ -1724,6 +1924,7 @@ export function AppContent() {
               activeTabId={activeTabId}
               onSelectTab={setActiveTabId}
               onCloseTab={handleCloseTab}
+              onCloseMultipleTabs={handleCloseMultipleTabs}
               onReorderTabs={handleReorderTabs}
             />
           )}
@@ -1784,6 +1985,14 @@ export function AppContent() {
             setEndError={setEndError}
             endInputRef={endInputRef}
             handleConfirmEndSession={handleConfirmEndSession}
+            showResetProgressModal={showResetProgressModal}
+            setShowResetProgressModal={setShowResetProgressModal}
+            resetProgressText={resetProgressText}
+            setResetProgressText={setResetProgressText}
+            resetProgressError={resetProgressError}
+            setResetProgressError={setResetProgressError}
+            resetProgressInputRef={resetProgressInputRef}
+            handleConfirmResetProgress={handleConfirmResetProgress}
           />
 
           <NoteModal

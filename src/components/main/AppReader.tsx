@@ -79,15 +79,22 @@ export const AppReader: React.FC<AppReaderProps> = ({
                 </div>
               </div>
 
+              {/* ✅ دکمه شیشه‌ای با حذف ترنزیشن جابه‌جایی (فقط ترنزیشن رنگ دارد) */}
               <button
                 onClick={() => setIsMarginOpen(!isMarginOpen)}
-                className="absolute top-1/2 -translate-y-1/2 z-50 flex items-center justify-center w-7 h-20 bg-white border-y border-r border-zinc-200 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50 rounded-r-xl transition-colors shadow-sm"
+                className="absolute top-1/2 -translate-y-1/2 z-50 flex items-center justify-center w-8 h-24 bg-black/20 backdrop-blur-xl border-y border-r border-white/20 text-white/70 hover:text-zinc-900 hover:bg-white hover:border-zinc-200 rounded-r-xl transition-colors duration-200 shadow-xl group"
                 style={{ left: isMarginOpen ? "calc(40% - 1px)" : "0px" }}
               >
                 {isMarginOpen ? (
-                  <ChevronLeft size={16} />
+                  <ChevronLeft
+                    size={18}
+                    className="group-hover:-translate-x-1 transition-transform"
+                  />
                 ) : (
-                  <ChevronRight size={16} />
+                  <ChevronRight
+                    size={18}
+                    className="group-hover:translate-x-1 transition-transform"
+                  />
                 )}
               </button>
             </>
@@ -99,6 +106,9 @@ export const AppReader: React.FC<AppReaderProps> = ({
                 filePath={activeFilePath}
                 initialPages={totalPages}
                 canvasBg={activeCanvasBg}
+                onCanvasBgChange={handleCanvasBgChange}
+                initialScale={activeScale}
+                onScaleChange={handleScaleChange}
                 onPageAdded={(newTotal: number) => {
                   setTotalPages(newTotal);
                   if (activeTabId) {
@@ -137,7 +147,7 @@ export const AppReader: React.FC<AppReaderProps> = ({
                 onDropPdf={handleDropPdf}
                 onOpenPdf={handleOpenPdf}
                 onOpenNote={onOpenNote}
-                isCompleted={activeTab?.isCompleted} // ✅ اینجا پاس داده شد
+                isCompleted={activeTab?.isCompleted}
               />
             )}
           </div>

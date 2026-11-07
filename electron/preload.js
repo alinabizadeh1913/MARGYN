@@ -54,6 +54,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
   forceCloseApp: () => ipcRenderer.send("app-force-close"),
 
+  // ✅ اطلاع‌دادن به Main که React و همه شنونده‌ها ثبت شدند
+  notifyRendererReady: () => ipcRenderer.send("renderer-ready"),
+
   // File Open Events (from OS double click)
   onOpenPdfFile: (callback) => {
     const listener = (event, filePath) => callback(filePath);

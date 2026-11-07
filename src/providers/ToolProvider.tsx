@@ -46,7 +46,6 @@ const DEFAULT_STATE: ToolState = {
   customColor: "#ff00ff",
 };
 
-/** layout-independent (works with Persian keyboards too) */
 const TOOL_KEYS: Record<string, ToolType> = {
   KeyV: "select",
   KeyP: "pen",
@@ -62,23 +61,29 @@ interface ToolContextType extends ToolState {
   setTool: (t: ToolType) => void;
   setColor: (c: string) => void;
   updateCustomColor: (c: string) => Promise<void>;
-  setSize: (s: number) => void;
+  // ✅ آپدیت ورودی برای پشتیبانی از تابع (prev => new)
+  setSize: (s: number | ((prev: number) => number)) => void;
 }
 
 const ToolContext = createContext<ToolContextType | undefined>(undefined);
 
 export function ToolProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<ToolState>(DEFAULT_STATE);
+  const stateRef = useRef(state);
+
   const activeTabIdRef = useRef<string | null>(null);
 
   const { isShortcutsEnabled } = useShortcuts();
   const isShortcutsEnabledRef = useRef(isShortcutsEnabled);
 
   useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
+  useEffect(() => {
     isShortcutsEnabledRef.current = isShortcutsEnabled;
   }, [isShortcutsEnabled]);
 
-  // لود کردن رنگ سفارشی به عنوان پیش‌فرض اولیه
   useEffect(() => {
     const loadSettings = async () => {
       try {
@@ -91,7 +96,6 @@ export function ToolProvider({ children }: { children: ReactNode }) {
     loadSettings();
   }, []);
 
-  // گوش دادن به رویداد تغییر تب
   useEffect(() => {
     const handleTabSwitch = (
       e: CustomEvent<{ tabId: string | null; toolState?: ToolState }>,
@@ -105,10 +109,9 @@ export function ToolProvider({ children }: { children: ReactNode }) {
           ...toolState,
         }));
       } else {
-        // اگر تب جدیدی باز شده و وضعیتی ندارد، به حالت پیش‌فرض برگرد
         setState((prev) => ({
           ...DEFAULT_STATE,
-          customColor: prev.customColor, // رنگ سفارشی کلی را حفظ کن
+          customColor: prev.customColor,
         }));
       }
     };
@@ -125,19 +128,17 @@ export function ToolProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // آپدیت کردن وضعیت و اطلاع‌رسانی به AppContent برای ذخیره در دیتابیس
   const updateState = useCallback((updates: Partial<ToolState>) => {
-    setState((prev) => {
-      const next = { ...prev, ...updates };
-      if (activeTabIdRef.current) {
-        window.dispatchEvent(
-          new CustomEvent("margyn-tool-state-changed", {
-            detail: { tabId: activeTabIdRef.current, toolState: next },
-          }),
-        );
-      }
-      return next;
-    });
+    const next = { ...stateRef.current, ...updates };
+    setState(next);
+
+    if (activeTabIdRef.current) {
+      window.dispatchEvent(
+        new CustomEvent("margyn-tool-state-changed", {
+          detail: { tabId: activeTabIdRef.current, toolState: next },
+        }),
+      );
+    }
   }, []);
 
   const setTool = useCallback(
@@ -148,8 +149,13 @@ export function ToolProvider({ children }: { children: ReactNode }) {
     (c: string) => updateState({ color: c }),
     [updateState],
   );
+
+  // ✅ پیاده‌سازی setSize با قابلیت دریافت تابع
   const setSize = useCallback(
-    (s: number) => updateState({ size: s }),
+    (s: number | ((prev: number) => number)) => {
+      const newSize = typeof s === "function" ? s(stateRef.current.size) : s;
+      updateState({ size: newSize });
+    },
     [updateState],
   );
 
@@ -161,7 +167,6 @@ export function ToolProvider({ children }: { children: ReactNode }) {
     [updateState],
   );
 
-  // شورتکات‌های کیبورد
   useEffect(() => {
     const handleColorKeys = (e: KeyboardEvent) => {
       if (!isShortcutsEnabledRef.current) return;

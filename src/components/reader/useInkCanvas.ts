@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTool } from "@/providers/ToolProvider";
 import { useContextMenu } from "@/providers/ContextMenuProvider";
 import { saveDrawing, loadDrawing } from "@/db";
@@ -63,7 +63,7 @@ interface Options {
   toStored: Mapper;
   toScreen: Mapper;
   textLines?: TextLine[];
-  onDeletePage?: () => void; // ✅ اضافه شد
+  onDeletePage?: () => void;
 }
 
 const SAVE_DELAY_MS = 500;
@@ -72,7 +72,6 @@ const MAX_HISTORY = 100;
 const MAX_PREDICTED = 3;
 const PREDICT_TTL_MS = 40;
 
-// ✅ کش سراسری برای نگهداری تاریخچه آندو/ریدو در حافظه (خارج از ری‌اکت)
 const globalHistoryCache = new Map<
   string,
   { past: Stroke[][]; future: Stroke[][] }
@@ -190,7 +189,7 @@ export function useInkCanvas({
   toStored,
   toScreen,
   textLines,
-  onDeletePage, // ✅ اضافه شد
+  onDeletePage,
 }: Options) {
   const staticRef = useRef<HTMLCanvasElement>(null);
   const dynamicRef = useRef<HTMLCanvasElement>(null);
@@ -198,7 +197,7 @@ export function useInkCanvas({
   const dynamicCtxRef = useRef<CanvasRenderingContext2D | null>(null);
 
   const { tool, color, size } = useTool();
-  const { openMenu } = useContextMenu(); // ✅ اضافه شد
+  const { openMenu } = useContextMenu();
 
   const cfg = useRef({
     tool,
@@ -210,7 +209,7 @@ export function useInkCanvas({
     toStored,
     toScreen,
     textLines,
-    onDeletePage, // ✅ اضافه شد
+    onDeletePage,
   });
   cfg.current = {
     tool,
@@ -222,11 +221,12 @@ export function useInkCanvas({
     toStored,
     toScreen,
     textLines,
-    onDeletePage, // ✅ اضافه شد
+    onDeletePage,
   };
 
   const linesRef = useRef<Stroke[]>([]);
   const loadedRef = useRef(false);
+  const hasDrawnRef = useRef(false);
   const selRef = useRef<Set<string>>(new Set());
   const hiddenRef = useRef<Set<string> | null>(null);
   const hist = useRef<{ past: Stroke[][]; future: Stroke[][] }>({
@@ -244,7 +244,9 @@ export function useInkCanvas({
   const rectRef = useRef<DOMRect | null>(null);
   const rafRef = useRef(0);
   const penUntil = useRef(0);
-  const lastCursor = useRef("");
+  // Cursor for the Select tool's hover feedback (move / resize handles).
+  // It is React state handed to the canvas via `style`, never written to the DOM.
+  const [hoverCursor, setHoverCursor] = useState("default");
 
   const pendingRef = useRef<{
     page: number;
@@ -977,12 +979,9 @@ export function useInkCanvas({
     }
   }
 
-  const setCursor = (v: string) => {
-    const c = dynamicRef.current;
-    if (!c || lastCursor.current === v) return;
-    lastCursor.current = v;
-    c.style.cursor = v;
-  };
+  // State setter bails out on equal values, so calling this on every
+  // pointermove does not cause extra renders.
+  const setCursor = (v: string) => setHoverCursor(v);
 
   function setActive() {
     const m = me.current;
@@ -1003,12 +1002,14 @@ export function useInkCanvas({
   }
 
   function down(e: React.PointerEvent<HTMLCanvasElement>) {
-    if (!loadedRef.current || ix.current) return;
+    if (ix.current) return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
     if (e.pointerType === "touch" && performance.now() < penUntil.current)
       return;
     const c = dynamicRef.current;
     if (!c) return;
+
+    hasDrawnRef.current = true;
 
     const t = cfg.current.tool;
     const rect = c.getBoundingClientRect();
@@ -1210,10 +1211,7 @@ export function useInkCanvas({
 
   function updateHoverCursor(x: number, y: number) {
     const t = cfg.current.tool;
-    if (t !== "select") {
-      setCursor("");
-      return;
-    }
+    if (t !== "select") return;
     const h = hitHandle(x, y);
     if (h) {
       setCursor(h.type === "end" ? "crosshair" : HANDLE_CURSOR[h.id]);
@@ -1653,7 +1651,6 @@ export function useInkCanvas({
       return;
     }
 
-    // ✅ اصلاح: حتی اگر ابزار Select نباشد، اگر استروکی انتخاب شده باشد با Delete پاک می‌شود
     if (e.code === "Delete" || e.code === "Backspace") {
       if (selRef.current.size > 0) {
         e.preventDefault();
@@ -1728,6 +1725,7 @@ export function useInkCanvas({
 
     let alive = true;
     loadedRef.current = false;
+    hasDrawnRef.current = false;
     ix.current = null;
     hiddenRef.current = null;
     selRef.current = new Set();
@@ -1743,6 +1741,8 @@ export function useInkCanvas({
     Promise.race([loadPromise, timeoutPromise])
       .then((saved: unknown) => {
         if (!alive) return;
+        if (hasDrawnRef.current) return;
+        
         const arr = Array.isArray(saved) ? (saved as Stroke[]) : [];
         for (const s of arr) if (!s.id) s.id = uid();
         linesRef.current = arr;
@@ -1868,7 +1868,7 @@ export function useInkCanvas({
         redrawStatic();
       }
       hover.current = null;
-      setCursor("");
+      setCursor("default");
     };
 
     const handleFocus = () => {
@@ -1954,7 +1954,7 @@ export function useInkCanvas({
   useEffect(() => {
     if (tool !== "select") selRef.current = new Set();
     hover.current = null;
-    setCursor("");
+    setCursor("default");
     if (ix.current) {
       ix.current = null;
       clearLiveAll();
@@ -1998,10 +1998,12 @@ export function useInkCanvas({
   }, []);
   const onPointerLeave = useCallback(() => {
     hover.current = null;
-    if (!ix.current) scheduleIdle();
+    if (!ix.current) {
+      setCursor("default");
+      scheduleIdle();
+    }
   }, []);
 
-  // ✅ هندلر راست کلیک با منوی اختصاصی کانواس
   const onContextMenu = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
       e.preventDefault();
@@ -2080,6 +2082,7 @@ export function useInkCanvas({
     dynamicRef,
     resize,
     redraw: redrawStatic,
+    hoverCursor,
     handlers: {
       onPointerDown,
       onPointerMove,

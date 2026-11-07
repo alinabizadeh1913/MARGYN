@@ -22,6 +22,7 @@ import { desc, isNotNull, eq, and } from "drizzle-orm";
 import Typography from "@/typography";
 import CalendarWidget from "./CalendarWidget";
 import { useTime, useNowMinute, useNowSecond } from "@/providers/TimeProvider";
+import { playDeleteSound, playWarningSound } from "@/lib/audio";
 
 type SessionData = typeof sessions.$inferSelect & {
   startTime: number;
@@ -264,6 +265,7 @@ export default function HistoryView({
     const age = now - sessionEnd;
 
     if (age > ONE_DAY_MS) {
+      playWarningSound();
       setShowOrderErrorModal(true);
       return;
     }
@@ -277,6 +279,7 @@ export default function HistoryView({
   const handleConfirmDelete = async () => {
     if (deleteText === REQUIRED_DELETE_PHRASE && sessionToDelete) {
       await deleteSessionById(sessionToDelete);
+      playDeleteSound();
       setShowDeleteModal(false);
       setSessionToDelete(null);
       await fetchHistory();

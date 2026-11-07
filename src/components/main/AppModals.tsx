@@ -13,9 +13,10 @@ import {
   ChevronRight,
   CheckCircle2,
   XCircle,
+  RotateCcw, // ✅ اضافه شد
 } from "lucide-react";
 import Typography from "@/typography";
-import { REQUIRED_END_PHRASE } from "./constants";
+import { REQUIRED_END_PHRASE, REQUIRED_RESET_PHRASE } from "./constants";
 
 interface AppModalsProps {
   showEndModal: boolean;
@@ -45,9 +46,17 @@ interface AppModalsProps {
   setEndText: (v: string) => void;
   endError: boolean;
   setEndError: (v: boolean) => void;
-  // ✅ Fix: Added `| null` to accept the ref properly
   endInputRef: React.RefObject<HTMLInputElement | null>;
   handleConfirmEndSession: () => void;
+  // ✅ پراپ‌های جدید برای ریست
+  showResetProgressModal: boolean;
+  setShowResetProgressModal: (v: boolean) => void;
+  resetProgressText: string;
+  setResetProgressText: (v: string) => void;
+  resetProgressError: boolean;
+  setResetProgressError: (v: boolean) => void;
+  resetProgressInputRef: React.RefObject<HTMLInputElement | null>;
+  handleConfirmResetProgress: () => void;
 }
 
 export const AppModals: React.FC<AppModalsProps> = ({
@@ -80,6 +89,14 @@ export const AppModals: React.FC<AppModalsProps> = ({
   setEndError,
   endInputRef,
   handleConfirmEndSession,
+  showResetProgressModal,
+  setShowResetProgressModal,
+  resetProgressText,
+  setResetProgressText,
+  resetProgressError,
+  setResetProgressError,
+  resetProgressInputRef,
+  handleConfirmResetProgress,
 }) => {
   return (
     <>
@@ -428,6 +445,88 @@ export const AppModals: React.FC<AppModalsProps> = ({
             >
               Cancel
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ مودال جدید ریست پیشرفت */}
+      {showResetProgressModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-md transition-all duration-300">
+          <div className="bg-[#121214] border border-rose-500/30 p-8 rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] w-full max-w-lg flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">
+            <div className="w-16 h-16 bg-rose-500/10 rounded-full flex items-center justify-center mb-6 shadow-inner">
+              <RotateCcw size={32} className="text-rose-500" />
+            </div>
+            <Typography
+              variant="pageTitle"
+              as="h2"
+              className="text-[#fafafa] mb-2 font-semibold tracking-tight"
+            >
+              Reset Document Progress?
+            </Typography>
+            <Typography
+              variant="body"
+              as="p"
+              className="text-[#a1a1aa] mb-8 max-w-sm leading-relaxed"
+            >
+              This will permanently delete <strong>ALL</strong> focus sessions
+              for this document and reset its status to unread. You will be able
+              to start from scratch.
+              <br />
+              <br />
+              To confirm, type the following phrase in{" "}
+              <strong>ALL CAPITAL LETTERS</strong>:
+            </Typography>
+            <div className="w-full bg-[#09090b] border border-[#27272a] rounded-2xl p-4 mb-6 flex items-center justify-center gap-3 select-none">
+              <Lock size={16} className="text-[#52525b]" />
+              <span className="text-[#fafafa] font-mono text-base font-bold tracking-widest">
+                {REQUIRED_RESET_PHRASE}
+              </span>
+            </div>
+            <input
+              ref={resetProgressInputRef}
+              type="text"
+              value={resetProgressText}
+              onChange={(e) => {
+                setResetProgressText(e.target.value);
+                setResetProgressError(false);
+              }}
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                if (e.key === "Enter") handleConfirmResetProgress();
+              }}
+              onPaste={(e) => e.preventDefault()}
+              onCopy={(e) => e.preventDefault()}
+              onCut={(e) => e.preventDefault()}
+              onDrop={(e) => e.preventDefault()}
+              onContextMenu={(e) => e.preventDefault()}
+              autoComplete="off"
+              spellCheck="false"
+              placeholder="TYPE HERE (UPPERCASE ONLY)"
+              autoFocus
+              className={`w-full px-5 py-4 rounded-xl bg-[#18181b] border-2 outline-none transition-all text-center text-lg font-mono tracking-widest shadow-sm ${resetProgressError ? "border-rose-400 focus:border-rose-500 text-rose-600 placeholder-rose-300 animate-shake" : "border-[#27272a] focus:border-rose-500/50 text-[#fafafa]"}`}
+            />
+            {resetProgressError && (
+              <Typography
+                variant="caption"
+                className="text-rose-500 mt-3 font-medium animate-pulse"
+              >
+                Incorrect. You must type it exactly as shown.
+              </Typography>
+            )}
+            <div className="flex gap-4 w-full mt-8">
+              <button
+                onClick={() => setShowResetProgressModal(false)}
+                className="flex-1 px-4 py-3.5 rounded-xl bg-[#18181b] text-[#a1a1aa] hover:text-[#fafafa] hover:bg-[#27272a] border border-[#27272a] transition-all font-medium active:scale-[0.98]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmResetProgress}
+                className="flex-1 px-4 py-3.5 rounded-xl bg-rose-500 text-white hover:bg-rose-600 transition-all font-medium shadow-[0_0_15px_rgba(244,63,94,0.3)] active:scale-[0.98]"
+              >
+                Reset Progress
+              </button>
+            </div>
           </div>
         </div>
       )}

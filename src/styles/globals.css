@@ -6,7 +6,6 @@
    MARGYN — GLOBAL STYLES
 ========================================================= */
 
-/* --- English Font: Space Grotesk --- */
 @font-face {
   font-family: "Space Grotesk";
   font-style: normal;
@@ -43,7 +42,7 @@
   src: url("/fonts/SpaceGrotesk-Bold.ttf") format("truetype");
 }
 
-/* ✅ --- Persian Font: YekanBakh --- */
+/* --- Persian Font: YekanBakh --- */
 @font-face {
   font-family: "YekanBakh";
   font-style: normal;
@@ -81,7 +80,6 @@
 }
 
 :root {
-  /* ✅ فونت انگلیسی اولویت اول است، اگر کاراکتری نبود (مثل حروف فارسی) به سراغ یکان‌بخ می‌رود */
   --font-sans:
     "Space Grotesk", "YekanBakh", ui-sans-serif, system-ui, sans-serif;
   --titlebar-height: 40px;
@@ -133,18 +131,19 @@ body {
 
 /* =========================================================
    MARGYN — Custom Cursors (Digital Stylus & Eraser)
+   ✅ تغییر: استفاده از Base64 برای لود تضمینی در الکترون
 ========================================================= */
 
 .cursor-pen {
   cursor:
-    url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M17 4L21 8L9 20L4 21L5 16L17 4Z" fill="black" opacity="0.4" filter="blur(1.5px)" transform="translate(1, 1)"/><path d="M16 3L21 8L9 20L3 21L4 15L16 3Z" fill="%2318181b" stroke="%23ffffff" stroke-width="1.2" stroke-linejoin="round"/><path d="M4 15L9 20L3 21L4 15Z" fill="%2338bdf8"/><path d="M14 5L19 10" stroke="%2338bdf8" stroke-width="1.5" stroke-linecap="round"/></svg>')
+    url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIj48cGF0aCBkPSJNMTcgNEwyMSA4TDkgMjBMNCAyMUw1IDE2TDE3IDRaIiBmaWxsPSJibGFjayIgb3BhY2l0eT0iMC40IiBmaWx0ZXI9ImJsdXIoMS41cHgpIiB0cmFuc2Zvcm09InRyYW5zbGF0ZSgxLCAxKSIvPjxwYXRoIGQ9Ik0xNiAzTDIxIDhMOSAyMEwzIDIxTDQgMTVMMTYgM1oiIGZpbGw9IiMxODE4MWIiIHN0cm9rZT0iI2ZmZmZmZiIgc3Ryb2tlLXdpZHRoPSIxLjIiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz48cGF0aCBkPSJNNCAxNUw5IDIwTDMgMjFMNCAxNVoiIGZpbGw9IiMzOGJkZjgiLz48cGF0aCBkPSJNMTQgNUwxOSAxMCIgc3Ryb2tlPSIjMzhiZGY4IiBzdHJva2Utd2lkdGg9IjEuNSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+PC9zdmc+")
       3 21,
     crosshair !important;
 }
 
 .cursor-eraser {
   cursor:
-    url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M13 4L20 11L11 20H4V13L13 4Z" fill="%2318181b" stroke="%23ffffff" stroke-width="1.2" stroke-linejoin="round"/><path d="M13 4L18 9L9 18H4V13L13 4Z" fill="%23f43f5e" opacity="0.3"/><path d="M13 4L20 11" stroke="%23f43f5e" stroke-width="1.5" stroke-linecap="round"/><path d="M4 13H13" stroke="%23f43f5e" stroke-width="1.5" stroke-linecap="round"/><circle cx="4" cy="20" r="1.5" fill="%23f43f5e" opacity="0.8"/></svg>')
+    url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIj48cGF0aCBkPSJNMTMgNEwyMCAxMUwxMSAyMEg0VjEzTDEzIDRaIiBmaWxsPSIjMTgxODFiIiBzdHJva2U9IiNmZmZmZmYiIHN0cm9rZS13aWR0aD0iMS4yIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+PHBhdGggZD0iTTEzIDRMMTggOUw5IDE4SDRWMTNMMTMgNFoiIGZpbGw9IiNmNDNmNWUiIG9wYWNpdHk9IjAuMyIvPjxwYXRoIGQ9Ik0xMyA0TDIwIDExIiBzdHJva2U9IiNmNDNmNWUiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiLz48cGF0aCBkPSJNNCAxM0gxMyIgc3Ryb2tlPSIjZjQzZjVlIiBzdHJva2Utd2lkdGg9IjEuNSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+PGNpcmNsZSBjeD0iNCIgY3k9IjIwIiByPSIxLjUiIGZpbGw9IiNmNDNmNWUiIG9wYWNpdHk9IjAuOCIvPjwvc3ZnPg==")
       4 20,
     crosshair !important;
 }

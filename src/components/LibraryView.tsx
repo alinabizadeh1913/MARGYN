@@ -14,6 +14,7 @@ import {
   FolderOpen,
 } from "lucide-react";
 import Typography from "@/typography";
+import { playDeleteSound } from "@/lib/audio";
 
 interface RecentFile {
   id: string;
@@ -36,7 +37,7 @@ export default function LibraryView({
   const [showConfirmClear, setShowConfirmClear] = useState(false);
   const [activeTab, setActiveTab] = useState<"pdfs" | "projects">("pdfs");
 
-  const { openMenu } = useContextMenu(); // ✅ اضافه شد
+  const { openMenu } = useContextMenu();
 
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
@@ -71,6 +72,7 @@ export default function LibraryView({
 
   const handleClearHistory = async () => {
     await clearRecentFiles();
+    playDeleteSound();
     setShowConfirmClear(false);
     loadFiles();
   };
@@ -82,6 +84,7 @@ export default function LibraryView({
   ) => {
     e.stopPropagation();
     await deleteRecentFile(id, path);
+    playDeleteSound();
     loadFiles();
   };
 
@@ -206,7 +209,6 @@ export default function LibraryView({
                 <div
                   key={file.id}
                   onClick={() => onSelectFile(file.filePath)}
-                  // ✅ هندلر راست کلیک برای هر فایل در کتابخانه
                   onContextMenu={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -258,7 +260,6 @@ export default function LibraryView({
                           {displayName}
                         </Typography>
 
-                        {/* ✅ بج نوع فایل در کتابخانه */}
                         <span
                           className={`px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider shrink-0 ${isProject ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" : "bg-rose-500/10 text-rose-500 border border-rose-500/20"}`}
                         >

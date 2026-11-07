@@ -16,11 +16,11 @@ import {
   Redo2,
 } from "lucide-react";
 import { useTool, DEFAULT_COLORS, ToolType } from "@/providers/ToolProvider";
+import ColorPicker from "./ColorPicker";
 
 interface ToolbarProps {
   onClearCurrentPage: () => void;
   onClearAllPages: () => void;
-  /** Whether the current PDF page has a text layer (highlighter needs it). */
   hasText?: boolean;
 }
 
@@ -65,7 +65,6 @@ export default function Toolbar({
   const deleteMenuRef = useRef<HTMLDivElement>(null);
   const sizeMenuRef = useRef<HTMLDivElement>(null);
   const shapeMenuRef = useRef<HTMLDivElement>(null);
-  const colorInputRef = useRef<HTMLInputElement>(null);
 
   const sizes = Array.from({ length: 15 }, (_, i) => 8 + i * 2);
 
@@ -83,7 +82,6 @@ export default function Toolbar({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Highlighter needs a text layer – fall back to pen on scanned pages.
   useEffect(() => {
     if (!hasText && tool === "highlighter") setTool("pen");
   }, [hasText, tool, setTool]);
@@ -113,8 +111,7 @@ export default function Toolbar({
   const showColors = COLOR_TOOLS.includes(tool);
 
   return (
-    <div className="relative z-[100] flex flex-nowrap items-center gap-1 p-1 rounded-xl bg-black/40 backdrop-blur-xl border border-white/10 shadow-lg shrink-0">
-      {/* Base Tools + Shapes Dropdown */}
+    <div className="relative z-[100] flex items-center gap-1 p-1 rounded-xl bg-black/40 backdrop-blur-xl border border-white/10 shadow-lg shrink-0 overflow-x-auto scrollbar-hide max-w-full">
       <div className="flex items-center gap-0.5 pr-1 border-r border-white/10 shrink-0">
         {baseTools.map((t) => (
           <button
@@ -137,7 +134,6 @@ export default function Toolbar({
           </button>
         ))}
 
-        {/* Shapes Dropdown */}
         <div className="relative" ref={shapeMenuRef}>
           <button
             onClick={() => setIsShapeMenuOpen(!isShapeMenuOpen)}
@@ -184,7 +180,6 @@ export default function Toolbar({
         </div>
       </div>
 
-      {/* Undo / Redo */}
       <div className="flex items-center gap-0.5 px-1 border-r border-white/10 shrink-0">
         <button
           onClick={() => window.dispatchEvent(new Event("margyn-undo"))}
@@ -202,9 +197,8 @@ export default function Toolbar({
         </button>
       </div>
 
-      {/* Colors */}
       {showColors && (
-        <div className="flex items-center gap-1.5 px-1.5 border-r border-white/10 shrink-0">
+        <div className="hidden md:flex items-center gap-1.5 px-1.5 border-r border-white/10 shrink-0">
           {DEFAULT_COLORS.map((c) => (
             <button
               key={c}
@@ -218,35 +212,34 @@ export default function Toolbar({
               style={{ backgroundColor: c }}
             />
           ))}
-          <div className="relative flex items-center justify-center w-3.5 h-3.5 ml-0.5">
-            <input
-              ref={colorInputRef}
-              type="color"
-              value={customColor}
-              onChange={(e) => updateCustomColor(e.target.value)}
-              className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-20"
-              aria-label="Custom color"
+
+          <div className="relative flex items-center justify-center ml-0.5">
+            <ColorPicker
+              color={customColor}
+              onChange={updateCustomColor}
+              title="Custom Color"
+              placement="bottom"
+              trigger={
+                <div
+                  aria-label="Custom color"
+                  className={`w-3.5 h-3.5 rounded-full flex items-center justify-center transition-all duration-300 border border-white/20 ${
+                    color === customColor
+                      ? "scale-125 ring-2 ring-white/80 ring-offset-1 ring-offset-[#09090b]"
+                      : "hover:scale-110 opacity-70 hover:opacity-100"
+                  }`}
+                  style={{
+                    background:
+                      "conic-gradient(from 0deg, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)",
+                  }}
+                >
+                  <div className="w-1.5 h-1.5 bg-[#09090b] rounded-full" />
+                </div>
+              }
             />
-            <button
-              onClick={() => colorInputRef.current?.click()}
-              aria-label="Custom color"
-              className={`w-full h-full rounded-full flex items-center justify-center transition-all duration-300 z-10 border border-white/20 ${
-                color === customColor
-                  ? "scale-125 ring-2 ring-white/80 ring-offset-1 ring-offset-[#09090b]"
-                  : "hover:scale-110 opacity-70 hover:opacity-100"
-              }`}
-              style={{
-                background:
-                  "conic-gradient(from 0deg, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000)",
-              }}
-            >
-              <div className="w-1.5 h-1.5 bg-[#09090b] rounded-full" />
-            </button>
           </div>
         </div>
       )}
 
-      {/* Size Dropdown */}
       <div
         className="relative px-1 border-r border-white/10 shrink-0"
         ref={sizeMenuRef}
@@ -298,7 +291,6 @@ export default function Toolbar({
         )}
       </div>
 
-      {/* Clear Dropdown */}
       <div className="relative pl-1 shrink-0" ref={deleteMenuRef}>
         <button
           onClick={() => setIsDeleteMenuOpen(!isDeleteMenuOpen)}

@@ -19,7 +19,8 @@ export const rnd = (v: number) => Math.round(v * 10000) / 10000;
 export function kindOf(s: Stroke): StrokeTool {
   return s.tool || (s.isEraser ? "eraser" : "pen");
 }
-export const isBindable = (k: StrokeTool) => k === "rectangle" || k === "circle";
+export const isBindable = (k: StrokeTool) =>
+  k === "rectangle" || k === "circle";
 
 export function flatten(points: number[][], map: Mapper): number[] {
   const out = new Array<number>(points.length * 2);
@@ -214,8 +215,14 @@ function segsCross(
   dx: number,
   dy: number,
 ) {
-  const o = (px: number, py: number, qx: number, qy: number, rx: number, ry: number) =>
-    (qx - px) * (ry - py) - (qy - py) * (rx - px);
+  const o = (
+    px: number,
+    py: number,
+    qx: number,
+    qy: number,
+    rx: number,
+    ry: number,
+  ) => (qx - px) * (ry - py) - (qy - py) * (rx - px);
   const d1 = o(ax, ay, bx, by, cx, cy);
   const d2 = o(ax, ay, bx, by, dx, dy);
   const d3 = o(cx, cy, dx, dy, ax, ay);
@@ -319,7 +326,12 @@ export function elementBounds(s: Stroke, p: number[]): Box {
   if (k === "highlight-rect") {
     const bs: Box[] = [];
     for (let i = 0; i + 3 < p.length; i += 4)
-      bs.push({ x: p[i], y: p[i + 1], w: p[i + 2] - p[i], h: p[i + 3] - p[i + 1] });
+      bs.push({
+        x: p[i],
+        y: p[i + 1],
+        w: p[i + 2] - p[i],
+        h: p[i + 3] - p[i + 1],
+      });
     return unionBoxes(bs) || { x: 0, y: 0, w: 0, h: 0 };
   }
   if (k === "rectangle" || k === "circle") return inflate(cornerBox(p), half);
@@ -341,11 +353,25 @@ function polyNear2(
   if (n === 1) return (poly[0] - x) ** 2 + (poly[1] - y) ** 2;
   let best = Infinity;
   for (let i = 0; i < n - 1; i++) {
-    const d = distPtSeg2(x, y, poly[i * 2], poly[i * 2 + 1], poly[i * 2 + 2], poly[i * 2 + 3]);
+    const d = distPtSeg2(
+      x,
+      y,
+      poly[i * 2],
+      poly[i * 2 + 1],
+      poly[i * 2 + 2],
+      poly[i * 2 + 3],
+    );
     if (d < best) best = d;
   }
   if (closed) {
-    const d = distPtSeg2(x, y, poly[(n - 1) * 2], poly[(n - 1) * 2 + 1], poly[0], poly[1]);
+    const d = distPtSeg2(
+      x,
+      y,
+      poly[(n - 1) * 2],
+      poly[(n - 1) * 2 + 1],
+      poly[0],
+      poly[1],
+    );
     if (d < best) best = d;
   }
   return best;
@@ -362,7 +388,12 @@ export function hitStroke(
   if (k === "eraser") return false;
   if (k === "highlight-rect") {
     for (let i = 0; i + 3 < p.length; i += 4)
-      if (x >= p[i] - tol && x <= p[i + 2] + tol && y >= p[i + 1] - tol && y <= p[i + 3] + tol)
+      if (
+        x >= p[i] - tol &&
+        x <= p[i + 2] + tol &&
+        y >= p[i + 1] - tol &&
+        y <= p[i + 3] + tol
+      )
         return true;
     return false;
   }
@@ -377,17 +408,39 @@ export function strokeInRect(s: Stroke, p: number[], r: Box): boolean {
   const rr = { l: r.x, t: r.y, r: r.x + r.w, b: r.y + r.h };
   if (k === "highlight-rect") {
     for (let i = 0; i + 3 < p.length; i += 4)
-      if (boxesIntersect({ x: p[i], y: p[i + 1], w: p[i + 2] - p[i], h: p[i + 3] - p[i + 1] }, r))
+      if (
+        boxesIntersect(
+          { x: p[i], y: p[i + 1], w: p[i + 2] - p[i], h: p[i + 3] - p[i + 1] },
+          r,
+        )
+      )
         return true;
     return false;
   }
-  if (k === "rectangle" || k === "circle") return boxesIntersect(cornerBox(p), r);
+  if (k === "rectangle" || k === "circle")
+    return boxesIntersect(cornerBox(p), r);
   const o = outline(k, p, s.start, s.end);
   const n = o.poly.length >> 1;
   if (n === 1)
-    return o.poly[0] >= rr.l && o.poly[0] <= rr.r && o.poly[1] >= rr.t && o.poly[1] <= rr.b;
+    return (
+      o.poly[0] >= rr.l &&
+      o.poly[0] <= rr.r &&
+      o.poly[1] >= rr.t &&
+      o.poly[1] <= rr.b
+    );
   for (let i = 0; i < n - 1; i++)
-    if (segIntersectsRect(o.poly[i * 2], o.poly[i * 2 + 1], o.poly[i * 2 + 2], o.poly[i * 2 + 3], rr.l, rr.t, rr.r, rr.b))
+    if (
+      segIntersectsRect(
+        o.poly[i * 2],
+        o.poly[i * 2 + 1],
+        o.poly[i * 2 + 2],
+        o.poly[i * 2 + 3],
+        rr.l,
+        rr.t,
+        rr.r,
+        rr.b,
+      )
+    )
       return true;
   return false;
 }
@@ -415,7 +468,16 @@ export function eraseGeometry(
     const keep: number[] = [];
     let touched = false;
     for (let i = 0; i + 3 < p.length; i += 4) {
-      const hit = segIntersectsRect(ex0, ey0, ex1, ey1, p[i] - R, p[i + 1] - R, p[i + 2] + R, p[i + 3] + R);
+      const hit = segIntersectsRect(
+        ex0,
+        ey0,
+        ex1,
+        ey1,
+        p[i] - R,
+        p[i + 1] - R,
+        p[i + 2] + R,
+        p[i + 3] + R,
+      );
       if (hit) touched = true;
       else keep.push(p[i], p[i + 1], p[i + 2], p[i + 3]);
     }
@@ -440,7 +502,8 @@ export function eraseGeometry(
       const len = Math.hypot(bx - ax, by - ay);
       if (len > step) {
         const c = Math.ceil(len / step);
-        for (let j = 1; j < c; j++) sub.push(ax + ((bx - ax) * j) / c, ay + ((by - ay) * j) / c);
+        for (let j = 1; j < c; j++)
+          sub.push(ax + ((bx - ax) * j) / c, ay + ((by - ay) * j) / c);
       }
       sub.push(bx, by);
     }
@@ -448,7 +511,9 @@ export function eraseGeometry(
     const hit = new Uint8Array(m);
     let any = false;
     for (let i = 0; i < m; i++) {
-      if (distPtSeg2(sub[i * 2], sub[i * 2 + 1], ex0, ey0, ex1, ey1) <= reach2) {
+      if (
+        distPtSeg2(sub[i * 2], sub[i * 2 + 1], ex0, ey0, ex1, ey1) <= reach2
+      ) {
         hit[i] = 1;
         any = true;
       }
@@ -470,10 +535,33 @@ export function eraseGeometry(
   const o = outline(k, p, s.start, s.end);
   const n = o.poly.length >> 1;
   for (let i = 0; i < n - 1; i++)
-    if (segSegDist2(ex0, ey0, ex1, ey1, o.poly[i * 2], o.poly[i * 2 + 1], o.poly[i * 2 + 2], o.poly[i * 2 + 3]) <= reach2)
+    if (
+      segSegDist2(
+        ex0,
+        ey0,
+        ex1,
+        ey1,
+        o.poly[i * 2],
+        o.poly[i * 2 + 1],
+        o.poly[i * 2 + 2],
+        o.poly[i * 2 + 3],
+      ) <= reach2
+    )
       return "remove";
-  if (o.closed && n > 2 &&
-    segSegDist2(ex0, ey0, ex1, ey1, o.poly[(n - 1) * 2], o.poly[(n - 1) * 2 + 1], o.poly[0], o.poly[1]) <= reach2)
+  if (
+    o.closed &&
+    n > 2 &&
+    segSegDist2(
+      ex0,
+      ey0,
+      ex1,
+      ey1,
+      o.poly[(n - 1) * 2],
+      o.poly[(n - 1) * 2 + 1],
+      o.poly[0],
+      o.poly[1],
+    ) <= reach2
+  )
     return "remove";
   return null;
 }
@@ -597,7 +685,8 @@ const DIRS: [number, number][] = [
 export function snap45(dx: number, dy: number): [number, number] {
   const r = Math.hypot(dx, dy);
   if (r === 0) return [0, 0];
-  const k = (((Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) % 8) + 8) % 8) | 0;
+  const k =
+    (((Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) % 8) + 8) % 8) | 0;
   return [DIRS[k][0] * r, DIRS[k][1] * r];
 }
 
@@ -617,4 +706,170 @@ export function findNearestAnchor(
     }
   }
   return { anchor: best, dist: bd };
+}
+
+/* ───────────── dynamic cursors ───────────── */
+/*
+ * All cursors are plain CSS `cursor` values built from an inline SVG.
+ *  - the SVG is minified and passed through encodeURIComponent, so `#`, `<`,
+ *    `>`, quotes, spaces and newlines are always safe (`#` → `%23`);
+ *  - the colour is parsed & re-serialised as `#rrggbb`, so a malformed or
+ *    hostile value can never break (or inject into) the SVG;
+ *  - results are cached per colour, so the string passed to React is stable.
+ */
+
+type RGB = [number, number, number];
+
+const DEFAULT_CURSOR_COLOR: RGB = [0x38, 0xbd, 0xf8];
+const clamp255 = (n: number) => Math.max(0, Math.min(255, Math.round(n)));
+
+/** Accepts #rgb, #rgba, #rrggbb, #rrggbbaa, rgb()/rgba(), "white", "black". */
+export function parseColor(input: string): RGB | null {
+  if (typeof input !== "string") return null;
+  const s = input.trim().toLowerCase();
+  if (s === "white") return [255, 255, 255];
+  if (s === "black") return [0, 0, 0];
+
+  const hex = /^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/.exec(s);
+  if (hex) {
+    let h = hex[1];
+    if (h.length <= 4)
+      h = h
+        .split("")
+        .map((ch) => ch + ch)
+        .join("");
+    return [
+      parseInt(h.slice(0, 2), 16),
+      parseInt(h.slice(2, 4), 16),
+      parseInt(h.slice(4, 6), 16),
+    ];
+  }
+
+  const fn = /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)/.exec(s);
+  if (fn) return [clamp255(+fn[1]), clamp255(+fn[2]), clamp255(+fn[3])];
+
+  return null;
+}
+
+const toHex = (c: RGB) =>
+  "#" + c.map((v) => clamp255(v).toString(16).padStart(2, "0")).join("");
+
+const mixRGB = (a: RGB, b: RGB, t: number): RGB => [
+  a[0] + (b[0] - a[0]) * t,
+  a[1] + (b[1] - a[1]) * t,
+  a[2] + (b[2] - a[2]) * t,
+];
+
+/** Perceived brightness (YIQ), 0‥255. */
+const brightness = ([r, g, b]: RGB) => (r * 299 + g * 587 + b * 114) / 1000;
+
+/** Light colours need a black border, dark colours a white one. */
+export const isLightColor = (color: string) =>
+  brightness(parseColor(color) ?? DEFAULT_CURSOR_COLOR) >= 128;
+
+/** Minify + URL-encode an SVG into a CSS `cursor` value. */
+function svgCursor(
+  svg: string,
+  hotX: number,
+  hotY: number,
+  fallback: string,
+): string {
+  const min = svg
+    .replace(/\s*\n\s*/g, "")
+    .replace(/>\s+</g, "><")
+    .trim();
+  return `url("data:image/svg+xml,${encodeURIComponent(min)}") ${hotX} ${hotY}, ${fallback}`;
+}
+
+const penCache = new Map<string, string>();
+
+/**
+ * Professional pen cursor tinted with `color`.
+ * Hot-spot = the exact nib tip (bottom-left), so ink lands where you point.
+ */
+export const getPenCursor = (color: string): string => {
+  const rgb = parseColor(color) ?? DEFAULT_CURSOR_COLOR;
+  const base = toHex(rgb);
+  const hit = penCache.get(base);
+  if (hit) return hit;
+
+  const hi = toHex(mixRGB(rgb, [255, 255, 255], 0.38));
+  const lo = toHex(mixRGB(rgb, [0, 0, 0], 0.3));
+  const cap = toHex(mixRGB(rgb, [0, 0, 0], 0.5));
+  const edge = brightness(rgb) >= 128 ? "#000000" : "#ffffff";
+
+  // Pen is drawn horizontally in local space (nib tip at 0,0, body to +x)
+  // and rotated -45° so the tip points to the bottom-left.
+  const silhouette =
+    '<path d="M0 0L8 -2.9V2.9Z"/>' +
+    '<rect x="8" y="-3.3" width="2.6" height="6.6"/>' +
+    '<rect x="10.6" y="-3.5" width="18.4" height="7" rx="1.8"/>' +
+    '<rect x="29" y="-2.8" width="2.6" height="5.6" rx="1.2"/>';
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+<defs>
+<linearGradient id="b" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${hi}"/><stop offset=".5" stop-color="${base}"/><stop offset="1" stop-color="${lo}"/></linearGradient>
+<linearGradient id="m" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f4f4f5"/><stop offset=".55" stop-color="#a1a1aa"/><stop offset="1" stop-color="#52525b"/></linearGradient>
+<linearGradient id="n" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fafafa"/><stop offset="1" stop-color="#b4b4bb"/></linearGradient>
+</defs>
+<g transform="translate(1.1 1.5) translate(3 29) rotate(-45)" opacity=".3" fill="#000" stroke="#000" stroke-width="2.6" stroke-linejoin="round">${silhouette}</g>
+<g transform="translate(3 29) rotate(-45)">
+<g fill="${edge}" stroke="${edge}" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round">${silhouette}</g>
+<path d="M0 0L8.2 -2.9V2.9Z" fill="url(#n)"/>
+<path d="M0 0L3.2 -1.15V1.15Z" fill="${base}" stroke="${lo}" stroke-width=".3" stroke-linejoin="round"/>
+<rect x="8" y="-3.3" width="2.6" height="6.6" fill="url(#m)"/>
+<rect x="10.6" y="-3.5" width="18.4" height="7" rx="1.8" fill="url(#b)"/>
+<rect x="12.4" y="-3.5" width="1.1" height="7" fill="${lo}" opacity=".55"/>
+<path d="M14.6 -1.9H27.4" stroke="#fff" stroke-opacity=".5" stroke-width="1.1" stroke-linecap="round"/>
+<rect x="29" y="-2.8" width="2.6" height="5.6" rx="1.2" fill="${cap}"/>
+</g>
+</svg>`;
+
+  const out = svgCursor(svg, 3, 29, "crosshair");
+  if (penCache.size > 64) penCache.clear();
+  penCache.set(base, out);
+  return out;
+};
+
+let eraserCache: string | null = null;
+
+/** Same eraser artwork as before – just encoded safely now. */
+export const getEraserCursor = (): string => {
+  if (eraserCache) return eraserCache;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+    <g transform="translate(16, 16) rotate(-45) translate(-16, -16)">
+      <rect x="6" y="10" width="20" height="12" rx="2" fill="#000000" opacity="0.25" transform="translate(1, 2)" />
+      <rect x="6" y="10" width="20" height="12" rx="2" fill="#ffffff" stroke="#ffffff" stroke-width="4" />
+      <rect x="6" y="10" width="20" height="12" rx="2" fill="#e4e4e7" stroke="#18181b" stroke-width="2" />
+      <path d="M 8 10 L 14 10 L 14 22 L 8 22 A 2 2 0 0 1 6 20 L 6 12 A 2 2 0 0 1 8 10 Z" fill="#f43f5e" stroke="#18181b" stroke-width="2" />
+      <line x1="14" y1="10" x2="14" y2="22" stroke="#18181b" stroke-width="2" />
+      <path d="M 8 11 L 12 11" stroke="#ffffff" stroke-opacity="0.6" stroke-width="1.5" stroke-linecap="round" />
+    </g>
+  </svg>`;
+  eraserCache = svgCursor(svg, 9, 23, "crosshair");
+  return eraserCache;
+};
+
+/**
+ * Single source of truth for the canvas cursor of a tool.
+ *   pen + shapes (rectangle / circle / line / arrow) → coloured pen
+ *   eraser → eraser · highlighter → text · select → default
+ */
+export function getToolCursor(tool: string, color: string): string {
+  switch (tool) {
+    case "select":
+      return "default";
+    case "eraser":
+      return getEraserCursor();
+    case "highlighter":
+      return "text";
+    case "pen":
+    case "rectangle":
+    case "circle":
+    case "line":
+    case "arrow":
+      return getPenCursor(color);
+    default:
+      return "default";
+  }
 }

@@ -289,7 +289,9 @@ export async function setSetting(key: string, value: string) {
         .set({ value })
         .where(eq(settings.key, key));
     else await database.insert(settings).values({ key, value });
-    await saveDb();
+
+    // ✅ تغییر مهم: true را پاس می‌دهیم تا تنظیمات بلافاصله روی دیسک ذخیره شوند
+    await saveDb(true);
   } catch (e) {}
 }
 
@@ -468,7 +470,6 @@ export async function updateRecentFileCanvasBg(
   } catch (e) {}
 }
 
-// ✅ توابع مربوط به نوت‌ها
 export async function getNote(filePath: string, pageNumber: number) {
   if (!filePath) return "";
   try {
@@ -517,5 +518,22 @@ export async function saveNote(
     await saveDb(true);
   } catch (e) {
     console.error("Failed to save note", e);
+  }
+}
+
+export async function resetDocumentProgress(filePath: string) {
+  if (!filePath) return false;
+  try {
+    const database = await getDb();
+    await database.delete(sessions).where(eq(sessions.filePath, filePath));
+    await database
+      .update(recentFiles)
+      .set({ completed: 0 })
+      .where(eq(recentFiles.filePath, filePath));
+    await saveDb(true);
+    return true;
+  } catch (e) {
+    console.error("Failed to reset document progress:", e);
+    return false;
   }
 }

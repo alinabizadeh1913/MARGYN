@@ -6,16 +6,20 @@ import Typography from "@/typography";
 interface ShortcutInputProps {
   value: string;
   onChange: (value: string) => void;
+  hasError?: boolean;
 }
 
-export default function ShortcutInput({ value, onChange }: ShortcutInputProps) {
+export default function ShortcutInput({
+  value,
+  onChange,
+  hasError,
+}: ShortcutInputProps) {
   const [isRecording, setIsRecording] = useState(false);
   const inputRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!isRecording) return;
 
-    // ✅ به الکترون میگیم که ما در حال ضبط هستیم تا Ctrl+W رو بلاک نکنه
     window.electronAPI?.setRecordingShortcut(true);
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -35,6 +39,9 @@ export default function ShortcutInput({ value, onChange }: ShortcutInputProps) {
       else if (key === "Backspace") key = "backspace";
       else if (key === "Space") key = "space";
       else key = key.toLowerCase();
+
+      // ✅ FIX: همیشه lowercase کن تا با مقدار پیش‌فرض (add / subtract) هم‌خوان بمونه
+      key = key.toLowerCase();
 
       if (
         [
@@ -77,14 +84,20 @@ export default function ShortcutInput({ value, onChange }: ShortcutInputProps) {
         window.electronAPI?.setRecordingShortcut(false);
       }}
       className={`min-w-[100px] px-3 py-1.5 rounded-md border text-sm font-mono transition-colors ${
-        isRecording
-          ? "bg-emerald-500/20 border-emerald-500 text-emerald-500 animate-pulse"
-          : "bg-[#18181b] border-[#27272a] text-[#a1a1aa] hover:border-[#52525b]"
+        hasError
+          ? "bg-rose-500/20 border-rose-500 text-rose-500 animate-shake"
+          : isRecording
+            ? "bg-emerald-500/20 border-emerald-500 text-emerald-500 animate-pulse"
+            : "bg-[#18181b] border-[#27272a] text-[#a1a1aa] hover:border-[#52525b]"
       }`}
     >
       {isRecording ? (
         <Typography variant="chip" className="text-emerald-500">
           Listening...
+        </Typography>
+      ) : hasError ? (
+        <Typography variant="chip" className="text-rose-500 font-bold">
+          CONFLICT
         </Typography>
       ) : (
         value.toUpperCase()
