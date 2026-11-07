@@ -1,5 +1,3 @@
-<div align="center">
-
 # MARGYN
 
 **Read, don't count. Mindful reading with a writable margin.**
@@ -129,6 +127,7 @@ Open **PowerShell** (or your preferred terminal) and run:
 ```bash
 git clone https://github.com/alinabizadeh1913/MARGYN.git
 cd MARGYN
+```
 
 This will download the entire project into a folder named MARGYN on your machine.
 
@@ -144,8 +143,10 @@ This may take a few minutes. It downloads every library MARGYN needs — from Re
 3. Build the Windows Installer
 Once dependencies are installed, run:
 
-bash
+```bash
 npm run desktop:win
+```
+
 This command will:
 
 Compile the Next.js frontend into production assets.
@@ -159,11 +160,13 @@ The build process may take 5–15 minutes depending on your machine, as Electron
 4. Locate and Run the Installer
 When the build finishes successfully, navigate to the release/ directory in the project root:
 
-text
+```text
 MARGYN/
 ├── release/
 │   ├── MARGYN Setup x.x.x.exe   ← Your installer
 │   └── win-unpacked/             ← Portable build (optional)
+```
+
 Run the .exe file to install MARGYN on your Windows system.
 
 ✅ That's it — MARGYN is now installed and ready to use.
@@ -171,12 +174,16 @@ Run the .exe file to install MARGYN on your Windows system.
 🧪 Running in Development Mode
 If you're modifying the source code and want hot-reload during development:
 
-bash
+```bash
 npm run dev
+```
+
 Then in a separate terminal (or via the same command if configured):
 
-bash
+```bash
 npm run electron:dev
+```
+
 This launches MARGYN in a live-reload Electron window, where changes to the frontend are reflected instantly.
 
 ⚠️ Development mode is intended for contributors and testing. For daily use, build the production installer (Option 2 above) or download the release.
@@ -221,7 +228,7 @@ Export .margyn — saves your entire workspace (PDF + ink + notes + sessions) as
 📂 Project Structure
 A quick overview of the codebase:
 
-text
+```text
 MARGYN/
 ├── src/
 │   ├── app/               # Next.js App Router (pages, layout)
@@ -237,6 +244,8 @@ MARGYN/
 ├── public/                # Static assets (logo, fonts, icons)
 ├── package.json
 └── README.md
+```
+
 🤝 Contributing
 MARGYN is a personal project shared with the community. Contributions, feedback, and ideas are always welcome:
 
@@ -258,4 +267,4 @@ MARGYN is free and open — released for personal and educational use. If you'd 
 <div align="center">
 Built quietly, with care — for readers who want to slow down a little. 🌿
 
-<p> <a href="https://github.com/alinabizadeh1913/MARGYN">GitHub</a> • <a href="mailto:alinabizadeh1913@gmail.com">Email</a> • <a href="http://instagram.com/ali.nabizadeh.79">Instagram</a> </p><p><b>Ali Nabizadeh</b> — Software Engineer & Creator of MARGYN</p><p>© 2026 MARGYN · Version 1.0.0</p></div> ```
+<p> <a href="https://github.com/alinabizadeh1913/MARGYN">GitHub</a> • <a href="mailto:alinabizadeh1913@gmail.com">Email</a> • <a href="http://instagram.com/ali.nabizadeh.79">Instagram</a> </p><p><b>Ali Nabizadeh</b> — Software Engineer & Creator of MARGYN</p><p>© 2026 MARGYN · Version 1.0.0</p></div>
