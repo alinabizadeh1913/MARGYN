@@ -1,3 +1,5 @@
+<div align="center">
+
 # MARGYN
 
 **Read, don't count. Mindful reading with a writable margin.**
@@ -131,16 +133,18 @@ cd MARGYN
 
 This will download the entire project into a folder named MARGYN on your machine.
 
-2. Install Dependencies
+#### 2. Install Dependencies
 Inside the project folder, install all required npm packages:
 
-bash
+```bash
 npm install
+```
+
 This may take a few minutes. It downloads every library MARGYN needs — from React and Next.js, to Electron and the SQLite engine.
 
-💡 Note: If you encounter issues, make sure you're running a recent Node.js version (node --version), and try again.
+>💡 Note: If you encounter issues, make sure you're running a recent Node.js version (node --version), and try again.
 
-3. Build the Windows Installer
+#### 3. Build the Windows Installer
 Once dependencies are installed, run:
 
 ```bash
@@ -149,15 +153,13 @@ npm run desktop:win
 
 This command will:
 
-Compile the Next.js frontend into production assets.
-
-Package the Electron application.
-
-Generate the standalone Windows installer — a .exe file.
+1. Compile the Next.js frontend into production assets.
+2. Package the Electron application.
+3. Generate the standalone **Windows installer** — a `.exe` file.
 
 The build process may take 5–15 minutes depending on your machine, as Electron packages a full Chromium runtime into the installer.
 
-4. Locate and Run the Installer
+#### 4. Locate and Run the Installer
 When the build finishes successfully, navigate to the release/ directory in the project root:
 
 ```text
@@ -169,9 +171,9 @@ MARGYN/
 
 Run the .exe file to install MARGYN on your Windows system.
 
-✅ That's it — MARGYN is now installed and ready to use.
+> ✅ That's it — MARGYN is now installed and ready to use.
 
-🧪 Running in Development Mode
+## 🧪 Running in Development Mode
 If you're modifying the source code and want hot-reload during development:
 
 ```bash
@@ -186,46 +188,46 @@ npm run electron:dev
 
 This launches MARGYN in a live-reload Electron window, where changes to the frontend are reflected instantly.
 
-⚠️ Development mode is intended for contributors and testing. For daily use, build the production installer (Option 2 above) or download the release.
+> ⚠️ Development mode is intended for contributors and testing. For daily use, build the production installer (Option 2 above) or download the release.
 
-📖 Usage Guide
+## 📖 Usage Guide
 Once MARGYN is running, here's how to get started:
 
-Opening a Document
-Click Open PDF in the header, or drag & drop a PDF anywhere in the reader.
+### Opening a Document
 
-Alternatively, load a .margyn project from the Library view.
+- Click **Open PDF** in the header, or **drag & drop** a PDF anywhere in the reader.
+- Alternatively, load a `.margyn` project from the **Library** view.
 
-Reading & Annotating
+### Reading & Annotating
 Use the toolbar to switch tools: Pen, Highlighter, Eraser, Shapes, Line, Arrow, Select.
 
 Draw directly on the PDF page, or open the writable margin beside it for freeform thinking.
 
 Attach per-page notes using the note icon on the right side.
 
-Starting a Focus Session
+### Starting a Focus Session
 Click Start Session in the header.
 
 Optionally set a timer for your session length.
 
 Your stats will be recorded but hidden for 7 days.
 
-Ending a Session
+### Ending a Session
 Click End Session and type the confirmation phrase.
 
 Your progress is saved, and your stats begin their 7-day wait.
 
-Viewing Your History
+### Viewing Your History
 Open the History tab.
 
 Select any day from the calendar to see its sessions — or see the countdown if it's still locked.
 
-Exporting Your Work
+### Exporting Your Work
 Export PDF — generates a flat PDF with all ink baked in.
 
 Export .margyn — saves your entire workspace (PDF + ink + notes + sessions) as one encrypted file.
 
-📂 Project Structure
+## 📂 Project Structure
 A quick overview of the codebase:
 
 ```text
@@ -246,22 +248,18 @@ MARGYN/
 └── README.md
 ```
 
-🤝 Contributing
+## 🤝 Contributing
 MARGYN is a personal project shared with the community. Contributions, feedback, and ideas are always welcome:
 
-Fork the repository.
-
-Create a feature branch: git checkout -b feature/my-idea.
-
-Commit your changes: git commit -m "Add my idea".
-
-Push the branch: git push origin feature/my-idea.
-
-Open a Pull Request.
+1. **Fork** the repository.
+2. Create a feature branch: `git checkout -b feature/my-idea`.
+3. Commit your changes: `git commit -m "Add my idea"`.
+4. Push the branch: `git push origin feature/my-idea`.
+5. Open a **Pull Request**.
 
 If you spot a bug or have a suggestion, feel free to open an Issue.
 
-📄 License
+## 📄 License
 MARGYN is free and open — released for personal and educational use. If you'd like to use it in a commercial product, please reach out first.
 
 <div align="center">
