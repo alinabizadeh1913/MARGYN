@@ -299,10 +299,10 @@ export const AppModals: React.FC<AppModalsProps> = ({
               as="p"
               className="text-[#a1a1aa] mb-8 leading-relaxed"
             >
-              You have navigated behind your session's starting page (Page{" "}
-              {startPage}). To ensure your progress is recorded correctly, you
-              must advance to <strong>Page {startPage} or beyond</strong> before
-              ending the session.
+              You have navigated behind your session's active reading area. To
+              ensure your progress is recorded correctly, please return to the{" "}
+              <strong>last active page or advance further</strong> before ending
+              the session.
             </Typography>
             <button
               onClick={() => setShowBackwardErrorModal(false)}

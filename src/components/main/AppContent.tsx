@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useCallback, useEffect, useRef } from "react";
-import { generateFlatPdf } from "@/lib/pdfExport";
+import { generateFlatPdf, flushPendingInk } from "@/lib/pdfExport";
 import { encryptData, decryptData } from "@/lib/crypto";
 import { SessionProvider, useSession } from "@/providers/SessionProvider";
 import { ToolProvider, useTool } from "@/providers/ToolProvider";
@@ -1655,6 +1655,9 @@ export function AppContent() {
     if (!window.electronAPI) return;
     setExportingType("pdf");
     try {
+      // ✅ ۱. اجبار به ذخیره آخرین خطوطی که هنوز توی دیتابیس سیو نشدن
+      await flushPendingInk();
+
       const db = await getDb();
       const allDrawings = await db
         .select()
@@ -1666,6 +1669,7 @@ export function AppContent() {
         !!activeTab?.isBlank,
         totalPages,
         allDrawings,
+        { viewScale: activeScale }, // ✅ ۲. پاس دادن زوم فعلی برای درست بودن ضخامت خطوط
       );
 
       const defaultName = activeFileName
