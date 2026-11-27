@@ -151,8 +151,8 @@ export default function NoteModal({
   return (
     <>
       <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 transition-all duration-300 p-4 sm:p-8">
-        <div className="bg-[#121015] border border-[#2b2630] rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] w-full max-w-3xl h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-          <div className="flex items-center justify-between px-6 py-4 border-b border-[#2b2630] bg-[#09080b]/50 shrink-0">
+        <div className="bg-nm-panel border border-nm-edge rounded-3xl shadow-nm-float w-full max-w-3xl h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-nm-edge bg-nm-deep/50 shrink-0">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center">
                 <Type size={20} className="text-amber-500" />
@@ -160,13 +160,13 @@ export default function NoteModal({
               <div className="flex items-baseline gap-2">
                 <Typography
                   variant="cardTitle"
-                  className="text-[#fbf8f9] text-lg"
+                  className="text-nm-text text-lg"
                 >
                   Page Notes
                 </Typography>
                 <Typography
                   variant="caption"
-                  className="text-[#6f6878] text-sm font-medium"
+                  className="text-nm-dim text-sm font-medium"
                 >
                   Page {pageNumber}
                 </Typography>
@@ -187,7 +187,7 @@ export default function NoteModal({
               {isEditing ? (
                 <button
                   onClick={handleSave}
-                  className="flex items-center gap-2 px-4 py-2 bg-emerald-500 text-white hover:bg-emerald-600 rounded-xl transition-all font-medium text-sm shadow-[0_0_15px_rgba(16,185,129,0.3)]"
+                  className="flex items-center gap-2 px-4 py-2 bg-emerald-500 text-white hover:bg-emerald-600 rounded-xl transition-all font-medium text-sm shadow-nm-glow-ok"
                 >
                   <Save size={16} />
                   Save Note
@@ -198,7 +198,7 @@ export default function NoteModal({
                     setIsEditing(true);
                     setTimeout(() => editorRef.current?.focus(), 100);
                   }}
-                  className="flex items-center gap-2 px-4 py-2 bg-[#ef2b3a]/10 text-[#ef2b3a] hover:bg-[#ef2b3a]/20 border border-[#ef2b3a]/30 rounded-xl transition-all font-medium text-sm"
+                  className="flex items-center gap-2 px-4 py-2 bg-nm-accent/10 text-nm-accent hover:bg-nm-accent/20 border border-nm-accent/30 rounded-xl transition-all font-medium text-sm"
                 >
                   <Type size={16} />
                   {hasContent ? "Edit Note" : "Add Note"}
@@ -206,7 +206,7 @@ export default function NoteModal({
               )}
               <button
                 onClick={onClose}
-                className="p-2 rounded-xl text-[#6f6878] hover:text-[#fbf8f9] hover:bg-[#2b2630] transition-all ml-2"
+                className="p-2 rounded-xl text-nm-dim hover:text-nm-text hover:bg-nm-line transition-all ml-2"
               >
                 <X size={20} />
               </button>
@@ -214,68 +214,68 @@ export default function NoteModal({
           </div>
 
           {isEditing && (
-            <div className="flex flex-wrap items-center gap-1 p-2 bg-[#19161c] border-b border-[#2b2630] shrink-0">
+            <div className="flex flex-wrap items-center gap-1 p-2 bg-nm-raise border-b border-nm-edge shrink-0">
               <button
                 onClick={() => execCommand("bold")}
-                className="p-2 rounded-lg text-[#aaa3b4] hover:bg-[#2b2630] hover:text-white transition-all"
+                className="p-2 rounded-lg text-nm-muted hover:bg-nm-line hover:text-white transition-all"
                 title="Bold"
               >
                 <Bold size={16} />
               </button>
               <button
                 onClick={() => execCommand("italic")}
-                className="p-2 rounded-lg text-[#aaa3b4] hover:bg-[#2b2630] hover:text-white transition-all"
+                className="p-2 rounded-lg text-nm-muted hover:bg-nm-line hover:text-white transition-all"
                 title="Italic"
               >
                 <Italic size={16} />
               </button>
               <button
                 onClick={() => execCommand("underline")}
-                className="p-2 rounded-lg text-[#aaa3b4] hover:bg-[#2b2630] hover:text-white transition-all"
+                className="p-2 rounded-lg text-nm-muted hover:bg-nm-line hover:text-white transition-all"
                 title="Underline"
               >
                 <Underline size={16} />
               </button>
               <button
                 onClick={() => execCommand("strikeThrough")}
-                className="p-2 rounded-lg text-[#aaa3b4] hover:bg-[#2b2630] hover:text-white transition-all"
+                className="p-2 rounded-lg text-nm-muted hover:bg-nm-line hover:text-white transition-all"
                 title="Strikethrough"
               >
                 <Strikethrough size={16} />
               </button>
 
-              <div className="w-px h-6 bg-[#2b2630] mx-1 shrink-0" />
+              <div className="w-px h-6 bg-nm-line mx-1 shrink-0" />
 
               <button
                 onClick={() => execCommand("justifyLeft")}
-                className="p-2 rounded-lg text-[#aaa3b4] hover:bg-[#2b2630] hover:text-white transition-all"
+                className="p-2 rounded-lg text-nm-muted hover:bg-nm-line hover:text-white transition-all"
                 title="Align Left"
               >
                 <AlignLeft size={16} />
               </button>
               <button
                 onClick={() => execCommand("justifyCenter")}
-                className="p-2 rounded-lg text-[#aaa3b4] hover:bg-[#2b2630] hover:text-white transition-all"
+                className="p-2 rounded-lg text-nm-muted hover:bg-nm-line hover:text-white transition-all"
                 title="Align Center"
               >
                 <AlignCenter size={16} />
               </button>
               <button
                 onClick={() => execCommand("justifyRight")}
-                className="p-2 rounded-lg text-[#aaa3b4] hover:bg-[#2b2630] hover:text-white transition-all"
+                className="p-2 rounded-lg text-nm-muted hover:bg-nm-line hover:text-white transition-all"
                 title="Align Right"
               >
                 <AlignRight size={16} />
               </button>
 
-              <div className="w-px h-6 bg-[#2b2630] mx-1 shrink-0" />
+              <div className="w-px h-6 bg-nm-line mx-1 shrink-0" />
 
               <div className="flex items-center gap-1">
                 {COLORS.map((c) => (
                   <button
                     key={c}
                     onClick={() => execCommand("foreColor", c)}
-                    className="w-5 h-5 rounded-full border border-white/20 hover:scale-110 transition-all shrink-0"
+                    className="w-5 h-5 rounded-full border border-nm-edge hover:scale-110 transition-all shrink-0"
                     style={{ backgroundColor: c }}
                     title="Text Color"
                   />
@@ -288,19 +288,19 @@ export default function NoteModal({
                     title="Custom Color"
                   />
                   <div className="w-full h-full rounded-full bg-gradient-to-tr from-rose-500 via-emerald-500 to-blue-500 p-[2px]">
-                    <div className="w-full h-full bg-[#19161c] rounded-full flex items-center justify-center">
+                    <div className="w-full h-full bg-nm-raise rounded-full flex items-center justify-center">
                       <Palette size={10} className="text-white" />
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div className="w-px h-6 bg-[#2b2630] mx-1 shrink-0" />
+              <div className="w-px h-6 bg-nm-line mx-1 shrink-0" />
 
               <div className="relative shrink-0" ref={sizeMenuRef}>
                 <button
                   onClick={() => setIsSizeMenuOpen(!isSizeMenuOpen)}
-                  className="flex items-center justify-between w-[120px] bg-[#121015] text-[#aaa3b4] text-sm rounded-lg px-3 py-1.5 border border-[#2b2630] hover:bg-[#2b2630] hover:text-white transition-colors"
+                  className="flex items-center justify-between w-[120px] bg-nm-panel text-nm-muted text-sm rounded-lg px-3 py-1.5 border border-nm-edge hover:bg-nm-line hover:text-white transition-colors"
                 >
                   <span className="flex-1 text-center truncate">
                     {FONT_SIZES.find((s) => s.value === currentSize)?.label ||
@@ -315,15 +315,15 @@ export default function NoteModal({
                 </button>
 
                 {isSizeMenuOpen && (
-                  <div className="absolute top-full left-0 mt-2 w-[120px] bg-[#121015] border border-[#2b2630] rounded-xl shadow-2xl flex flex-col z-[999] py-1 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                  <div className="absolute top-full left-0 mt-2 w-[120px] bg-nm-panel border border-nm-edge rounded-xl shadow-2xl flex flex-col z-[999] py-1 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
                     {FONT_SIZES.map((s) => (
                       <button
                         key={s.value}
                         onClick={() => handleSizeChange(s.value)}
                         className={`px-4 py-2 text-sm text-left transition-colors ${
                           currentSize === s.value
-                            ? "bg-[#ef2b3a]/20 text-[#ef2b3a] font-medium"
-                            : "text-[#aaa3b4] hover:text-white hover:bg-white/5"
+                            ? "bg-nm-accent/20 text-nm-accent font-medium"
+                            : "text-nm-muted hover:text-white hover:bg-white/5"
                         }`}
                       >
                         {s.label}
@@ -335,7 +335,7 @@ export default function NoteModal({
             </div>
           )}
 
-          <div className="flex-1 overflow-y-auto p-6 relative bg-[#09080b]">
+          <div className="flex-1 overflow-y-auto p-6 relative bg-nm-deep">
             <div
               ref={editorRef}
               contentEditable={isEditing}
@@ -343,15 +343,15 @@ export default function NoteModal({
               onBlur={handleInput}
               data-placeholder="Write your notes here..."
               dir="auto"
-              className={`note-editor-content w-full h-full min-h-full outline-none text-[#fbf8f9] text-[15px] leading-[2] break-words whitespace-pre-wrap ${
+              className={`note-editor-content w-full h-full min-h-full outline-none text-nm-text text-[15px] leading-[2] break-words whitespace-pre-wrap ${
                 !isEditing && !hasContent ? "cursor-default" : ""
-              } ${isEditing ? "ring-2 ring-[#ef2b3a]/30 rounded-xl p-4 bg-[#121015] transition-all" : ""}`}
+              } ${isEditing ? "ring-2 ring-nm-accent/30 rounded-xl p-4 bg-nm-panel transition-all" : ""}`}
               style={{ textAlign: "start" }}
             />
             {!isEditing && !hasContent && (
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none opacity-50">
-                <Type size={40} className="text-[#443d4b] mb-3" />
-                <Typography variant="body" className="text-[#6f6878]">
+                <Type size={40} className="text-nm-faint mb-3" />
+                <Typography variant="body" className="text-nm-dim">
                   No notes on this page yet. Click "Add Note" to start.
                 </Typography>
               </div>
@@ -362,21 +362,21 @@ export default function NoteModal({
 
       {showDeleteConfirm && (
         <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/60 transition-all duration-300">
-          <div className="bg-[#121015] border border-rose-500/30 p-8 rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] w-full max-w-md flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-nm-panel border border-rose-500/30 p-8 rounded-3xl shadow-nm-float w-full max-w-md flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">
             <div className="w-16 h-16 bg-rose-500/10 rounded-full flex items-center justify-center mb-6 shadow-inner">
               <AlertTriangle size={32} className="text-rose-500" />
             </div>
             <Typography
               variant="pageTitle"
               as="h2"
-              className="text-[#fbf8f9] mb-2 font-semibold tracking-tight"
+              className="text-nm-text mb-2 font-semibold tracking-tight"
             >
               Delete Note?
             </Typography>
             <Typography
               variant="body"
               as="p"
-              className="text-[#aaa3b4] mb-8 leading-relaxed"
+              className="text-nm-muted mb-8 leading-relaxed"
             >
               This will permanently remove this note from the page. This action
               cannot be undone.
@@ -384,13 +384,13 @@ export default function NoteModal({
             <div className="flex gap-3 w-full mt-2">
               <button
                 onClick={() => setShowDeleteConfirm(false)}
-                className="flex-1 px-4 py-3.5 rounded-xl bg-[#19161c] text-[#aaa3b4] hover:text-[#fbf8f9] hover:bg-[#2b2630] border border-[#2b2630] transition-all font-medium active:scale-[0.98]"
+                className="flex-1 px-4 py-3.5 rounded-xl bg-nm-raise text-nm-muted hover:text-nm-text hover:bg-nm-line border border-nm-edge transition-all font-medium active:scale-[0.98]"
               >
                 Cancel
               </button>
               <button
                 onClick={confirmDelete}
-                className="flex-1 px-4 py-3.5 rounded-xl bg-rose-500 text-white hover:bg-rose-600 transition-all font-medium shadow-[0_0_15px_rgba(244,63,94,0.3)] active:scale-[0.98]"
+                className="flex-1 px-4 py-3.5 rounded-xl bg-rose-500 text-white hover:bg-rose-600 transition-all font-medium shadow-nm-glow active:scale-[0.98]"
               >
                 Delete
               </button>

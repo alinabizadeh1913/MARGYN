@@ -9,7 +9,27 @@ import {
   ANCHORS,
 } from "./inkGeometry";
 
-export const ACCENT = "#ef2b3a";
+// Selection / marquee colour follows the theme accent (ES live binding: every
+// importer sees the new value after syncAccent()).
+export let ACCENT = "#ef2b3a";
+let ACCENT_FILL = "rgba(239,43,58,0.10)";
+
+export function syncAccent() {
+  if (typeof document === "undefined") return;
+  const v = getComputedStyle(document.documentElement)
+    .getPropertyValue("--nm-accent")
+    .trim()
+    .split(/\s+/);
+  if (v.length < 3) return;
+  ACCENT = `rgb(${v[0]},${v[1]},${v[2]})`;
+  ACCENT_FILL = `rgba(${v[0]},${v[1]},${v[2]},0.10)`;
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("margyn-theme-change", syncAccent);
+  // first sync once the DOM/theme attribute exists
+  queueMicrotask(syncAccent);
+}
 export const HIGHLIGHT_ALPHA = 0.4;
 
 export function tracePen(ctx: CanvasRenderingContext2D, p: number[]) {
@@ -246,7 +266,7 @@ export function drawAnchorHints(
 
 export function drawMarquee(ctx: CanvasRenderingContext2D, b: Box) {
   ctx.save();
-  ctx.fillStyle = "rgba(239,43,58,0.10)";
+  ctx.fillStyle = ACCENT_FILL;
   ctx.strokeStyle = ACCENT;
   ctx.lineWidth = 1;
   ctx.fillRect(b.x, b.y, b.w, b.h);

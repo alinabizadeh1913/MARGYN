@@ -119,21 +119,21 @@ export const AppModals: React.FC<AppModalsProps> = ({
       {/* ✅ NEW: مدال ساخت سند جدید */}
       {showNewDocumentModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 transition-all duration-300">
-          <div className="bg-[#121015] border border-[#ef2b3a]/30 p-8 rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] w-full max-w-md flex flex-col items-center animate-in fade-in zoom-in-95 duration-200">
-            <div className="w-16 h-16 bg-[#ef2b3a]/10 rounded-full flex items-center justify-center mb-6 shadow-inner">
-              <FilePlus size={32} className="text-[#ef2b3a]" />
+          <div className="bg-nm-panel border border-nm-accent/30 p-8 rounded-3xl shadow-nm-float w-full max-w-md flex flex-col items-center animate-in fade-in zoom-in-95 duration-200">
+            <div className="w-16 h-16 bg-nm-accent/10 rounded-full flex items-center justify-center mb-6 shadow-inner">
+              <FilePlus size={32} className="text-nm-accent" />
             </div>
             <Typography
               variant="pageTitle"
               as="h2"
-              className="text-[#fbf8f9] mb-2 font-semibold tracking-tight"
+              className="text-nm-text mb-2 font-semibold tracking-tight"
             >
               Create New Document
             </Typography>
             <Typography
               variant="body"
               as="p"
-              className="text-[#aaa3b4] mb-8 text-center leading-relaxed"
+              className="text-nm-muted mb-8 text-center leading-relaxed"
             >
               Choose the type of workspace you want to start with.
             </Typography>
@@ -144,7 +144,7 @@ export const AppModals: React.FC<AppModalsProps> = ({
                   handleCreateBlankDocument("page");
                   setShowNewDocumentModal(false);
                 }}
-                className="w-full flex items-center justify-between p-4 rounded-xl bg-[#19161c] border border-[#2b2630] hover:bg-[#2b2630] hover:border-rose-500/50 transition-all group"
+                className="w-full flex items-center justify-between p-4 rounded-xl bg-nm-raise border border-nm-edge hover:bg-nm-line hover:border-rose-500/50 transition-all group"
               >
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-lg bg-rose-500/10 flex items-center justify-center shrink-0">
@@ -154,17 +154,17 @@ export const AppModals: React.FC<AppModalsProps> = ({
                     />
                   </div>
                   <div className="flex flex-col text-left gap-1">
-                    <Typography variant="cardTitle" className="text-[#fbf8f9]">
+                    <Typography variant="cardTitle" className="text-nm-text">
                       Regular Page
                     </Typography>
-                    <Typography variant="caption" className="text-[#aaa3b4]">
+                    <Typography variant="caption" className="text-nm-muted">
                       Single blank A4 page
                     </Typography>
                   </div>
                 </div>
                 <ChevronRight
                   size={18}
-                  className="text-[#6f6878] group-hover:text-rose-400 transition-colors"
+                  className="text-nm-dim group-hover:text-rose-400 transition-colors"
                 />
               </button>
 
@@ -173,34 +173,34 @@ export const AppModals: React.FC<AppModalsProps> = ({
                   handleCreateBlankDocument("infinite");
                   setShowNewDocumentModal(false);
                 }}
-                className="w-full flex items-center justify-between p-4 rounded-xl bg-[#19161c] border border-[#2b2630] hover:bg-[#2b2630] hover:border-[#ff7a45]/50 transition-all group"
+                className="w-full flex items-center justify-between p-4 rounded-xl bg-nm-raise border border-nm-edge hover:bg-nm-line hover:border-nm-ember/50 transition-all group"
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-[#ff7a45]/10 flex items-center justify-center shrink-0">
+                  <div className="w-10 h-10 rounded-lg bg-nm-ember/10 flex items-center justify-center shrink-0">
                     <Move
                       size={20}
-                      className="text-[#ff7a45] group-hover:scale-110 transition-transform"
+                      className="text-nm-ember group-hover:scale-110 transition-transform"
                     />
                   </div>
                   <div className="flex flex-col text-left gap-1">
-                    <Typography variant="cardTitle" className="text-[#fbf8f9]">
+                    <Typography variant="cardTitle" className="text-nm-text">
                       Infinite Canvas
                     </Typography>
-                    <Typography variant="caption" className="text-[#aaa3b4]">
+                    <Typography variant="caption" className="text-nm-muted">
                       Pan and draw anywhere
                     </Typography>
                   </div>
                 </div>
                 <ChevronRight
                   size={18}
-                  className="text-[#6f6878] group-hover:text-[#ff7a45] transition-colors"
+                  className="text-nm-dim group-hover:text-nm-ember transition-colors"
                 />
               </button>
             </div>
 
             <button
               onClick={() => setShowNewDocumentModal(false)}
-              className="w-full mt-6 px-4 py-3.5 rounded-xl bg-[#19161c] text-[#aaa3b4] hover:text-[#fbf8f9] hover:bg-[#2b2630] border border-[#2b2630] transition-all font-medium active:scale-[0.98]"
+              className="w-full mt-6 px-4 py-3.5 rounded-xl bg-nm-raise text-nm-muted hover:text-nm-text hover:bg-nm-line border border-nm-edge transition-all font-medium active:scale-[0.98]"
             >
               Cancel
             </button>
@@ -210,21 +210,21 @@ export const AppModals: React.FC<AppModalsProps> = ({
 
       {showEndModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 transition-all duration-300">
-          <div className="bg-[#121015] border border-rose-500/30 p-8 rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] w-full max-w-lg flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-nm-panel border border-rose-500/30 p-8 rounded-3xl shadow-nm-float w-full max-w-lg flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">
             <div className="w-16 h-16 bg-rose-500/10 rounded-full flex items-center justify-center mb-6 shadow-inner">
               <Square size={32} className="text-rose-500" />
             </div>
             <Typography
               variant="pageTitle"
               as="h2"
-              className="text-[#fbf8f9] mb-2 font-semibold tracking-tight"
+              className="text-nm-text mb-2 font-semibold tracking-tight"
             >
               End Focus Session?
             </Typography>
             <Typography
               variant="body"
               as="p"
-              className="text-[#aaa3b4] mb-8 max-w-sm leading-relaxed"
+              className="text-nm-muted mb-8 max-w-sm leading-relaxed"
             >
               You are about to end your focus session. Your reading stats will
               be locked and revealed in 7 days.
@@ -233,9 +233,9 @@ export const AppModals: React.FC<AppModalsProps> = ({
               To confirm, type the following phrase in{" "}
               <strong>ALL CAPITAL LETTERS</strong>:
             </Typography>
-            <div className="w-full bg-[#09080b] border border-[#2b2630] rounded-2xl p-4 mb-6 flex items-center justify-center gap-3 select-none">
-              <Lock size={16} className="text-[#6f6878]" />
-              <span className="text-[#fbf8f9] font-mono text-base font-bold tracking-widest">
+            <div className="w-full bg-nm-deep border border-nm-edge rounded-2xl p-4 mb-6 flex items-center justify-center gap-3 select-none">
+              <Lock size={16} className="text-nm-dim" />
+              <span className="text-nm-text font-mono text-base font-bold tracking-widest">
                 {REQUIRED_END_PHRASE}
               </span>
             </div>
@@ -260,7 +260,7 @@ export const AppModals: React.FC<AppModalsProps> = ({
               spellCheck="false"
               placeholder="TYPE HERE (UPPERCASE ONLY)"
               autoFocus
-              className={`w-full px-5 py-4 rounded-xl bg-[#19161c] border-2 outline-none transition-all text-center text-lg font-mono tracking-widest shadow-sm ${endError ? "border-rose-400 focus:border-rose-500 text-rose-600 placeholder-rose-300 animate-shake" : "border-[#2b2630] focus:border-rose-500/50 text-[#fbf8f9]"}`}
+              className={`w-full px-5 py-4 rounded-xl bg-nm-raise border-2 outline-none transition-all text-center text-lg font-mono tracking-widest shadow-sm ${endError ? "border-rose-400 focus:border-rose-500 text-rose-600 placeholder-rose-300 animate-shake" : "border-nm-edge focus:border-rose-500/50 text-nm-text"}`}
             />
             {endError && (
               <Typography
@@ -273,13 +273,13 @@ export const AppModals: React.FC<AppModalsProps> = ({
             <div className="flex gap-4 w-full mt-8">
               <button
                 onClick={() => setShowEndModal(false)}
-                className="flex-1 px-4 py-3.5 rounded-xl bg-[#19161c] text-[#aaa3b4] hover:text-[#fbf8f9] hover:bg-[#2b2630] border border-[#2b2630] transition-all font-medium active:scale-[0.98]"
+                className="flex-1 px-4 py-3.5 rounded-xl bg-nm-raise text-nm-muted hover:text-nm-text hover:bg-nm-line border border-nm-edge transition-all font-medium active:scale-[0.98]"
               >
                 Keep Focusing
               </button>
               <button
                 onClick={handleConfirmEndSession}
-                className="flex-1 px-4 py-3.5 rounded-xl bg-rose-500 text-white hover:bg-rose-600 transition-all font-medium shadow-[0_0_15px_rgba(244,63,94,0.3)] active:scale-[0.98]"
+                className="flex-1 px-4 py-3.5 rounded-xl bg-rose-500 text-white hover:bg-rose-600 transition-all font-medium shadow-nm-glow active:scale-[0.98]"
               >
                 End Session
               </button>
@@ -290,21 +290,21 @@ export const AppModals: React.FC<AppModalsProps> = ({
 
       {showBackwardErrorModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 transition-all duration-300">
-          <div className="bg-[#121015] border border-amber-500/30 p-8 rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] w-full max-w-md flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-nm-panel border border-amber-500/30 p-8 rounded-3xl shadow-nm-float w-full max-w-md flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">
             <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mb-6 shadow-inner">
               <AlertTriangle size={32} className="text-amber-500" />
             </div>
             <Typography
               variant="pageTitle"
               as="h2"
-              className="text-[#fbf8f9] mb-2 font-semibold tracking-tight"
+              className="text-nm-text mb-2 font-semibold tracking-tight"
             >
               Cannot End Session
             </Typography>
             <Typography
               variant="body"
               as="p"
-              className="text-[#aaa3b4] mb-8 leading-relaxed"
+              className="text-nm-muted mb-8 leading-relaxed"
             >
               You have navigated behind your session's active reading area. To
               ensure your progress is recorded correctly, please return to the{" "}
@@ -313,7 +313,7 @@ export const AppModals: React.FC<AppModalsProps> = ({
             </Typography>
             <button
               onClick={() => setShowBackwardErrorModal(false)}
-              className="w-full px-4 py-3.5 rounded-xl bg-amber-500 text-black hover:bg-amber-400 transition-all font-medium shadow-[0_0_15px_rgba(245,158,11,0.3)] active:scale-[0.98]"
+              className="w-full px-4 py-3.5 rounded-xl bg-amber-500 text-black hover:bg-amber-400 transition-all font-medium shadow-nm-glow-warn active:scale-[0.98]"
             >
               Understood
             </button>
@@ -323,7 +323,7 @@ export const AppModals: React.FC<AppModalsProps> = ({
 
       {showCongratsModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 transition-all duration-500">
-          <div className="bg-[#121015] border border-emerald-500/30 p-10 rounded-3xl shadow-[0_20px_80px_-15px_rgba(16,185,129,0.2)] w-full max-w-lg flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-300">
+          <div className="bg-nm-panel border border-emerald-500/30 p-10 rounded-3xl shadow-nm-glow-ok w-full max-w-lg flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-300">
             <div className="w-24 h-24 bg-emerald-500/10 rounded-full flex items-center justify-center mb-6 relative">
               <div className="absolute inset-0 bg-emerald-500/20 rounded-full blur-xl animate-pulse" />
               <Trophy size={48} className="text-emerald-500 relative z-10" />
@@ -331,21 +331,21 @@ export const AppModals: React.FC<AppModalsProps> = ({
             <Typography
               variant="pageTitle"
               as="h2"
-              className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-[#ef2b3a] mb-2 font-bold tracking-tight text-3xl"
+              className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-nm-accent mb-2 font-bold tracking-tight text-3xl"
             >
               Congratulations!
             </Typography>
             <Typography
               variant="bodyMedium"
               as="p"
-              className="text-[#fbf8f9] mb-2"
+              className="text-nm-text mb-2"
             >
               You have successfully completed:
             </Typography>
-            <div className="w-full bg-[#09080b] border border-emerald-500/20 rounded-2xl p-4 mb-8">
+            <div className="w-full bg-nm-deep border border-emerald-500/20 rounded-2xl p-4 mb-8">
               <Typography
                 variant="cardTitle"
-                className="text-[#fbf8f9] truncate px-4"
+                className="text-nm-text truncate px-4"
               >
                 {activeFileName || "Your Document"}
               </Typography>
@@ -353,7 +353,7 @@ export const AppModals: React.FC<AppModalsProps> = ({
             <Typography
               variant="body"
               as="p"
-              className="text-[#aaa3b4] mb-8 max-w-sm leading-relaxed"
+              className="text-nm-muted mb-8 max-w-sm leading-relaxed"
             >
               That's another step forward in your journey. Your focus and
               dedication are paying off. Take a moment to appreciate your
@@ -361,7 +361,7 @@ export const AppModals: React.FC<AppModalsProps> = ({
             </Typography>
             <button
               onClick={() => setShowCongratsModal(false)}
-              className="w-full px-4 py-3.5 rounded-xl bg-emerald-500 text-white hover:bg-emerald-600 transition-all font-medium shadow-[0_0_15px_rgba(16,185,129,0.3)] active:scale-[0.98]"
+              className="w-full px-4 py-3.5 rounded-xl bg-emerald-500 text-white hover:bg-emerald-600 transition-all font-medium shadow-nm-glow-ok active:scale-[0.98]"
             >
               Awesome!
             </button>
@@ -371,21 +371,21 @@ export const AppModals: React.FC<AppModalsProps> = ({
 
       {showCloseModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/65 transition-all duration-300">
-          <div className="bg-[#121015] border border-amber-500/30 p-8 rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] w-full max-w-md flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-nm-panel border border-amber-500/30 p-8 rounded-3xl shadow-nm-float w-full max-w-md flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">
             <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mb-6 shadow-inner">
               <AlertTriangle size={32} className="text-amber-500" />
             </div>
             <Typography
               variant="pageTitle"
               as="h2"
-              className="text-[#fbf8f9] mb-2 font-semibold tracking-tight"
+              className="text-nm-text mb-2 font-semibold tracking-tight"
             >
               Unsaved Changes
             </Typography>
             <Typography
               variant="body"
               as="p"
-              className="text-[#aaa3b4] mb-8 leading-relaxed"
+              className="text-nm-muted mb-8 leading-relaxed"
             >
               You have unsaved changes in your current project. Do you want to
               save your progress before leaving?
@@ -393,7 +393,7 @@ export const AppModals: React.FC<AppModalsProps> = ({
             <div className="flex flex-col gap-3 w-full">
               <button
                 onClick={handleModalSave}
-                className="w-full px-4 py-3 rounded-xl bg-emerald-500 text-white hover:bg-emerald-600 transition-all font-medium shadow-[0_0_15px_rgba(16,185,129,0.3)] active:scale-[0.98]"
+                className="w-full px-4 py-3 rounded-xl bg-emerald-500 text-white hover:bg-emerald-600 transition-all font-medium shadow-nm-glow-ok active:scale-[0.98]"
               >
                 Yes, Save
               </button>
@@ -405,7 +405,7 @@ export const AppModals: React.FC<AppModalsProps> = ({
               </button>
               <button
                 onClick={handleModalCancel}
-                className="w-full px-4 py-3 rounded-xl bg-[#19161c] text-[#aaa3b4] hover:text-[#fbf8f9] hover:bg-[#2b2630] border border-[#2b2630] transition-all font-medium active:scale-[0.98]"
+                className="w-full px-4 py-3 rounded-xl bg-nm-raise text-nm-muted hover:text-nm-text hover:bg-nm-line border border-nm-edge transition-all font-medium active:scale-[0.98]"
               >
                 Cancel
               </button>
@@ -416,25 +416,25 @@ export const AppModals: React.FC<AppModalsProps> = ({
 
       {showTimerModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 transition-all duration-300">
-          <div className="bg-[#121015] border border-[#ef2b3a]/30 p-8 rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] w-full max-w-sm flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">
-            <div className="w-16 h-16 bg-[#ef2b3a]/10 rounded-full flex items-center justify-center mb-6 shadow-inner">
-              <Clock size={32} className="text-[#ef2b3a]" />
+          <div className="bg-nm-panel border border-nm-accent/30 p-8 rounded-3xl shadow-nm-float w-full max-w-sm flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">
+            <div className="w-16 h-16 bg-nm-accent/10 rounded-full flex items-center justify-center mb-6 shadow-inner">
+              <Clock size={32} className="text-nm-accent" />
             </div>
             <Typography
               variant="pageTitle"
               as="h2"
-              className="text-[#fbf8f9] mb-2 font-semibold tracking-tight"
+              className="text-nm-text mb-2 font-semibold tracking-tight"
             >
               Set Focus Timer
             </Typography>
             <Typography
               variant="body"
               as="p"
-              className="text-[#aaa3b4] mb-8 leading-relaxed"
+              className="text-nm-muted mb-8 leading-relaxed"
             >
               Enter the duration in minutes.
             </Typography>
-            <div className="w-full flex items-center bg-[#19161c] border-2 border-[#2b2630] focus-within:border-[#ef2b3a]/50 rounded-xl transition-all shadow-sm overflow-hidden mb-8">
+            <div className="w-full flex items-center bg-nm-raise border-2 border-nm-edge focus-within:border-nm-accent/50 rounded-xl transition-all shadow-sm overflow-hidden mb-8">
               <input
                 type="number"
                 value={timerInput}
@@ -445,20 +445,20 @@ export const AppModals: React.FC<AppModalsProps> = ({
                   if (e.key === "Escape") setShowTimerModal(false);
                 }}
                 autoFocus
-                className="flex-1 w-full px-5 py-4 bg-transparent outline-none text-center text-xl font-mono tracking-widest text-[#fbf8f9] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                className="flex-1 w-full px-5 py-4 bg-transparent outline-none text-center text-xl font-mono tracking-widest text-nm-text [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               />
-              <span className="pr-5 text-[#6f6878] font-medium">min</span>
+              <span className="pr-5 text-nm-dim font-medium">min</span>
             </div>
             <div className="flex gap-4 w-full">
               <button
                 onClick={() => setShowTimerModal(false)}
-                className="flex-1 px-4 py-3.5 rounded-xl bg-[#19161c] text-[#aaa3b4] hover:text-[#fbf8f9] hover:bg-[#2b2630] border border-[#2b2630] transition-all font-medium active:scale-[0.98]"
+                className="flex-1 px-4 py-3.5 rounded-xl bg-nm-raise text-nm-muted hover:text-nm-text hover:bg-nm-line border border-nm-edge transition-all font-medium active:scale-[0.98]"
               >
                 Cancel
               </button>
               <button
                 onClick={handleConfirmStartTimer}
-                className="flex-1 px-4 py-3.5 rounded-xl bg-[#ef2b3a] text-white hover:bg-[#ef2b3a]/90 transition-all font-medium shadow-[0_0_15px_rgba(239,43,58,0.3)] active:scale-[0.98]"
+                className="flex-1 px-4 py-3.5 rounded-xl bg-nm-accent text-white hover:bg-nm-accent/90 transition-all font-medium shadow-nm-glow active:scale-[0.98]"
               >
                 Start
               </button>
@@ -469,21 +469,21 @@ export const AppModals: React.FC<AppModalsProps> = ({
 
       {showExportModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/65 transition-all duration-300">
-          <div className="bg-[#121015] border border-[#ef2b3a]/30 p-8 rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] w-full max-w-md flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">
-            <div className="w-16 h-16 bg-[#ef2b3a]/10 rounded-full flex items-center justify-center mb-6 shadow-inner">
-              <Upload size={32} className="text-[#ef2b3a]" />
+          <div className="bg-nm-panel border border-nm-accent/30 p-8 rounded-3xl shadow-nm-float w-full max-w-md flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">
+            <div className="w-16 h-16 bg-nm-accent/10 rounded-full flex items-center justify-center mb-6 shadow-inner">
+              <Upload size={32} className="text-nm-accent" />
             </div>
             <Typography
               variant="pageTitle"
               as="h2"
-              className="text-[#fbf8f9] mb-2 font-semibold tracking-tight"
+              className="text-nm-text mb-2 font-semibold tracking-tight"
             >
               Export Document
             </Typography>
             <Typography
               variant="body"
               as="p"
-              className="text-[#aaa3b4] mb-8 leading-relaxed"
+              className="text-nm-muted mb-8 leading-relaxed"
             >
               Choose a format to save your work.
             </Typography>
@@ -492,27 +492,27 @@ export const AppModals: React.FC<AppModalsProps> = ({
               <button
                 onClick={handleExportPdf}
                 disabled={exportingType !== null}
-                className="w-full flex items-center justify-between p-4 rounded-xl bg-[#19161c] border border-[#2b2630] hover:bg-[#2b2630] hover:border-[#ef2b3a]/50 transition-all group disabled:opacity-50"
+                className="w-full flex items-center justify-between p-4 rounded-xl bg-nm-raise border border-nm-edge hover:bg-nm-line hover:border-nm-accent/50 transition-all group disabled:opacity-50"
               >
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-lg bg-rose-500/10 flex items-center justify-center shrink-0">
                     <FileDown size={20} className="text-rose-400" />
                   </div>
                   <div className="flex flex-col text-left gap-1">
-                    <Typography variant="cardTitle" className="text-[#fbf8f9]">
+                    <Typography variant="cardTitle" className="text-nm-text">
                       PDF Document
                     </Typography>
-                    <Typography variant="caption" className="text-[#aaa3b4]">
+                    <Typography variant="caption" className="text-nm-muted">
                       Flat PDF with all annotations
                     </Typography>
                   </div>
                 </div>
                 {exportingType === "pdf" ? (
-                  <div className="w-5 h-5 border-2 border-[#ef2b3a] border-t-transparent rounded-full animate-spin shrink-0" />
+                  <div className="w-5 h-5 border-2 border-nm-accent border-t-transparent rounded-full animate-spin shrink-0" />
                 ) : (
                   <ChevronRight
                     size={20}
-                    className="text-[#6f6878] group-hover:text-[#ef2b3a] transition-colors shrink-0"
+                    className="text-nm-dim group-hover:text-nm-accent transition-colors shrink-0"
                   />
                 )}
               </button>
@@ -520,27 +520,27 @@ export const AppModals: React.FC<AppModalsProps> = ({
               <button
                 onClick={handleExportMargyn}
                 disabled={exportingType !== null}
-                className="w-full flex items-center justify-between p-4 rounded-xl bg-[#19161c] border border-[#2b2630] hover:bg-[#2b2630] hover:border-[#ef2b3a]/50 transition-all group disabled:opacity-50"
+                className="w-full flex items-center justify-between p-4 rounded-xl bg-nm-raise border border-nm-edge hover:bg-nm-line hover:border-nm-accent/50 transition-all group disabled:opacity-50"
               >
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center shrink-0">
                     <FileArchive size={20} className="text-emerald-400" />
                   </div>
                   <div className="flex flex-col text-left gap-1">
-                    <Typography variant="cardTitle" className="text-[#fbf8f9]">
+                    <Typography variant="cardTitle" className="text-nm-text">
                       Margyn Project
                     </Typography>
-                    <Typography variant="caption" className="text-[#aaa3b4]">
+                    <Typography variant="caption" className="text-nm-muted">
                       Editable project (.margyn)
                     </Typography>
                   </div>
                 </div>
                 {exportingType === "margyn" ? (
-                  <div className="w-5 h-5 border-2 border-[#ef2b3a] border-t-transparent rounded-full animate-spin shrink-0" />
+                  <div className="w-5 h-5 border-2 border-nm-accent border-t-transparent rounded-full animate-spin shrink-0" />
                 ) : (
                   <ChevronRight
                     size={20}
-                    className="text-[#6f6878] group-hover:text-[#ef2b3a] transition-colors shrink-0"
+                    className="text-nm-dim group-hover:text-nm-accent transition-colors shrink-0"
                   />
                 )}
               </button>
@@ -549,7 +549,7 @@ export const AppModals: React.FC<AppModalsProps> = ({
             <button
               onClick={() => setShowExportModal(false)}
               disabled={exportingType !== null}
-              className="w-full mt-4 px-4 py-3 rounded-xl bg-transparent text-[#aaa3b4] hover:text-[#fbf8f9] hover:bg-[#2b2630] transition-all font-medium disabled:opacity-50"
+              className="w-full mt-4 px-4 py-3 rounded-xl bg-transparent text-nm-muted hover:text-nm-text hover:bg-nm-line transition-all font-medium disabled:opacity-50"
             >
               Cancel
             </button>
@@ -559,21 +559,21 @@ export const AppModals: React.FC<AppModalsProps> = ({
 
       {showResetProgressModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 transition-all duration-300">
-          <div className="bg-[#121015] border border-rose-500/30 p-8 rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] w-full max-w-lg flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-nm-panel border border-rose-500/30 p-8 rounded-3xl shadow-nm-float w-full max-w-lg flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">
             <div className="w-16 h-16 bg-rose-500/10 rounded-full flex items-center justify-center mb-6 shadow-inner">
               <RotateCcw size={32} className="text-rose-500" />
             </div>
             <Typography
               variant="pageTitle"
               as="h2"
-              className="text-[#fbf8f9] mb-2 font-semibold tracking-tight"
+              className="text-nm-text mb-2 font-semibold tracking-tight"
             >
               Reset Document Progress?
             </Typography>
             <Typography
               variant="body"
               as="p"
-              className="text-[#aaa3b4] mb-8 max-w-sm leading-relaxed"
+              className="text-nm-muted mb-8 max-w-sm leading-relaxed"
             >
               This will permanently delete <strong>ALL</strong> focus sessions
               for this document and reset its status to unread. You will be able
@@ -583,9 +583,9 @@ export const AppModals: React.FC<AppModalsProps> = ({
               To confirm, type the following phrase in{" "}
               <strong>ALL CAPITAL LETTERS</strong>:
             </Typography>
-            <div className="w-full bg-[#09080b] border border-[#2b2630] rounded-2xl p-4 mb-6 flex items-center justify-center gap-3 select-none">
-              <Lock size={16} className="text-[#6f6878]" />
-              <span className="text-[#fbf8f9] font-mono text-base font-bold tracking-widest">
+            <div className="w-full bg-nm-deep border border-nm-edge rounded-2xl p-4 mb-6 flex items-center justify-center gap-3 select-none">
+              <Lock size={16} className="text-nm-dim" />
+              <span className="text-nm-text font-mono text-base font-bold tracking-widest">
                 {REQUIRED_RESET_PHRASE}
               </span>
             </div>
@@ -610,7 +610,7 @@ export const AppModals: React.FC<AppModalsProps> = ({
               spellCheck="false"
               placeholder="TYPE HERE (UPPERCASE ONLY)"
               autoFocus
-              className={`w-full px-5 py-4 rounded-xl bg-[#19161c] border-2 outline-none transition-all text-center text-lg font-mono tracking-widest shadow-sm ${resetProgressError ? "border-rose-400 focus:border-rose-500 text-rose-600 placeholder-rose-300 animate-shake" : "border-[#2b2630] focus:border-rose-500/50 text-[#fbf8f9]"}`}
+              className={`w-full px-5 py-4 rounded-xl bg-nm-raise border-2 outline-none transition-all text-center text-lg font-mono tracking-widest shadow-sm ${resetProgressError ? "border-rose-400 focus:border-rose-500 text-rose-600 placeholder-rose-300 animate-shake" : "border-nm-edge focus:border-rose-500/50 text-nm-text"}`}
             />
             {resetProgressError && (
               <Typography
@@ -623,13 +623,13 @@ export const AppModals: React.FC<AppModalsProps> = ({
             <div className="flex gap-4 w-full mt-8">
               <button
                 onClick={() => setShowResetProgressModal(false)}
-                className="flex-1 px-4 py-3.5 rounded-xl bg-[#19161c] text-[#aaa3b4] hover:text-[#fbf8f9] hover:bg-[#2b2630] border border-[#2b2630] transition-all font-medium active:scale-[0.98]"
+                className="flex-1 px-4 py-3.5 rounded-xl bg-nm-raise text-nm-muted hover:text-nm-text hover:bg-nm-line border border-nm-edge transition-all font-medium active:scale-[0.98]"
               >
                 Cancel
               </button>
               <button
                 onClick={handleConfirmResetProgress}
-                className="flex-1 px-4 py-3.5 rounded-xl bg-rose-500 text-white hover:bg-rose-600 transition-all font-medium shadow-[0_0_15px_rgba(244,63,94,0.3)] active:scale-[0.98]"
+                className="flex-1 px-4 py-3.5 rounded-xl bg-rose-500 text-white hover:bg-rose-600 transition-all font-medium shadow-nm-glow active:scale-[0.98]"
               >
                 Reset Progress
               </button>
@@ -646,7 +646,7 @@ export const AppModals: React.FC<AppModalsProps> = ({
           <div
             role="alertdialog"
             aria-modal="true"
-            className="bg-[#121015] border border-rose-500/30 p-8 rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] w-full max-w-md flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200"
+            className="bg-nm-panel border border-rose-500/30 p-8 rounded-3xl shadow-nm-float w-full max-w-md flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200"
           >
             <div className="w-16 h-16 bg-rose-500/10 rounded-full flex items-center justify-center mb-6 shadow-inner">
               <Trash2 size={32} className="text-rose-500" />
@@ -654,14 +654,14 @@ export const AppModals: React.FC<AppModalsProps> = ({
             <Typography
               variant="pageTitle"
               as="h2"
-              className="text-[#fbf8f9] mb-2 font-semibold tracking-tight"
+              className="text-nm-text mb-2 font-semibold tracking-tight"
             >
               Clear All Pages?
             </Typography>
             <Typography
               variant="body"
               as="p"
-              className="text-[#aaa3b4] mb-8 leading-relaxed"
+              className="text-nm-muted mb-8 leading-relaxed"
             >
               Every drawing on <strong>all pages</strong> of this document will
               be erased. You can bring it back right after with{" "}
@@ -671,13 +671,13 @@ export const AppModals: React.FC<AppModalsProps> = ({
               <button
                 autoFocus
                 onClick={() => setShowClearAllModal(false)}
-                className="flex-1 px-4 py-3.5 rounded-xl bg-[#19161c] text-[#aaa3b4] hover:text-[#fbf8f9] hover:bg-[#2b2630] border border-[#2b2630] transition-all font-medium active:scale-[0.98]"
+                className="flex-1 px-4 py-3.5 rounded-xl bg-nm-raise text-nm-muted hover:text-nm-text hover:bg-nm-line border border-nm-edge transition-all font-medium active:scale-[0.98]"
               >
                 Cancel
               </button>
               <button
                 onClick={handleConfirmClearAll}
-                className="flex-1 px-4 py-3.5 rounded-xl bg-rose-500 text-white hover:bg-rose-600 transition-all font-medium shadow-[0_0_15px_rgba(244,63,94,0.3)] active:scale-[0.98]"
+                className="flex-1 px-4 py-3.5 rounded-xl bg-rose-500 text-white hover:bg-rose-600 transition-all font-medium shadow-nm-glow active:scale-[0.98]"
               >
                 Yes, Clear All
               </button>
@@ -689,7 +689,7 @@ export const AppModals: React.FC<AppModalsProps> = ({
       {toast && (
         <div className="fixed bottom-8 right-8 z-[200] animate-in slide-in-from-bottom-5 fade-in duration-300">
           <div
-            className={`flex items-center gap-4 px-6 py-4 rounded-2xl shadow-2xl border backdrop-blur-xl ${toast.type === "success" ? "bg-[#121015]/90 border-emerald-500/30 text-emerald-400 shadow-[0_10px_40px_-10px_rgba(16,185,129,0.3)]" : "bg-[#121015]/90 border-rose-500/30 text-rose-400 shadow-[0_10px_40px_-10px_rgba(244,63,94,0.3)]"}`}
+            className={`flex items-center gap-4 px-6 py-4 rounded-2xl shadow-2xl border ${toast.type === "success" ? "bg-nm-panel border-emerald-500/30 text-emerald-400 shadow-nm-glow-ok" : "bg-nm-panel border-rose-500/30 text-rose-400 shadow-nm-glow"}`}
           >
             {toast.type === "success" ? (
               <CheckCircle2 size={24} className="shrink-0" />
@@ -698,7 +698,7 @@ export const AppModals: React.FC<AppModalsProps> = ({
             )}
             <Typography
               variant="bodyMedium"
-              className="text-[#fbf8f9] font-medium"
+              className="text-nm-text font-medium"
             >
               {toast.message}
             </Typography>

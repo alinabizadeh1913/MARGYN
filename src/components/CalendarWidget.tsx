@@ -75,16 +75,16 @@ function CalendarWidgetImpl({
   });
 
   return (
-    <div className="bg-[#121015] border border-[#2b2630] rounded-3xl p-6 shadow-sm w-full">
+    <div className="bg-nm-panel border border-nm-edge rounded-3xl p-6 shadow-sm w-full">
       <div className="flex items-center justify-between mb-6">
         <div className="flex flex-col">
-          <Typography variant="cardTitle" className="text-[#fbf8f9] text-xl">
+          <Typography variant="cardTitle" className="text-nm-text text-xl">
             {weekStart.toLocaleString("en-US", {
               month: "long",
               year: "numeric",
             })}
           </Typography>
-          <Typography variant="caption" className="text-[#6f6878] mt-1">
+          <Typography variant="caption" className="text-nm-dim mt-1">
             Week of{" "}
             {weekStart.toLocaleDateString("en-US", {
               month: "short",
@@ -101,20 +101,20 @@ function CalendarWidgetImpl({
         <div className="flex gap-2">
           <button
             onClick={goToToday}
-            className="px-4 py-2 rounded-xl bg-[#19161c] border border-[#2b2630] text-[#aaa3b4] hover:text-[#fbf8f9] hover:bg-[#2b2630] transition-all flex items-center justify-center gap-2 text-sm font-medium"
+            className="px-4 py-2 rounded-xl bg-nm-raise border border-nm-edge text-nm-muted hover:text-nm-text hover:bg-nm-line transition-all flex items-center justify-center gap-2 text-sm font-medium"
           >
             <CalendarIcon size={16} />
             Today
           </button>
           <button
             onClick={prevWeek}
-            className="p-2 rounded-xl bg-[#19161c] border border-[#2b2630] text-[#aaa3b4] hover:text-[#fbf8f9] hover:bg-[#2b2630] transition-all"
+            className="p-2 rounded-xl bg-nm-raise border border-nm-edge text-nm-muted hover:text-nm-text hover:bg-nm-line transition-all"
           >
             <ChevronLeft size={20} />
           </button>
           <button
             onClick={nextWeek}
-            className="p-2 rounded-xl bg-[#19161c] border border-[#2b2630] text-[#aaa3b4] hover:text-[#fbf8f9] hover:bg-[#2b2630] transition-all"
+            className="p-2 rounded-xl bg-nm-raise border border-nm-edge text-nm-muted hover:text-nm-text hover:bg-nm-line transition-all"
           >
             <ChevronRight size={20} />
           </button>
@@ -152,17 +152,17 @@ function CalendarWidgetImpl({
               onClick={() => onSelectDate(dateObj)}
               className={`relative flex flex-col items-center justify-center p-4 rounded-2xl transition-all duration-300 border ${
                 isSelected
-                  ? "bg-[#ef2b3a] text-white border-[#ef2b3a] shadow-[0_0_20px_rgba(239,43,58,0.3)] scale-[1.02] z-10"
-                  : "bg-[#09080b] border-[#2b2630] text-[#fbf8f9] hover:bg-[#19161c] hover:border-[#443d4b]"
-              } ${isToday && !isSelected ? "border-[#ef2b3a]/50" : ""}`}
+                  ? "bg-nm-accent text-white border-nm-accent shadow-nm-glow scale-[1.02] z-10"
+                  : "bg-nm-deep border-nm-edge text-nm-text hover:bg-nm-raise hover:border-nm-faint"
+              } ${isToday && !isSelected ? "border-nm-accent/50" : ""}`}
             >
               <span
-                className={`text-[11px] font-bold uppercase tracking-wider mb-1 ${isSelected ? "text-black/60" : "text-[#6f6878]"}`}
+                className={`text-[11px] font-bold uppercase tracking-wider mb-1 ${isSelected ? "text-black/60" : "text-nm-dim"}`}
               >
                 {DAYS_OF_WEEK[index].substring(0, 3)}
               </span>
               <span
-                className={`text-2xl font-bold ${isSelected ? "text-black" : isToday ? "text-[#ef2b3a]" : "text-[#fbf8f9]"}`}
+                className={`text-2xl font-bold ${isSelected ? "text-black" : isToday ? "text-nm-accent" : "text-nm-text"}`}
               >
                 {dateObj.getDate()}
               </span>
@@ -180,7 +180,7 @@ function CalendarWidgetImpl({
                       <Lock
                         size={10}
                         className={
-                          isSelected ? "text-black/40" : "text-[#6f6878]"
+                          isSelected ? "text-black/40" : "text-nm-dim"
                         }
                       />
                     )}

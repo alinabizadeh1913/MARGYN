@@ -72,6 +72,17 @@ declare global {
 
       setRecordingShortcut: (isRecording: boolean) => void;
       onShortcutTriggered: (callback: (shortcut: string) => void) => () => void;
+      onRawKey?: (
+        callback: (k: {
+          key: string;
+          code: string;
+          ctrlKey: boolean;
+          altKey: boolean;
+          shiftKey: boolean;
+          metaKey: boolean;
+          repeat: boolean;
+        }) => void,
+      ) => () => void;
 
       savePdf: (
         data: Uint8Array,

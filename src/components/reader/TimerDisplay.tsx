@@ -53,17 +53,17 @@ export default function TimerDisplay() {
   const seconds = totalSeconds % 60;
 
   return (
-    <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#ef2b3a]/10 border border-[#ef2b3a]/30 rounded-full">
-      <Clock size={14} className="text-[#ef2b3a]" />
+    <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-nm-accent/10 border border-nm-accent/30 rounded-full">
+      <Clock size={14} className="text-nm-accent" />
       <Typography
         variant="button"
-        className="text-[#ef2b3a] font-mono tabular-nums"
+        className="text-nm-accent font-mono tabular-nums"
       >
         {String(minutes).padStart(2, "0")}:{String(seconds).padStart(2, "0")}
       </Typography>
       <button
         onClick={stopTimer}
-        className="text-[#ef2b3a]/60 hover:text-rose-500 transition-colors ml-0.5"
+        className="text-nm-accent/60 hover:text-rose-500 transition-colors ml-0.5"
         title="Stop timer"
       >
         <X size={12} />

@@ -11,7 +11,16 @@ import React, {
   ReactNode,
 } from "react";
 import { getSetting, setSetting } from "@/db";
-import { getKeyCode } from "@/lib/keys";
+import {
+  comboFromEvent,
+  canonicalCombo,
+  isTextEntryTarget,
+} from "@/lib/keys";
+
+// Bookkeeping that lets the DOM path and the Electron raw-key fallback path
+// cooperate without ever firing the same key press twice.
+const lastDomKey = { combo: "", t: 0 };
+const lastFallbackKey = { combo: "", t: 0 };
 
 export type ShortcutAction =
   | "pen"
@@ -93,7 +102,7 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
             const parsed = JSON.parse(saved);
             const normalized: Record<string, string> = {};
             for (const [k, v] of Object.entries(parsed)) {
-              if (typeof v === "string") normalized[k] = v.toLowerCase();
+              if (typeof v === "string") normalized[k] = canonicalCombo(v);
             }
             // migrate the old default (shift+delete) to ctrl+shift+delete
             if (normalized.clearAll === "shift+delete")
@@ -117,8 +126,9 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
 
   const updateShortcut = useCallback(
     async (action: ShortcutAction, keys: string) => {
+      const canon = canonicalCombo(keys);
       const isDuplicate = Object.entries(shortcuts).some(
-        ([k, v]) => k !== action && v.toLowerCase() === keys.toLowerCase(),
+        ([k, v]) => k !== action && canonicalCombo(v) === canon,
       );
 
       if (isDuplicate) {
@@ -128,7 +138,7 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
         };
       }
 
-      const updated = { ...shortcuts, [action]: keys };
+      const updated = { ...shortcuts, [action]: canon };
       setShortcuts(updated);
       await setSetting("shortcuts", JSON.stringify(updated));
       return { success: true };
@@ -156,70 +166,52 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
     };
   }, [isLoaded]);
 
+  // Fallback path: the Electron main process forwards EVERY key press it sees
+  // (before-input-event). If the DOM never delivered the same key (pen driver
+  // quirks while the pen is touching the screen, odd focus state, ...), the
+  // shortcut is dispatched from here instead.
+  useEffect(() => {
+    if (!isLoaded) return;
+    const off = window.electronAPI?.onRawKey?.((k) => {
+      if (k.repeat) return;
+      const combo = comboFromEvent(k);
+      if (!combo) return;
+      const arrivedAt = performance.now();
+      window.setTimeout(() => {
+        if (!isShortcutsEnabledRef.current) return;
+        if (
+          lastDomKey.combo === combo &&
+          Math.abs(lastDomKey.t - arrivedAt) < 200
+        )
+          return; // the DOM already saw (and handled) this key press
+        if (isTextEntryTarget(document.activeElement)) return;
+        lastFallbackKey.combo = combo;
+        lastFallbackKey.t = performance.now();
+        window.dispatchEvent(
+          new CustomEvent("margyn-shortcut", { detail: combo }),
+        );
+      }, 80);
+    });
+    return () => {
+      if (off) off();
+    };
+  }, [isLoaded]);
+
   useEffect(() => {
     if (!isLoaded) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      const pressedString = comboFromEvent(e);
+      if (!pressedString) return;
+
+      // Record BEFORE any early return so the fallback path never duplicates us.
+      lastDomKey.combo = pressedString;
+      lastDomKey.t = performance.now();
+
       if (!isShortcutsEnabledRef.current) return;
       if (e.defaultPrevented) return;
 
-      const target = e.target as HTMLElement;
-      const isInput =
-        target.tagName === "INPUT" ||
-        target.tagName === "TEXTAREA" ||
-        target.isContentEditable;
-
-      const keys: string[] = [];
-      if (e.ctrlKey || e.metaKey) keys.push("ctrl");
-      if (e.altKey) keys.push("alt");
-      if (e.shiftKey) keys.push("shift");
-
-      let key = getKeyCode(e);
-      if (key.startsWith("Key")) key = key.replace("Key", "").toLowerCase();
-      else if (key.startsWith("Digit")) key = key.replace("Digit", "");
-      else if (key.startsWith("Numpad")) key = key.replace("Numpad", "");
-      else if (key === "Delete") key = "delete";
-      else if (key === "Backspace") key = "backspace";
-      else if (key === "Space") key = "space";
-      else if (key === "Enter") key = "enter";
-      else if (key === "Tab") key = "tab";
-      else if (key === "PageUp")
-        key = "pageup"; // ✅ NEW
-      else if (key === "PageDown")
-        key = "pagedown"; // ✅ NEW
-      else if (key === "Equal") key = "equal";
-      else if (key === "Minus") key = "minus";
-      else key = key.toLowerCase();
-
-      key = key.toLowerCase();
-
-      if (
-        ![
-          "control",
-          "shift",
-          "alt",
-          "meta",
-          "controlleft",
-          "controlright",
-          "shiftleft",
-          "shiftright",
-          "altleft",
-          "altright",
-          "metaleft",
-          "metaright",
-        ].includes(key)
-      ) {
-        keys.push(key);
-      }
-
-      let pressedString = keys.join("+");
-
-      if (pressedString === "shift+equal") pressedString = "equal";
-      if (pressedString === "shift+minus") pressedString = "minus";
-
-      if (isInput && pressedString.toLowerCase() !== "ctrl+w") {
-        return;
-      }
+      if (isTextEntryTarget(e.target) && pressedString !== "ctrl+w") return;
 
       if (
         pressedString === "ctrl+o" ||
@@ -227,8 +219,8 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
         pressedString === "ctrl+n" ||
         pressedString === "ctrl+t" ||
         pressedString === "ctrl+tab" ||
-        pressedString === "ctrl+pagedown" || // ✅ NEW
-        pressedString === "ctrl+pageup" || // ✅ NEW
+        pressedString === "ctrl+pagedown" ||
+        pressedString === "ctrl+pageup" ||
         pressedString === "ctrl+enter" ||
         pressedString === "ctrl+shift+enter" ||
         pressedString === "ctrl+b" ||
@@ -236,17 +228,22 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
         pressedString === "ctrl+i" ||
         pressedString === "ctrl+e" ||
         pressedString === "equal" ||
-        pressedString === "minus" ||
-        pressedString === "add" ||
-        pressedString === "subtract"
+        pressedString === "minus"
       ) {
         e.preventDefault();
       }
 
-      const event = new CustomEvent("margyn-shortcut", {
-        detail: pressedString,
-      });
-      window.dispatchEvent(event);
+      // The fallback already fired this exact press (DOM event arrived late).
+      if (
+        lastFallbackKey.combo === pressedString &&
+        performance.now() - lastFallbackKey.t < 300
+      ) {
+        return;
+      }
+
+      window.dispatchEvent(
+        new CustomEvent("margyn-shortcut", { detail: pressedString }),
+      );
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -280,7 +277,7 @@ export function useShortcuts() {
 
 export function useShortcut(action: ShortcutAction, callback: () => void) {
   const { shortcuts } = useShortcuts();
-  const expectedKey = shortcuts[action];
+  const expectedKey = canonicalCombo(shortcuts[action]);
   const cbRef = useRef(callback);
 
   useEffect(() => {
@@ -289,7 +286,7 @@ export function useShortcut(action: ShortcutAction, callback: () => void) {
 
   useEffect(() => {
     const handleShortcut = (e: CustomEvent<string>) => {
-      if (e.detail === expectedKey) cbRef.current();
+      if (canonicalCombo(e.detail) === expectedKey) cbRef.current();
     };
     window.addEventListener("margyn-shortcut", handleShortcut as EventListener);
     return () =>

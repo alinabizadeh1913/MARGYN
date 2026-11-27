@@ -578,7 +578,7 @@ function createWindow() {
     minWidth: 1440,
     minHeight: 900,
     titleBarStyle: "hidden",
-    backgroundColor: "#09080b",
+    backgroundColor: "#1e1c24",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       nodeIntegration: false,
@@ -617,6 +617,27 @@ function createWindow() {
     ) {
       event.preventDefault();
       return;
+    }
+
+    // Forward every key press to the renderer as a FALLBACK path. Pen drivers
+    // (Vinsa / Huion / XP-Pen ...) inject keystrokes that, while the pen is in
+    // contact with the tablet, sometimes never reach the page's DOM
+    // `keydown` listeners. Here we see them regardless; the renderer
+    // de-duplicates against its own DOM events.
+    if (input.type === "keyDown") {
+      try {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send("raw-key", {
+            key: input.key,
+            code: input.code,
+            ctrlKey: !!input.control,
+            altKey: !!input.alt,
+            shiftKey: !!input.shift,
+            metaKey: !!input.meta,
+            repeat: !!input.isAutoRepeat,
+          });
+        }
+      } catch {}
     }
   });
 

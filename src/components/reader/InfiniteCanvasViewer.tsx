@@ -198,56 +198,56 @@ export default function InfiniteCanvasViewer({
     >
       {/* کنترل‌های شناور */}
       <div className="absolute top-8 right-8 flex flex-col gap-4 z-50">
-        <div className="bg-black/40 border border-white/20 p-2 rounded-2xl flex flex-col gap-1.5 shadow-xl transition-all duration-300 hover:bg-white hover:border-zinc-300 group/panel">
+        <div className="bg-nm-panel border border-nm-edge p-2 rounded-2xl flex flex-col gap-1.5 shadow-nm-raised transition-all duration-300 hover:bg-nm-raise group/panel">
           <button
             onClick={toggleFullscreen}
-            className="p-2.5 rounded-xl text-white/70 group-hover/panel:text-zinc-800 hover:bg-zinc-100 transition-all"
+            className="p-2.5 rounded-xl text-white/70 group-hover/panel:text-nm-text hover:bg-nm-raise transition-all"
             title="Fullscreen"
           >
             {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
           </button>
-          <div className="h-px w-full bg-white/20 group-hover/panel:bg-zinc-200 my-0.5" />
+          <div className="h-px w-full bg-white/20 group-hover/panel:bg-nm-line my-0.5" />
 
           <button
             onClick={() => setTool("pan")}
             className={`p-2.5 rounded-xl transition-all duration-200 flex items-center justify-center ${
               tool === "pan"
-                ? "text-[#ef2b3a] bg-zinc-100 shadow-[0_0_10px_rgba(239,43,58,0.3)]"
-                : "text-white/70 group-hover/panel:text-zinc-800 hover:bg-zinc-100"
+                ? "text-nm-accent bg-nm-raise shadow-nm-glow"
+                : "text-white/70 group-hover/panel:text-nm-text hover:bg-nm-raise"
             }`}
             title="Pan Tool (G)"
           >
             <Hand size={18} />
           </button>
 
-          <div className="h-px w-full bg-white/20 group-hover/panel:bg-zinc-200 my-0.5" />
+          <div className="h-px w-full bg-white/20 group-hover/panel:bg-nm-line my-0.5" />
           <ColorPicker
             color={canvasBg || "#ffffff"}
             onChange={onCanvasBgChange}
             trigger={
-              <div className="p-2.5 rounded-xl text-white/70 group-hover/panel:text-zinc-800 hover:bg-zinc-100 transition-all flex items-center justify-center">
+              <div className="p-2.5 rounded-xl text-white/70 group-hover/panel:text-nm-text hover:bg-nm-raise transition-all flex items-center justify-center">
                 <Palette size={18} />
               </div>
             }
           />
-          <div className="h-px w-full bg-white/20 group-hover/panel:bg-zinc-200 my-0.5" />
+          <div className="h-px w-full bg-white/20 group-hover/panel:bg-nm-line my-0.5" />
           <button
             onClick={() => changeScale(scale + 0.2)}
-            className="p-2.5 rounded-xl text-white/70 group-hover/panel:text-zinc-800 hover:bg-zinc-100 transition-all"
+            className="p-2.5 rounded-xl text-white/70 group-hover/panel:text-nm-text hover:bg-nm-raise transition-all"
             title="Zoom In"
           >
             <ZoomIn size={18} />
           </button>
           <button
             onClick={() => changeScale(scale - 0.2)}
-            className="p-2.5 rounded-xl text-white/70 group-hover/panel:text-zinc-800 hover:bg-zinc-100 transition-all"
+            className="p-2.5 rounded-xl text-white/70 group-hover/panel:text-nm-text hover:bg-nm-raise transition-all"
             title="Zoom Out"
           >
             <ZoomOut size={18} />
           </button>
           <button
             onClick={resetZoom}
-            className="p-2.5 rounded-xl text-white/70 group-hover/panel:text-zinc-800 hover:bg-zinc-100 transition-all"
+            className="p-2.5 rounded-xl text-white/70 group-hover/panel:text-nm-text hover:bg-nm-raise transition-all"
             title="Reset Zoom"
           >
             <RotateCcw size={18} />
@@ -257,7 +257,7 @@ export default function InfiniteCanvasViewer({
 
       {/* راهنمای pan */}
       {(panMode || isPanning) && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 bg-black/40 px-4 py-2 rounded-full border border-white/20 text-white/90 text-xs font-medium flex items-center gap-2 pointer-events-none">
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 bg-black/40 px-4 py-2 rounded-full border border-nm-edge text-white/90 text-xs font-medium flex items-center gap-2 pointer-events-none">
           <Hand size={14} />
           Drag to pan · Scroll to pan · Ctrl+Scroll to zoom · Space / pen button to hold-pan
         </div>

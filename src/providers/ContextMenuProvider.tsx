@@ -99,14 +99,14 @@ export function ContextMenuProvider({ children }: { children: ReactNode }) {
             key={menuKey}
             ref={menuRef}
             // ✅ حذف تمام کلاس‌های انیمیشن برای نمایش آنی (بدون تاخیر و پرش)
-            className="fixed z-[99999] min-w-[220px] bg-[#121015]/95 border border-[#2b2630] rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.8)] py-1.5"
+            className="fixed z-[99999] min-w-[220px] bg-nm-panel border border-nm-edge rounded-xl shadow-nm-float py-1.5"
             style={{ top: adjustedPos.y, left: adjustedPos.x }}
             onContextMenu={(e) => e.preventDefault()}
           >
             {items.map((item, index) => {
               if (item.separator) {
                 return (
-                  <div key={index} className="h-px bg-[#2b2630] my-1 mx-2" />
+                  <div key={index} className="h-px bg-nm-line my-1 mx-2" />
                 );
               }
 
@@ -125,7 +125,7 @@ export function ContextMenuProvider({ children }: { children: ReactNode }) {
                     ${
                       item.danger
                         ? "text-rose-500 hover:bg-rose-500/10"
-                        : "text-[#aaa3b4] hover:bg-[#2b2630] hover:text-[#fbf8f9]"
+                        : "text-nm-muted hover:bg-nm-line hover:text-nm-text"
                     }
                   `}
                 >
@@ -136,14 +136,14 @@ export function ContextMenuProvider({ children }: { children: ReactNode }) {
                         className={
                           item.danger
                             ? "text-rose-500"
-                            : "text-[#847d8e] group-hover:text-[#fbf8f9]"
+                            : "text-nm-dim group-hover:text-nm-text"
                         }
                       />
                     )}
                     <span className="font-medium">{item.label}</span>
                   </div>
                   {item.shortcut && (
-                    <span className="text-[10px] font-mono tracking-wider text-[#6f6878] uppercase ml-4">
+                    <span className="text-[10px] font-mono tracking-wider text-nm-dim uppercase ml-4">
                       {item.shortcut}
                     </span>
                   )}

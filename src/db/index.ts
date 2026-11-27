@@ -137,7 +137,7 @@ export async function saveDb(immediate = false) {
     if (
       !immediate &&
       typeof window !== "undefined" &&
-      performance.now() - ((window as any).__margynInkTs ?? -1e9) < 600
+      performance.now() - ((window as any).__margynInkTs ?? -1e9) < 1500
     ) {
       saveTimeout = setTimeout(performSave, 800);
       return;

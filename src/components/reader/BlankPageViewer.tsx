@@ -187,70 +187,70 @@ export default function BlankPageViewer({
       style={{ backgroundColor: canvasBg }}
     >
       <div className="absolute top-8 right-8 flex flex-col gap-4 z-50">
-        <div className="bg-black/40 border border-white/20 p-2 rounded-2xl flex flex-col gap-1.5 shadow-xl transition-all duration-300 hover:bg-white hover:border-zinc-300 group/panel">
+        <div className="bg-nm-panel border border-nm-edge p-2 rounded-2xl flex flex-col gap-1.5 shadow-nm-raised transition-all duration-300 hover:bg-nm-raise group/panel">
           <button
             onClick={toggleFullscreen}
-            className="p-2.5 rounded-xl text-white/70 group-hover/panel:text-zinc-800 hover:bg-zinc-100 transition-all duration-200"
+            className="p-2.5 rounded-xl text-white/70 group-hover/panel:text-nm-text hover:bg-nm-raise transition-all duration-200"
             title="Toggle Fullscreen"
           >
             {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
           </button>
-          <div className="h-px w-full bg-white/20 group-hover/panel:bg-zinc-200 my-0.5 transition-colors" />
+          <div className="h-px w-full bg-white/20 group-hover/panel:bg-nm-line my-0.5 transition-colors" />
           <ColorPicker
             color={canvasBg || "#ffffff"}
             onChange={onCanvasBgChange}
             trigger={
-              <div className="p-2.5 rounded-xl text-white/70 group-hover/panel:text-zinc-800 hover:bg-zinc-100 transition-all duration-200 flex items-center justify-center">
+              <div className="p-2.5 rounded-xl text-white/70 group-hover/panel:text-nm-text hover:bg-nm-raise transition-all duration-200 flex items-center justify-center">
                 <Palette size={18} />
               </div>
             }
           />
-          <div className="h-px w-full bg-white/20 group-hover/panel:bg-zinc-200 my-0.5 transition-colors" />
+          <div className="h-px w-full bg-white/20 group-hover/panel:bg-nm-line my-0.5 transition-colors" />
           <button
             onClick={() => changeScale(Math.min(3, scale + 0.2))}
-            className="p-2.5 rounded-xl text-white/70 group-hover/panel:text-zinc-800 hover:bg-zinc-100 transition-all duration-200"
+            className="p-2.5 rounded-xl text-white/70 group-hover/panel:text-nm-text hover:bg-nm-raise transition-all duration-200"
             title="Zoom In"
           >
             <ZoomIn size={18} />
           </button>
           <button
             onClick={() => changeScale(Math.max(0.5, scale - 0.2))}
-            className="p-2.5 rounded-xl text-white/70 group-hover/panel:text-zinc-800 hover:bg-zinc-100 transition-all duration-200"
+            className="p-2.5 rounded-xl text-white/70 group-hover/panel:text-nm-text hover:bg-nm-raise transition-all duration-200"
             title="Zoom Out"
           >
             <ZoomOut size={18} />
           </button>
           <button
             onClick={() => changeScale(1)}
-            className="p-2.5 rounded-xl text-white/70 group-hover/panel:text-zinc-800 hover:bg-zinc-100 transition-all duration-200"
+            className="p-2.5 rounded-xl text-white/70 group-hover/panel:text-nm-text hover:bg-nm-raise transition-all duration-200"
             title="Reset Zoom"
           >
             <RotateCcw size={18} />
           </button>
         </div>
 
-        <div className="bg-black/40 border border-white/20 p-2 rounded-2xl flex flex-col gap-1.5 shadow-xl items-center transition-all duration-300 hover:bg-white hover:border-zinc-300 group/panel">
+        <div className="bg-nm-panel border border-nm-edge p-2 rounded-2xl flex flex-col gap-1.5 shadow-nm-raised items-center transition-all duration-300 hover:bg-nm-raise group/panel">
           <button
             onClick={handlePrevPage}
             disabled={currentPage === 1}
             className={`p-2.5 rounded-xl transition-all duration-200 flex items-center justify-center 
               ${
                 currentPage === 1
-                  ? "text-white/30 group-hover/panel:text-zinc-400 cursor-not-allowed"
-                  : "text-white/70 group-hover/panel:text-zinc-800 hover:bg-zinc-100 active:scale-95"
+                  ? "text-white/30 group-hover/panel:text-nm-muted cursor-not-allowed"
+                  : "text-white/70 group-hover/panel:text-nm-text hover:bg-nm-raise active:scale-95"
               }`}
           >
             <ChevronUp size={20} />
           </button>
-          <div className="h-px w-full bg-white/20 group-hover/panel:bg-zinc-200 my-0.5 transition-colors" />
+          <div className="h-px w-full bg-white/20 group-hover/panel:bg-nm-line my-0.5 transition-colors" />
           <button
             onClick={handleNextPage}
             disabled={currentPage === initialPages}
             className={`p-2.5 rounded-xl transition-all duration-200 flex items-center justify-center 
               ${
                 currentPage === initialPages
-                  ? "text-white/30 group-hover/panel:text-zinc-400 cursor-not-allowed"
-                  : "text-white/70 group-hover/panel:text-zinc-800 hover:bg-zinc-100 active:scale-95"
+                  ? "text-white/30 group-hover/panel:text-nm-muted cursor-not-allowed"
+                  : "text-white/70 group-hover/panel:text-nm-text hover:bg-nm-raise active:scale-95"
               }`}
           >
             <ChevronDown size={20} />
@@ -260,7 +260,7 @@ export default function BlankPageViewer({
         {initialPages > 1 && (
           <button
             onClick={() => onDeletePage(currentPage)}
-            className="bg-black/40 border border-white/20 p-3 rounded-2xl shadow-xl transition-all duration-300 text-white/70 hover:text-rose-500 hover:bg-white hover:border-rose-200 flex items-center justify-center"
+            className="bg-black/40 border border-nm-edge p-3 rounded-2xl shadow-xl transition-all duration-300 text-white/70 hover:text-rose-500 hover:bg-white hover:border-rose-200 flex items-center justify-center"
             title="Delete This Page"
           >
             <Trash2 size={20} />
@@ -270,7 +270,7 @@ export default function BlankPageViewer({
         {onOpenNote && (
           <button
             onClick={onOpenNote}
-            className="bg-black/40 border border-white/20 p-3 rounded-2xl shadow-xl transition-all duration-300 text-white/70 hover:text-zinc-900 hover:bg-white hover:border-zinc-200 flex items-center justify-center"
+            className="bg-black/40 border border-nm-edge p-3 rounded-2xl shadow-xl transition-all duration-300 text-white/70 hover:text-nm-text hover:bg-nm-raise flex items-center justify-center"
             title="Page Notes (Ctrl+T)"
           >
             <Type size={20} />
@@ -284,14 +284,14 @@ export default function BlankPageViewer({
       >
         <div className="p-8 z-0">
           <div
-            className="relative shadow-2xl ring-1 ring-zinc-400 border border-zinc-300/50"
+            className="relative shadow-2xl ring-1 ring-nm-muted border border-nm-edge"
             style={{
               width: pageW,
               height: pageH,
               backgroundColor: canvasBg,
             }}
           >
-            <div className="absolute top-4 left-4 text-zinc-400 font-mono text-sm select-none opacity-50 z-20 pointer-events-none tabular-nums">
+            <div className="absolute top-4 left-4 text-nm-muted font-mono text-sm select-none opacity-50 z-20 pointer-events-none tabular-nums">
               {currentPage} / {initialPages}
             </div>
           </div>
@@ -319,11 +319,11 @@ export default function BlankPageViewer({
         <button
           onClick={handleAddPage}
           title="Add New Page"
-          className="flex items-center justify-center w-14 h-14 rounded-full bg-[#121015]/90 border border-[#2b2630] text-[#aaa3b4] hover:text-white hover:bg-[#19161c] hover:border-[#ef2b3a]/50 transition-all duration-300 shadow-[0_10px_30px_rgba(0,0,0,0.5)] group active:scale-95"
+          className="flex items-center justify-center w-14 h-14 rounded-full bg-nm-panel border border-nm-edge text-nm-muted hover:text-white hover:bg-nm-raise hover:border-nm-accent/50 transition-all duration-300 shadow-nm-float group active:scale-95"
         >
           <Plus
             size={24}
-            className="group-hover:text-[#ef2b3a] group-hover:scale-110 transition-all duration-300"
+            className="group-hover:text-nm-accent group-hover:scale-110 transition-all duration-300"
           />
         </button>
       </div>

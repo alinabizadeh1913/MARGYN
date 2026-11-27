@@ -54,6 +54,7 @@ import {
   type SelInfo,
 } from "./inkRender";
 import { highlightRects } from "./inkText";
+import type { PenCursorState } from "./useSoftPenCursor";
 import type {
   Anchor,
   Binding,
@@ -77,13 +78,29 @@ interface Options {
   onDeletePage?: () => void;
 }
 
-const SAVE_DELAY_MS = 500;
+/**
+ * Persisting = JSON.stringify of the page + SQLite UPDATE + whole-DB export + IPC.
+ * That is a synchronous hitch on the UI thread, so it must never land right
+ * when the user resumes writing (Persian handwriting pauses ~0.5-1 s between
+ * words/dots). Wait for a REAL idle gap instead.
+ */
+const SAVE_DELAY_MS = 1500;
+/** How long after the last ink input the app still counts as "inking". */
+const INK_IDLE_MS = 1500;
 const MIN_DIST2 = 0.3 * 0.3;
 /** Low-latency presentation for the ink canvases (set false if tearing is ever seen). */
 const LOW_LATENCY_CANVAS = true;
-/** Chromium delivers `pointerrawupdate` at the pen's native rate, not frame-aligned. */
+/**
+ * `pointerrawupdate` fires at the device rate (200-1000 Hz) and, as soon as a
+ * listener exists, wakes the main thread for EVERY mouse/pen move even while
+ * merely hovering. `getCoalescedEvents()` on the frame-aligned pointermove
+ * already carries exactly the same samples, so drawing once per frame gives the
+ * same ink with 3-5x fewer canvas flushes and no idle wake-ups.
+ * Flip to true only to experiment.
+ */
+const USE_RAW_PEN = false;
 const RAW_SUPPORTED =
-  typeof window !== "undefined" && "onpointerrawupdate" in window;
+  USE_RAW_PEN && typeof window !== "undefined" && "onpointerrawupdate" in window;
 /** Timestamp of the last ink input; background saves are deferred while inking. */
 function markInking() {
   if (typeof window !== "undefined")
@@ -91,7 +108,7 @@ function markInking() {
 }
 const isInkingNow = () =>
   typeof window !== "undefined" &&
-  performance.now() - ((window as any).__margynInkTs ?? -1e9) < 600;
+  performance.now() - ((window as any).__margynInkTs ?? -1e9) < INK_IDLE_MS;
 const MAX_HISTORY = 100;
 const MAX_PREDICTED = 3;
 const PREDICT_TTL_MS = 40;
@@ -487,7 +504,16 @@ export function useInkCanvas({
         timerRef.current = setTimeout(run, 400);
         return;
       }
-      flush();
+      timerRef.current = null;
+      const ric = (window as any).requestIdleCallback as
+        | ((cb: () => void, o?: { timeout: number }) => number)
+        | undefined;
+      // Run inside a real idle period (falls back to a plain call).
+      if (ric) ric(() => (isInkingNow() ? scheduleSaveRetry() : void flush()), { timeout: 2000 });
+      else void flush();
+    };
+    const scheduleSaveRetry = () => {
+      timerRef.current = setTimeout(run, 400);
     };
     timerRef.current = setTimeout(run, SAVE_DELAY_MS);
 
@@ -1050,12 +1076,34 @@ export function useInkCanvas({
     }
 
     const pad = X.size / 2 + 3;
-    X.headBox = {
-      x: Math.floor(x0 - pad),
-      y: Math.floor(y0 - pad),
-      w: Math.ceil(x1 - x0 + pad * 2) + 1,
-      h: Math.ceil(y1 - y0 + pad * 2) + 1,
-    };
+    let bx0 = Math.floor(x0 - pad);
+    let by0 = Math.floor(y0 - pad);
+    let bx1 = bx0 + Math.ceil(x1 - x0 + pad * 2) + 1;
+    let by1 = by0 + Math.ceil(y1 - y0 + pad * 2) + 1;
+
+    // Paint the pen icon INTO the canvas, hot-spot exactly on the ink tip (the
+    // predicted tip when there is one), in the same draw call as the ink.
+    const pc = (dynamicRef.current as unknown as {
+      __penCursor?: PenCursorState;
+    } | null)?.__penCursor;
+    if (pc && pc.inStroke) {
+      const bmp = pc.getBitmap(dpr());
+      if (bmp) {
+        const tipX = pred.length ? pred[pred.length - 2] : lx;
+        const tipY = pred.length ? pred[pred.length - 1] : ly;
+        // snap to whole device pixels so the bitmap stays razor sharp
+        const dd = dpr();
+        const ox = Math.round((tipX - pc.hx) * dd) / dd;
+        const oy = Math.round((tipY - pc.hy) * dd) / dd;
+        ctx.drawImage(bmp, ox, oy, 32, 32);
+        bx0 = Math.min(bx0, Math.floor(ox) - 1);
+        by0 = Math.min(by0, Math.floor(oy) - 1);
+        bx1 = Math.max(bx1, Math.ceil(ox + 32) + 1);
+        by1 = Math.max(by1, Math.ceil(oy + 32) + 1);
+      }
+    }
+
+    X.headBox = { x: bx0, y: by0, w: bx1 - bx0, h: by1 - by0 };
   }
 
   function drawShapePreview(X: ShapeState) {
@@ -1334,7 +1382,37 @@ export function useInkCanvas({
   }
 
   function down(e: React.PointerEvent<HTMLCanvasElement>) {
-    if (ix.current) return;
+    if (ix.current) {
+      // A pointerdown while a stroke is "active" means its pointerup/cancel was
+      // lost (driver glitch, focus change, pen leaving the digitiser range...).
+      // Never let that freeze writing: commit what we have and start fresh.
+      const old = ix.current as unknown as {
+        pid: number;
+        cx?: number;
+        cy?: number;
+      };
+      if (old.pid === e.pointerId || e.pointerType === "pen") {
+        const r0 = rectRef.current;
+        const sc = rectScaleRef.current || 1;
+        finish(
+          {
+            pointerId: old.pid,
+            clientX: r0 ? r0.left + (old.cx ?? 0) * sc : 0,
+            clientY: r0 ? r0.top + (old.cy ?? 0) * sc : 0,
+            shiftKey: false,
+            altKey: false,
+            pointerType: e.pointerType,
+            nativeEvent: {},
+            preventDefault: () => {},
+            stopPropagation: () => {},
+          } as unknown as React.PointerEvent<HTMLCanvasElement>,
+          true,
+        );
+        if (ix.current) ix.current = null;
+      } else {
+        return;
+      }
+    }
     if (e.pointerType === "mouse" && e.button !== 0) return;
     if (e.pointerType === "touch" && performance.now() < penUntil.current)
       return;
@@ -1386,6 +1464,14 @@ export function useInkCanvas({
           cy: y,
         };
         ix.current = X;
+        if (e.pointerType === "pen") {
+          const pc = (c as unknown as { __penCursor?: PenCursorState })
+            .__penCursor;
+          if (pc && pc.img) {
+            pc.active = () => ix.current?.kind === "pen";
+            pc.setStroke(true);
+          }
+        }
         drawPenHead(X, []);
         break;
       }
@@ -1864,6 +1950,9 @@ export function useInkCanvas({
           clearTimeout(X.predTimer);
           X.predTimer = null;
         }
+        (
+          dynamicRef.current as unknown as { __penCursor?: PenCursorState } | null
+        )?.__penCursor?.setStroke(false);
         const native = e.nativeEvent as PointerEvent & {
           getCoalescedEvents?: () => PointerEvent[];
         };
@@ -2298,6 +2387,18 @@ export function useInkCanvas({
       if (gid || prev.length > 0) {
         pushHistory(prev);
         if (gid) undoMarks.set(prev, gid);
+      }
+      // A stroke that is still being drawn (pen on the screen while the pen
+      // button triggers "clear") must be cancelled too, otherwise it would be
+      // committed again on pen-up and the page would not look cleared.
+      if (ix.current) {
+        const X = ix.current as { predTimer?: ReturnType<typeof setTimeout> | null };
+        if (X.predTimer) clearTimeout(X.predTimer);
+        ix.current = null;
+      }
+      if (previewRafRef.current) {
+        cancelAnimationFrame(previewRafRef.current);
+        previewRafRef.current = 0;
       }
       linesRef.current = [];
       selRef.current = new Set();

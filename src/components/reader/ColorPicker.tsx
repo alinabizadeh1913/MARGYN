@@ -226,7 +226,7 @@ export default function ColorPicker({
       ) : (
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className={`p-2.5 rounded-xl transition-all duration-200 flex items-center justify-center ${isOpen ? "bg-zinc-100 text-zinc-900" : "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100"}`}
+          className={`p-2.5 rounded-xl transition-all duration-200 flex items-center justify-center ${isOpen ? "bg-nm-raise text-nm-text" : "text-nm-muted hover:text-nm-text hover:bg-nm-raise"}`}
           title={title}
         >
           <Palette size={18} />
@@ -235,7 +235,7 @@ export default function ColorPicker({
 
       {isOpen && (
         <div
-          className={`absolute w-[260px] bg-gradient-to-br from-zinc-900 to-zinc-700 border border-zinc-600/50 rounded-2xl shadow-[0_15px_50px_rgba(0,0,0,0.8)] p-4 z-[99999] animate-in fade-in duration-200 ${
+          className={`absolute w-[260px] bg-nm-panel border border-nm-edge rounded-2xl shadow-nm-float p-4 z-[99999] animate-in fade-in duration-200 ${
             placement === "left"
               ? "top-1/2 right-[calc(100%+16px)] -translate-y-[30%] slide-in-from-right-2"
               : "top-[calc(100%+16px)] right-0 slide-in-from-top-2"
@@ -250,13 +250,13 @@ export default function ColorPicker({
             onPointerMove={(e) => {
               if (e.buttons === 1) handleSvUpdate(e);
             }}
-            className="relative w-full h-28 rounded-lg mb-4 cursor-crosshair overflow-hidden border border-white/10 shadow-inner"
+            className="relative w-full h-28 rounded-lg mb-4 cursor-crosshair overflow-hidden border border-nm-edge shadow-inner"
             style={{ backgroundColor: `hsl(${hsv.h}, 100%, 50%)` }}
           >
             <div className="absolute inset-0 bg-gradient-to-r from-white to-transparent" />
             <div className="absolute inset-0 bg-gradient-to-t from-black to-transparent" />
             <div
-              className="absolute w-3.5 h-3.5 rounded-full border-2 border-white shadow-[0_0_4px_rgba(0,0,0,0.5)] -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+              className="absolute w-3.5 h-3.5 rounded-full border-2 border-white shadow-nm-pop -translate-x-1/2 -translate-y-1/2 pointer-events-none"
               style={{
                 left: `${hsv.s}%`,
                 top: `${100 - hsv.v}%`,
@@ -274,7 +274,7 @@ export default function ColorPicker({
             onPointerMove={(e) => {
               if (e.buttons === 1) handleHueUpdate(e);
             }}
-            className="relative w-full h-3 rounded-full mb-4 cursor-pointer border border-white/10"
+            className="relative w-full h-3 rounded-full mb-4 cursor-pointer border border-nm-edge"
             style={{
               background:
                 "linear-gradient(to right, #ff0000 0%, #ffff00 17%, #00ff00 33%, #00ffff 50%, #0000ff 67%, #ff00ff 83%, #ff0000 100%)",
@@ -289,7 +289,7 @@ export default function ColorPicker({
             />
           </div>
 
-          <div className="text-[10px] font-bold text-zinc-400 mb-2 uppercase tracking-[0.1em]">
+          <div className="text-[10px] font-bold text-nm-muted mb-2 uppercase tracking-[0.1em]">
             Quick Presets
           </div>
           <div className="grid grid-cols-5 gap-2 mb-4">
@@ -297,7 +297,7 @@ export default function ColorPicker({
               <button
                 key={c}
                 onClick={() => updateColor(hexToHsv(c))}
-                className={`w-full aspect-square max-h-6 rounded-full border border-white/20 transition-all hover:scale-110 flex items-center justify-center ${color.toUpperCase() === c.toUpperCase() ? "ring-2 ring-[#ef2b3a] ring-offset-1 ring-offset-zinc-800" : ""}`}
+                className={`w-full aspect-square max-h-6 rounded-full border border-nm-edge transition-all hover:scale-110 flex items-center justify-center ${color.toUpperCase() === c.toUpperCase() ? "ring-2 ring-nm-accent ring-offset-1 ring-offset-zinc-800" : ""}`}
                 style={{ backgroundColor: c }}
               >
                 {color.toUpperCase() === c.toUpperCase() && (
@@ -314,20 +314,20 @@ export default function ColorPicker({
             ))}
           </div>
 
-          <div className="flex items-center gap-2 bg-black/40 border border-white/10 rounded-xl px-3 py-2 focus-within:border-[#ef2b3a]/70 transition-colors shadow-inner">
+          <div className="flex items-center gap-2 bg-black/40 border border-nm-edge rounded-xl px-3 py-2 focus-within:border-nm-accent/70 transition-colors shadow-inner">
             <button
               onClick={handleEyedropper}
-              className="text-zinc-400 hover:text-[#ef2b3a] transition-colors shrink-0"
+              className="text-nm-muted hover:text-nm-accent transition-colors shrink-0"
               title="Pick color from screen"
             >
               <Pipette size={16} />
             </button>
-            <span className="text-zinc-500 font-mono text-sm shrink-0">#</span>
+            <span className="text-nm-muted font-mono text-sm shrink-0">#</span>
             <input
               type="text"
               value={hexInput}
               onChange={(e) => handleHexInput(e.target.value)}
-              className="flex-1 w-full bg-transparent outline-none text-white font-mono text-sm uppercase placeholder:text-zinc-600"
+              className="flex-1 w-full bg-transparent outline-none text-white font-mono text-sm uppercase placeholder:text-nm-muted"
               maxLength={6}
               spellCheck={false}
               placeholder="HEX"

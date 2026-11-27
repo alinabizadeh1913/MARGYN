@@ -84,41 +84,151 @@
     "Space Grotesk", "YekanBakh", ui-sans-serif, system-ui, sans-serif;
   --titlebar-height: 40px;
 
-  /* MARGYN design tokens — Obsidian & Crimson */
-  --mg-bg: #09080b;
-  --mg-surface: #121015;
-  --mg-surface-2: #19161c;
-  --mg-border: #2b2630;
-  --mg-text: #fbf8f9;
-  --mg-muted: #aaa3b4;
-  --mg-accent: #ef2b3a;
-  --mg-accent-hot: #ff4d5a;
-  --mg-accent-deep: #9f1239;
-  --mg-ember: #ff7a45;
+  /* ---------- Soft UI palette (RGB channels, opacity-friendly) ---------- */
+  --nm-deep: 30 28 36; /* canvas / recessed wells      */
+  --nm-panel: 30 28 36; /* panels share the base colour */
+  --nm-raise: 36 34 43; /* hover / selected surfaces    */
+  --nm-line: 52 49 62; /* dividers, chips              */
+  --nm-text: 242 239 246;
+  --nm-muted: 172 166 186;
+  --nm-dim: 128 121 143;
+  --nm-faint: 92 86 106;
+  --nm-accent: 240 62 77;
+  --nm-hot: 255 107 120;
+  --nm-ember: 255 133 82;
+  --nm-deep-red: 159 18 57;
+
+  /* ---------- Light / dark shadow pair (the heart of neumorphism) ---------- */
+  --nm-hi: rgba(255, 255, 255, 0.05);
+  --nm-lo: rgba(8, 7, 12, 0.62);
+
+  --nm-raised: -7px -7px 16px var(--nm-hi), 8px 8px 18px var(--nm-lo);
+  --nm-raised-sm: -4px -4px 9px var(--nm-hi), 5px 5px 11px var(--nm-lo);
+  --nm-inset: inset 5px 5px 11px var(--nm-lo), inset -5px -5px 11px var(--nm-hi);
+  --nm-inset-sm: inset 3px 3px 7px var(--nm-lo), inset -3px -3px 7px var(--nm-hi);
+  --nm-float: -6px -6px 18px var(--nm-hi), 14px 18px 38px rgba(6, 5, 10, 0.72);
+  --nm-pop: 2px 2px 5px var(--nm-lo), -2px -2px 5px var(--nm-hi);
+  --nm-glow:
+    -4px -4px 10px var(--nm-hi), 5px 5px 12px var(--nm-lo),
+    0 0 18px -4px rgb(var(--nm-accent) / 0.5);
+  --nm-glow-sm: 0 0 8px rgb(var(--nm-accent) / 0.55);
+  --nm-glow-ok:
+    -4px -4px 10px var(--nm-hi), 5px 5px 12px var(--nm-lo),
+    0 0 16px -4px rgba(16, 185, 129, 0.45);
+  --nm-glow-warn:
+    -4px -4px 10px var(--nm-hi), 5px 5px 12px var(--nm-lo),
+    0 0 16px -4px rgba(245, 158, 11, 0.45);
+
   --mg-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* legacy aliases (kept so nothing referencing the old tokens breaks) */
+  --mg-bg: rgb(var(--nm-deep));
+  --mg-surface: rgb(var(--nm-panel));
+  --mg-surface-2: rgb(var(--nm-raise));
+  --mg-border: rgb(var(--nm-line));
+  --mg-text: rgb(var(--nm-text));
+  --mg-muted: rgb(var(--nm-muted));
+  --mg-accent: rgb(var(--nm-accent));
+  --mg-accent-hot: rgb(var(--nm-hot));
+  --mg-accent-deep: rgb(var(--nm-deep-red));
+  --mg-ember: rgb(var(--nm-ember));
 }
 
 html {
   overflow: hidden;
   font-family: var(--font-sans);
+  color-scheme: dark;
 }
 
 body {
   margin: 0;
   padding: 0;
   font-family: var(--font-sans);
-  background-color: #09080b;
-  /* Obsidian & Crimson: faint ember glow in two corners (static, GPU-cheap) */
-  background-image:
-    radial-gradient(900px 520px at 8% -8%, rgba(239, 43, 58, 0.1), transparent 62%),
-    radial-gradient(800px 520px at 104% 112%, rgba(255, 122, 69, 0.06), transparent 60%);
-  background-attachment: fixed;
+  /* Flat colour: no fixed gradients -> no repaint on scroll, minimum GPU. */
+  background-color: rgb(var(--nm-deep));
+  color: rgb(var(--nm-text));
   -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
+  text-rendering: optimizeSpeed;
 }
 
 * {
   box-sizing: border-box;
+}
+
+/* =========================================================
+   THEME ACCENTS — blue / red (default above) / yellow / orange / green
+   Each block re-tints the whole palette (base surfaces, text, accent).
+   Switching = one attribute change on <html>; no re-render needed.
+========================================================= */
+
+html[data-accent="blue"] {
+  --nm-deep: 26 30 42;
+  --nm-panel: 26 30 42;
+  --nm-raise: 32 37 51;
+  --nm-line: 46 53 72;
+  --nm-text: 238 242 251;
+  --nm-muted: 163 174 197;
+  --nm-dim: 117 129 155;
+  --nm-faint: 82 93 117;
+  --nm-accent: 59 130 246;
+  --nm-hot: 125 176 255;
+  --nm-ember: 56 189 248;
+  --nm-deep-red: 29 78 216;
+}
+
+html[data-accent="yellow"] {
+  --nm-deep: 34 31 25;
+  --nm-panel: 34 31 25;
+  --nm-raise: 41 37 29;
+  --nm-line: 60 54 42;
+  --nm-text: 251 247 236;
+  --nm-muted: 188 180 160;
+  --nm-dim: 140 132 114;
+  --nm-faint: 103 96 80;
+  --nm-accent: 234 179 8;
+  --nm-hot: 250 204 21;
+  --nm-ember: 245 158 11;
+  --nm-deep-red: 161 98 7;
+}
+
+html[data-accent="orange"] {
+  --nm-deep: 34 30 28;
+  --nm-panel: 34 30 28;
+  --nm-raise: 41 36 33;
+  --nm-line: 60 52 47;
+  --nm-text: 252 245 240;
+  --nm-muted: 190 177 168;
+  --nm-dim: 142 129 120;
+  --nm-faint: 104 93 85;
+  --nm-accent: 249 115 22;
+  --nm-hot: 251 146 60;
+  --nm-ember: 251 191 36;
+  --nm-deep-red: 194 65 12;
+}
+
+html[data-accent="green"] {
+  --nm-deep: 25 33 31;
+  --nm-panel: 25 33 31;
+  --nm-raise: 31 41 38;
+  --nm-line: 44 59 54;
+  --nm-text: 238 248 243;
+  --nm-muted: 164 186 176;
+  --nm-dim: 117 139 129;
+  --nm-faint: 82 103 93;
+  --nm-accent: 34 197 94;
+  --nm-hot: 74 222 128;
+  --nm-ember: 163 230 53;
+  --nm-deep-red: 21 128 61;
+}
+
+/* Yellow is too light for white labels: use a dark ink on accent fills */
+html[data-accent="yellow"] :is([class~="bg-nm-accent"], [class~="bg-nm-accent"] *) {
+  color: #1c1500;
+}
+
+/* Smooth, GPU-cheap cross-fade of the base colour when the theme changes */
+body {
+  transition: background-color 0.25s ease;
 }
 
 /* =========================================================
@@ -133,11 +243,12 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgb(var(--nm-line));
   border-radius: 10px;
+  box-shadow: inset 1px 1px 2px rgba(255, 255, 255, 0.06);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(239, 43, 58, 0.55);
+  background: rgb(var(--nm-accent) / 0.7);
 }
 
 .scrollbar-hide::-webkit-scrollbar {
@@ -194,13 +305,13 @@ body {
 ========================================================= */
 
 ::selection {
-  background: rgba(239, 43, 58, 0.45);
+  background: rgb(var(--nm-accent) / 0.45);
   color: #fff;
 }
 
 /* Keyboard / pen-hover focus ring */
 :where(button, [role="button"], a, input, select, textarea):focus-visible {
-  outline: 2px solid var(--mg-accent-hot);
+  outline: 2px solid rgb(var(--nm-hot) / 0.85);
   outline-offset: 2px;
   border-radius: inherit;
 }
@@ -215,7 +326,7 @@ button:not(:disabled),
   -webkit-tap-highlight-color: transparent;
 }
 button:not(:disabled):active {
-  scale: 0.96;
+  scale: 0.97;
 }
 
 /* Native form controls pick up the brand colour */
@@ -236,9 +347,95 @@ textarea {
 
 /* Subtle brand glow utility for primary surfaces */
 .mg-glow {
-  box-shadow:
-    0 0 0 1px rgba(239, 43, 58, 0.35),
-    0 10px 40px -12px rgba(239, 43, 58, 0.55);
+  box-shadow: var(--nm-glow);
+}
+
+
+/* =========================================================
+   SOFT UI (NEUMORPHISM) — role based surfaces
+   Static box-shadows only: no blur filters, no JS, no animation loops.
+   Lives in @layer components, so any explicit Tailwind `shadow-*`
+   utility on an element still wins.
+========================================================= */
+
+@layer components {
+  /* Raised surfaces: panels / cards / buttons */
+  [class~="bg-nm-panel"][class*="rounded"]:not([class*="rounded-full"]),
+  [class~="bg-nm-raise"][class*="rounded"]:not([class*="rounded-full"]) {
+    box-shadow: var(--nm-raised-sm);
+  }
+  [class~="bg-nm-panel"][class*="rounded-2xl"],
+  [class~="bg-nm-panel"][class*="rounded-3xl"],
+  [class~="bg-nm-raise"][class*="rounded-2xl"],
+  [class~="bg-nm-raise"][class*="rounded-3xl"] {
+    box-shadow: var(--nm-raised);
+  }
+
+  /* Recessed wells: icon holders, info bars, read-outs */
+  [class~="bg-nm-deep"][class*="rounded"]:not([class*="rounded-full"]) {
+    box-shadow: var(--nm-inset-sm);
+  }
+
+  /* Primary (accent) buttons: raised with a soft coloured halo */
+  [class~="bg-nm-accent"][class*="rounded"]:not([class*="rounded-full"]) {
+    box-shadow: var(--nm-raised-sm), 0 0 14px -5px rgb(var(--nm-accent) / 0.55);
+  }
+
+  /* Chips / tracks */
+  [class~="bg-nm-line"][class*="rounded"]:not([class*="rounded-full"]) {
+    box-shadow: var(--nm-pop);
+  }
+
+  /* Text fields are always recessed */
+  :is(input, textarea, select):not([type="range"], [type="checkbox"], [type="radio"], [type="color"]):not([class~="bg-transparent"]) {
+    background-color: rgb(var(--nm-deep));
+    box-shadow: var(--nm-inset-sm);
+    border-color: transparent;
+  }
+
+  /* Pressed state: the surface sinks into the base */
+  button:not(:disabled):active:not([class~="bg-transparent"]):not([class*="rounded-full"]) {
+    box-shadow: var(--nm-inset-sm);
+  }
+
+  /* Soften hover fills so raised surfaces keep their depth */
+  button:not(:disabled):hover {
+    transition-property: color, background-color, box-shadow, scale, opacity;
+  }
+}
+
+/* Range sliders: recessed track, raised knob */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 8px;
+  border-radius: 999px;
+  background: rgb(var(--nm-deep));
+  box-shadow: var(--nm-inset-sm);
+  outline: none;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgb(var(--nm-raise));
+  box-shadow: var(--nm-pop), 0 0 0 3px rgb(var(--nm-accent) / 0.55);
+  cursor: pointer;
+  border: 0;
+}
+
+/* Native checkbox / radio: sit on a soft well */
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: rgb(var(--nm-accent));
+}
+
+/* Overlays: slightly lighter dim, no blur */
+[class*="bg-black/6"],
+[class*="bg-black/5"] {
+  background-color: rgba(10, 9, 14, 0.62);
 }
 
 @media (prefers-reduced-motion: reduce) {

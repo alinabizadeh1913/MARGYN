@@ -1443,11 +1443,15 @@ export function AppContent() {
       }
       setIsDirty(true);
       if (stateRef.current.activeTabId) {
-        setOpenTabs((prev) =>
-          prev.map((t) =>
-            t.id === stateRef.current.activeTabId ? { ...t, isDirty: true } : t,
-          ),
-        );
+        const id = stateRef.current.activeTabId;
+        // PERF: this event fires after EVERY stroke and every save. Returning the
+        // same array when the tab is already dirty avoids re-rendering the whole
+        // (huge) AppContent tree each time.
+        setOpenTabs((prev) => {
+          const t = prev.find((x) => x.id === id);
+          if (!t || t.isDirty) return prev;
+          return prev.map((x) => (x.id === id ? { ...x, isDirty: true } : x));
+        });
       }
     };
     window.addEventListener("margyn-data-changed", handleDataChange);
@@ -2164,7 +2168,7 @@ export function AppContent() {
       <SplashScreen isAppReady={isAppReady} />
 
       {isAppReady && (
-        <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#09080b]">
+        <div className="flex flex-col h-screen w-screen overflow-hidden bg-nm-deep">
           <AppHeader
             view={view}
             setView={setView}

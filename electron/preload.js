@@ -72,6 +72,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Shortcuts
   setRecordingShortcut: (isRecording) =>
     ipcRenderer.send("set-recording-shortcut", isRecording),
+  onRawKey: (callback) => {
+    const listener = (event, k) => callback(k);
+    ipcRenderer.on("raw-key", listener);
+    return () => ipcRenderer.removeListener("raw-key", listener);
+  },
   onShortcutTriggered: (callback) => {
     const listener = (event, shortcut) => callback(shortcut);
     ipcRenderer.on("shortcut-triggered", listener);

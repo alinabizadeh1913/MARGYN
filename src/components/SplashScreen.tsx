@@ -76,7 +76,7 @@ export default function SplashScreen({ isAppReady }: SplashScreenProps) {
 
   return (
     <div
-      className={`fixed inset-0 z-[99999] bg-[#09080b] flex flex-col items-center justify-center overflow-hidden transition-all duration-700 cubic-bezier(0.4, 0, 0.2, 1) ${
+      className={`fixed inset-0 z-[99999] bg-nm-deep flex flex-col items-center justify-center overflow-hidden transition-all duration-700 cubic-bezier(0.4, 0, 0.2, 1) ${
         isFadingOut
           ? "opacity-0 scale-[1.02] pointer-events-none blur-md"
           : "opacity-100 scale-100 blur-0"
@@ -86,12 +86,12 @@ export default function SplashScreen({ isAppReady }: SplashScreenProps) {
 
       <div className="absolute inset-0 bg-[linear-gradient(to_right,#2b2630_1px,transparent_1px),linear-gradient(to_bottom,#2b2630_1px,transparent_1px)] bg-[size:64px_64px] opacity-[0.02] pointer-events-none" />
 
-      <div className="absolute top-0 left-0 w-[600px] h-[600px] bg-[#ef2b3a]/10 rounded-full blur-[150px] -translate-x-1/2 -translate-y-1/2 pointer-events-none" />
-      <div className="absolute bottom-0 right-0 w-[600px] h-[600px] bg-[#ff7a45]/10 rounded-full blur-[150px] translate-x-1/2 translate-y-1/2 pointer-events-none" />
-      <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-[#f43f5e]/5 rounded-full blur-[120px] translate-x-1/3 -translate-y-1/3 pointer-events-none" />
+      <div className="absolute top-0 left-0 w-[600px] h-[600px] bg-nm-accent/10 rounded-full blur-[150px] -translate-x-1/2 -translate-y-1/2 pointer-events-none" />
+      <div className="absolute bottom-0 right-0 w-[600px] h-[600px] bg-nm-ember/10 rounded-full blur-[150px] translate-x-1/2 translate-y-1/2 pointer-events-none" />
+      <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-nm-hot/5 rounded-full blur-[120px] translate-x-1/3 -translate-y-1/3 pointer-events-none" />
       <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-[#10b981]/5 rounded-full blur-[120px] -translate-x-1/3 translate-y-1/3 pointer-events-none" />
 
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-[#ef2b3a]/5 rounded-full blur-[150px] pointer-events-none" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-nm-accent/5 rounded-full blur-[150px] pointer-events-none" />
 
       <div className="absolute top-0 inset-x-0 h-40 bg-gradient-to-b from-black/60 to-transparent pointer-events-none" />
       <div className="absolute bottom-0 inset-x-0 h-40 bg-gradient-to-t from-black/60 to-transparent pointer-events-none" />
@@ -100,13 +100,13 @@ export default function SplashScreen({ isAppReady }: SplashScreenProps) {
       <div className="relative z-10 flex flex-col items-center animate-in fade-in zoom-in-[0.98] duration-1000 ease-out fill-mode-both">
         {/* Logo Section */}
         <div className="relative mb-10 group">
-          <div className="absolute inset-0 bg-[#ef2b3a]/30 rounded-full blur-2xl animate-[glow-breathe_4s_ease-in-out_infinite]" />
+          <div className="absolute inset-0 bg-nm-accent/30 rounded-full blur-2xl animate-[glow-breathe_4s_ease-in-out_infinite]" />
 
           <div className="relative animate-[float_6s_ease-in-out_infinite]">
             <img
               src="/logo.png"
               alt="MARGYN Logo"
-              className="w-32 h-32 object-contain relative z-10 drop-shadow-[0_0_20px_rgba(239,43,58,0.3)]"
+              className="w-32 h-32 object-contain relative z-10 drop-shadow-nm-glow"
             />
           </div>
         </div>
@@ -118,21 +118,21 @@ export default function SplashScreen({ isAppReady }: SplashScreenProps) {
           </h1>
 
           <div className="flex items-center gap-4">
-            <div className="w-8 h-px bg-gradient-to-r from-transparent to-[#ef2b3a]/50" />
-            <p className="text-[#847d8e] text-[10px] font-bold tracking-[0.5em] uppercase pl-[0.5em]">
+            <div className="w-8 h-px bg-gradient-to-r from-transparent to-nm-accent/50" />
+            <p className="text-nm-dim text-[10px] font-bold tracking-[0.5em] uppercase pl-[0.5em]">
               Mindful Reading Workspace
             </p>
-            <div className="w-8 h-px bg-gradient-to-l from-transparent to-[#ef2b3a]/50" />
+            <div className="w-8 h-px bg-gradient-to-l from-transparent to-nm-accent/50" />
           </div>
         </div>
 
         {/* ================= PROGRESS BAR SECTION ================= */}
         <div className="w-full max-w-md flex flex-col gap-3">
-          <div className="relative w-full h-2 bg-[#121015] rounded-full overflow-hidden border border-white/5 shadow-inner">
+          <div className="relative w-full h-2 bg-nm-panel rounded-full overflow-hidden border border-nm-edge shadow-inner">
             <div className="absolute inset-0 bg-[linear-gradient(90deg,transparent_0%,rgba(255,255,255,0.03)_50%,transparent_100%)] bg-[length:200%_100%] animate-[shimmer_2s_infinite]" />
 
             <div
-              className="absolute top-0 left-0 h-full bg-gradient-to-r from-[#ef2b3a] via-[#dc2626] to-[#9f1239] rounded-full transition-all duration-300 ease-out relative"
+              className="absolute top-0 left-0 h-full bg-gradient-to-r from-nm-accent via-[#dc2626] to-nm-deep-red rounded-full transition-all duration-300 ease-out relative"
               style={{ width: `${progress}%` }}
             >
               <div className="absolute right-0 top-0 bottom-0 w-8 bg-white blur-[6px] opacity-80" />
@@ -145,10 +145,10 @@ export default function SplashScreen({ isAppReady }: SplashScreenProps) {
               {progress < 100 ? (
                 <>
                   <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#ef2b3a] opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-[#ef2b3a]"></span>
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-nm-accent opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-nm-accent"></span>
                   </span>
-                  <span className="text-[#aaa3b4] text-[11px] font-medium tracking-wide">
+                  <span className="text-nm-muted text-[11px] font-medium tracking-wide">
                     {LOADING_PHRASES[phraseIndex]}
                   </span>
                 </>
@@ -164,9 +164,9 @@ export default function SplashScreen({ isAppReady }: SplashScreenProps) {
               )}
             </div>
 
-            <span className="text-[#fbf8f9] text-xs font-mono font-bold tabular-nums tracking-wider">
+            <span className="text-nm-text text-xs font-mono font-bold tabular-nums tracking-wider">
               {progress}
-              <span className="text-[#6f6878] text-[10px] ml-0.5">%</span>
+              <span className="text-nm-dim text-[10px] ml-0.5">%</span>
             </span>
           </div>
         </div>
@@ -175,7 +175,7 @@ export default function SplashScreen({ isAppReady }: SplashScreenProps) {
       {/* ================= FOOTER ================= */}
       <div className="absolute bottom-8 flex flex-col items-center gap-2">
         <div className="w-12 h-px bg-white/10" />
-        <div className="text-[#443d4b] text-[9px] tracking-[0.2em] font-mono text-center">
+        <div className="text-nm-faint text-[9px] tracking-[0.2em] font-mono text-center">
           © 2026 ALI NABIZADEH · ALL RIGHTS RESERVED
         </div>
       </div>
