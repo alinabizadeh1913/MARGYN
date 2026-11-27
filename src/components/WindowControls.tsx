@@ -27,7 +27,7 @@ export default function WindowControls() {
       {/* Minimize */}
       <button
         onClick={() => window.electronAPI?.minimize()}
-        className="h-full px-4 flex items-center justify-center text-[#a1a1aa] hover:bg-white/10 hover:text-white transition-colors duration-200 cursor-pointer group"
+        className="h-full px-4 flex items-center justify-center text-[#aaa3b4] hover:bg-white/10 hover:text-white transition-colors duration-200 cursor-pointer group"
         title="Minimize"
       >
         <svg
@@ -44,7 +44,7 @@ export default function WindowControls() {
       {/* Maximize / Restore */}
       <button
         onClick={handleMaximizeRestore}
-        className="h-full px-4 flex items-center justify-center text-[#a1a1aa] hover:bg-white/10 hover:text-white transition-colors duration-200 cursor-pointer group"
+        className="h-full px-4 flex items-center justify-center text-[#aaa3b4] hover:bg-white/10 hover:text-white transition-colors duration-200 cursor-pointer group"
         title={isMaximized ? "Restore" : "Maximize"}
       >
         {isMaximized ? (
@@ -84,7 +84,7 @@ export default function WindowControls() {
       {/* Close */}
       <button
         onClick={() => window.electronAPI?.close()}
-        className="h-full px-4 flex items-center justify-center text-[#a1a1aa] hover:bg-rose-600 hover:text-white transition-colors duration-200 cursor-pointer group"
+        className="h-full px-4 flex items-center justify-center text-[#aaa3b4] hover:bg-rose-600 hover:text-white transition-colors duration-200 cursor-pointer group"
         title="Close"
       >
         <svg

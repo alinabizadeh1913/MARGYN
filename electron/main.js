@@ -13,6 +13,16 @@ const fs = require("fs");
 const crypto = require("crypto");
 const { pathToFileURL } = require("url");
 
+// PERF: GPU raster / zero-copy keeps canvas + compositing off the CPU; the
+// disabled features remove background services this app never uses.
+app.commandLine.appendSwitch("enable-gpu-rasterization");
+app.commandLine.appendSwitch("enable-zero-copy");
+app.commandLine.appendSwitch(
+  "disable-features",
+  "HardwareMediaKeyHandling,MediaSessionService,Translate,AutofillServerCommunication,OptimizationHints",
+);
+app.commandLine.appendSwitch("disable-renderer-accessibility");
+
 let mainWindow = null;
 let forceQuit = false;
 let isRecordingShortcut = false;
@@ -568,7 +578,7 @@ function createWindow() {
     minWidth: 1440,
     minHeight: 900,
     titleBarStyle: "hidden",
-    backgroundColor: "#09090b",
+    backgroundColor: "#09080b",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       nodeIntegration: false,
@@ -576,6 +586,10 @@ function createWindow() {
       sandbox: false,
       webSecurity: true,
       devTools: false,
+      spellcheck: false,
+      backgroundThrottling: true,
+      v8CacheOptions: "code",
+      enableWebSQL: false,
     },
     show: false,
   });

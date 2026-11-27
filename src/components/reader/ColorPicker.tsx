@@ -14,14 +14,14 @@ declare global {
 const PRESET_COLORS = [
   "#ffffff",
   "#f4f4f5",
-  "#d4d4d8",
-  "#71717a",
-  "#09090b",
+  "#d9d3df",
+  "#847d8e",
+  "#09080b",
   "#f43f5e",
   "#f59e0b",
   "#10b981",
   "#38bdf8",
-  "#a855f7",
+  "#ff7a45",
 ];
 
 function hexToHsv(hex: string) {
@@ -297,14 +297,14 @@ export default function ColorPicker({
               <button
                 key={c}
                 onClick={() => updateColor(hexToHsv(c))}
-                className={`w-full aspect-square max-h-6 rounded-full border border-white/20 transition-all hover:scale-110 flex items-center justify-center ${color.toUpperCase() === c.toUpperCase() ? "ring-2 ring-[#38bdf8] ring-offset-1 ring-offset-zinc-800" : ""}`}
+                className={`w-full aspect-square max-h-6 rounded-full border border-white/20 transition-all hover:scale-110 flex items-center justify-center ${color.toUpperCase() === c.toUpperCase() ? "ring-2 ring-[#ef2b3a] ring-offset-1 ring-offset-zinc-800" : ""}`}
                 style={{ backgroundColor: c }}
               >
                 {color.toUpperCase() === c.toUpperCase() && (
                   <Check
                     size={12}
                     className={
-                      c === "#ffffff" || c === "#f4f4f5" || c === "#d4d4d8"
+                      c === "#ffffff" || c === "#f4f4f5" || c === "#d9d3df"
                         ? "text-black"
                         : "text-white"
                     }
@@ -314,10 +314,10 @@ export default function ColorPicker({
             ))}
           </div>
 
-          <div className="flex items-center gap-2 bg-black/40 border border-white/10 rounded-xl px-3 py-2 focus-within:border-[#38bdf8]/70 transition-colors shadow-inner">
+          <div className="flex items-center gap-2 bg-black/40 border border-white/10 rounded-xl px-3 py-2 focus-within:border-[#ef2b3a]/70 transition-colors shadow-inner">
             <button
               onClick={handleEyedropper}
-              className="text-zinc-400 hover:text-[#38bdf8] transition-colors shrink-0"
+              className="text-zinc-400 hover:text-[#ef2b3a] transition-colors shrink-0"
               title="Pick color from screen"
             >
               <Pipette size={16} />

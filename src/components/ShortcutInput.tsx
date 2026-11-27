@@ -1,5 +1,6 @@
 "use client";
 
+import { getKeyCode } from "@/lib/keys";
 import React, { useState, useEffect, useRef } from "react";
 import Typography from "@/typography";
 
@@ -31,7 +32,7 @@ export default function ShortcutInput({
       if (e.altKey) keys.push("alt");
       if (e.shiftKey) keys.push("shift");
 
-      let key = e.code;
+      let key = getKeyCode(e);
       if (key.startsWith("Key")) key = key.replace("Key", "").toLowerCase();
       else if (key.startsWith("Digit")) key = key.replace("Digit", "");
       else if (key.startsWith("Numpad")) key = key.replace("Numpad", "");
@@ -88,7 +89,7 @@ export default function ShortcutInput({
           ? "bg-rose-500/20 border-rose-500 text-rose-500 animate-shake"
           : isRecording
             ? "bg-emerald-500/20 border-emerald-500 text-emerald-500 animate-pulse"
-            : "bg-[#18181b] border-[#27272a] text-[#a1a1aa] hover:border-[#52525b]"
+            : "bg-[#19161c] border-[#2b2630] text-[#aaa3b4] hover:border-[#6f6878]"
       }`}
     >
       {isRecording ? (

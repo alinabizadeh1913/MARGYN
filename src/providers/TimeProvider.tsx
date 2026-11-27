@@ -15,7 +15,7 @@ import React, {
    High-performance, granular time source.
 
    Design:
-   - One rAF-driven ticker, auto-stops when nobody subscribes.
+   - One timeout-driven ticker, auto-stops when nobody subscribes.
    - Three independent subscription channels:
        * useNowSecond()  → once per second  (live countdowns)
        * useNowMinute()  → once per minute  (calendar, 7-day locks)
@@ -26,7 +26,7 @@ import React, {
 ========================================================= */
 
 let offsetMs = 0;
-let rafId = 0;
+let timerId: ReturnType<typeof setTimeout> | 0 = 0;
 let lastSecond = 0;
 let lastMinute = 0;
 
@@ -37,6 +37,13 @@ const offsetListeners = new Set<() => void>();
 const emitSecond = () => secondListeners.forEach((l) => l());
 const emitMinute = () => minuteListeners.forEach((l) => l());
 const emitOffset = () => offsetListeners.forEach((l) => l());
+
+// PERF: one wake-up per second, aligned to the second boundary
+// (was a 60 fps requestAnimationFrame loop running forever).
+const schedule = () => {
+  const now = Date.now() + offsetMs;
+  timerId = setTimeout(tick, 1000 - (now % 1000) + 5);
+};
 
 const tick = () => {
   const now = Date.now() + offsetMs;
@@ -50,21 +57,21 @@ const tick = () => {
       emitMinute();
     }
   }
-  rafId = requestAnimationFrame(tick);
+  schedule();
 };
 
 const start = () => {
-  if (rafId) return;
+  if (timerId) return;
   const now = Date.now() + offsetMs;
   lastSecond = Math.floor(now / 1000);
   lastMinute = Math.floor(now / 60000);
-  rafId = requestAnimationFrame(tick);
+  schedule();
 };
 
 const stop = () => {
-  if (!rafId) return;
-  cancelAnimationFrame(rafId);
-  rafId = 0;
+  if (!timerId) return;
+  clearTimeout(timerId);
+  timerId = 0;
 };
 
 const subscribeSecond = (cb: () => void) => {

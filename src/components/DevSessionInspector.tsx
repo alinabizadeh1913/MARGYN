@@ -87,8 +87,8 @@ export default function DevSessionInspector() {
   };
 
   return (
-    <div className="bg-[#121214] border border-amber-500/30 rounded-3xl p-6 mt-10 shadow-[0_0_30px_rgba(245,158,11,0.05)]">
-      <div className="flex items-center justify-between mb-6 pb-4 border-b border-[#27272a]">
+    <div className="bg-[#121015] border border-amber-500/30 rounded-3xl p-6 mt-10 shadow-[0_0_30px_rgba(245,158,11,0.05)]">
+      <div className="flex items-center justify-between mb-6 pb-4 border-b border-[#2b2630]">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center">
             <Database className="text-amber-500" size={20} />
@@ -97,7 +97,7 @@ export default function DevSessionInspector() {
             <Typography variant="cardTitle" className="text-amber-500">
               Developer Mode: Session Inspector
             </Typography>
-            <Typography variant="caption" className="text-[#a1a1aa]">
+            <Typography variant="caption" className="text-[#aaa3b4]">
               Temporary tool to verify database logic.
             </Typography>
           </div>
@@ -112,7 +112,7 @@ export default function DevSessionInspector() {
           </button>
           <button
             onClick={fetchSessions}
-            className="p-2 text-[#a1a1aa] hover:text-white bg-[#18181b] border border-[#27272a] rounded-lg transition-colors"
+            className="p-2 text-[#aaa3b4] hover:text-white bg-[#19161c] border border-[#2b2630] rounded-lg transition-colors"
             title="Refresh"
           >
             <RefreshCw size={16} className={isLoading ? "animate-spin" : ""} />
@@ -125,13 +125,13 @@ export default function DevSessionInspector() {
           <div className="w-6 h-6 border-2 border-amber-500/30 border-t-amber-500 rounded-full animate-spin"></div>
         </div>
       ) : data.length === 0 ? (
-        <div className="text-center py-10 text-[#52525b]">
+        <div className="text-center py-10 text-[#6f6878]">
           No sessions found in the database.
         </div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-[#a1a1aa]">
-            <thead className="text-xs uppercase bg-[#18181b] text-[#52525b]">
+          <table className="w-full text-left text-sm text-[#aaa3b4]">
+            <thead className="text-xs uppercase bg-[#19161c] text-[#6f6878]">
               <tr>
                 <th className="px-4 py-3 rounded-tl-lg">Status</th>
                 <th className="px-4 py-3">Start Time</th>
@@ -142,7 +142,7 @@ export default function DevSessionInspector() {
                 <th className="px-4 py-3 text-right rounded-tr-lg">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#27272a]">
+            <tbody className="divide-y divide-[#2b2630]">
               {data.map((session) => {
                 const isActive = !session.endTime;
                 const isLocked =
@@ -152,7 +152,7 @@ export default function DevSessionInspector() {
                 return (
                   <tr
                     key={session.id}
-                    className="hover:bg-[#18181b]/50 transition-colors"
+                    className="hover:bg-[#19161c]/50 transition-colors"
                   >
                     <td className="px-4 py-3">
                       {isActive ? (
@@ -160,11 +160,11 @@ export default function DevSessionInspector() {
                           Active
                         </span>
                       ) : isLocked ? (
-                        <span className="px-2 py-1 bg-[#27272a] text-[#a1a1aa] rounded-md text-xs font-bold">
+                        <span className="px-2 py-1 bg-[#2b2630] text-[#aaa3b4] rounded-md text-xs font-bold">
                           Locked
                         </span>
                       ) : (
-                        <span className="px-2 py-1 bg-[#38bdf8]/10 text-[#38bdf8] rounded-md text-xs font-bold">
+                        <span className="px-2 py-1 bg-[#ef2b3a]/10 text-[#ef2b3a] rounded-md text-xs font-bold">
                           Unlocked
                         </span>
                       )}
@@ -179,7 +179,7 @@ export default function DevSessionInspector() {
                     </td>
                     <td className="px-4 py-3 text-center font-mono">
                       {session.startPage}{" "}
-                      <span className="text-[#52525b]">→</span>{" "}
+                      <span className="text-[#6f6878]">→</span>{" "}
                       {session.endPage || "?"}
                     </td>
                     <td className="px-4 py-3 text-center font-mono font-bold text-amber-500">
@@ -192,14 +192,14 @@ export default function DevSessionInspector() {
                       <div className="flex items-center justify-end gap-2">
                         <button
                           onClick={() => handleTimeTravel(session.id)}
-                          className="p-1.5 text-[#a1a1aa] hover:text-amber-500 hover:bg-amber-500/10 rounded-md transition-colors"
+                          className="p-1.5 text-[#aaa3b4] hover:text-amber-500 hover:bg-amber-500/10 rounded-md transition-colors"
                           title="Time Travel (Make it 8 days old)"
                         >
                           <FastForward size={16} />
                         </button>
                         <button
                           onClick={() => handleDelete(session.id)}
-                          className="p-1.5 text-[#a1a1aa] hover:text-rose-500 hover:bg-rose-500/10 rounded-md transition-colors"
+                          className="p-1.5 text-[#aaa3b4] hover:text-rose-500 hover:bg-rose-500/10 rounded-md transition-colors"
                           title="Delete Session"
                         >
                           <Trash2 size={16} />

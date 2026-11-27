@@ -187,7 +187,7 @@ export default function BlankPageViewer({
       style={{ backgroundColor: canvasBg }}
     >
       <div className="absolute top-8 right-8 flex flex-col gap-4 z-50">
-        <div className="bg-black/20 backdrop-blur-xl border border-white/20 p-2 rounded-2xl flex flex-col gap-1.5 shadow-xl transition-all duration-300 hover:bg-white hover:border-zinc-300 group/panel">
+        <div className="bg-black/40 border border-white/20 p-2 rounded-2xl flex flex-col gap-1.5 shadow-xl transition-all duration-300 hover:bg-white hover:border-zinc-300 group/panel">
           <button
             onClick={toggleFullscreen}
             className="p-2.5 rounded-xl text-white/70 group-hover/panel:text-zinc-800 hover:bg-zinc-100 transition-all duration-200"
@@ -229,7 +229,7 @@ export default function BlankPageViewer({
           </button>
         </div>
 
-        <div className="bg-black/20 backdrop-blur-xl border border-white/20 p-2 rounded-2xl flex flex-col gap-1.5 shadow-xl items-center transition-all duration-300 hover:bg-white hover:border-zinc-300 group/panel">
+        <div className="bg-black/40 border border-white/20 p-2 rounded-2xl flex flex-col gap-1.5 shadow-xl items-center transition-all duration-300 hover:bg-white hover:border-zinc-300 group/panel">
           <button
             onClick={handlePrevPage}
             disabled={currentPage === 1}
@@ -260,7 +260,7 @@ export default function BlankPageViewer({
         {initialPages > 1 && (
           <button
             onClick={() => onDeletePage(currentPage)}
-            className="bg-black/20 backdrop-blur-xl border border-white/20 p-3 rounded-2xl shadow-xl transition-all duration-300 text-white/70 hover:text-rose-500 hover:bg-white hover:border-rose-200 flex items-center justify-center"
+            className="bg-black/40 border border-white/20 p-3 rounded-2xl shadow-xl transition-all duration-300 text-white/70 hover:text-rose-500 hover:bg-white hover:border-rose-200 flex items-center justify-center"
             title="Delete This Page"
           >
             <Trash2 size={20} />
@@ -270,7 +270,7 @@ export default function BlankPageViewer({
         {onOpenNote && (
           <button
             onClick={onOpenNote}
-            className="bg-black/20 backdrop-blur-xl border border-white/20 p-3 rounded-2xl shadow-xl transition-all duration-300 text-white/70 hover:text-zinc-900 hover:bg-white hover:border-zinc-200 flex items-center justify-center"
+            className="bg-black/40 border border-white/20 p-3 rounded-2xl shadow-xl transition-all duration-300 text-white/70 hover:text-zinc-900 hover:bg-white hover:border-zinc-200 flex items-center justify-center"
             title="Page Notes (Ctrl+T)"
           >
             <Type size={20} />
@@ -319,11 +319,11 @@ export default function BlankPageViewer({
         <button
           onClick={handleAddPage}
           title="Add New Page"
-          className="flex items-center justify-center w-14 h-14 rounded-full bg-[#121214]/90 backdrop-blur-md border border-[#27272a] text-[#a1a1aa] hover:text-white hover:bg-[#18181b] hover:border-[#38bdf8]/50 transition-all duration-300 shadow-[0_10px_30px_rgba(0,0,0,0.5)] group active:scale-95"
+          className="flex items-center justify-center w-14 h-14 rounded-full bg-[#121015]/90 border border-[#2b2630] text-[#aaa3b4] hover:text-white hover:bg-[#19161c] hover:border-[#ef2b3a]/50 transition-all duration-300 shadow-[0_10px_30px_rgba(0,0,0,0.5)] group active:scale-95"
         >
           <Plus
             size={24}
-            className="group-hover:text-[#38bdf8] group-hover:scale-110 transition-all duration-300"
+            className="group-hover:text-[#ef2b3a] group-hover:scale-110 transition-all duration-300"
           />
         </button>
       </div>

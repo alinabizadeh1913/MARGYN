@@ -9,7 +9,7 @@ import {
   ANCHORS,
 } from "./inkGeometry";
 
-export const ACCENT = "#38bdf8";
+export const ACCENT = "#ef2b3a";
 export const HIGHLIGHT_ALPHA = 0.4;
 
 export function tracePen(ctx: CanvasRenderingContext2D, p: number[]) {
@@ -246,7 +246,7 @@ export function drawAnchorHints(
 
 export function drawMarquee(ctx: CanvasRenderingContext2D, b: Box) {
   ctx.save();
-  ctx.fillStyle = "rgba(56,189,248,0.10)";
+  ctx.fillStyle = "rgba(239,43,58,0.10)";
   ctx.strokeStyle = ACCENT;
   ctx.lineWidth = 1;
   ctx.fillRect(b.x, b.y, b.w, b.h);

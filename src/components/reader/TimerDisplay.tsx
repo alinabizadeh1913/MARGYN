@@ -19,8 +19,17 @@ export default function TimerDisplay() {
     }
     hasEndedRef.current = false;
     setNow(Date.now());
-    const interval = setInterval(() => setNow(Date.now()), 250);
-    return () => clearInterval(interval);
+    // PERF: tick once per displayed second (aligned), not 4x per second.
+    let t: ReturnType<typeof setTimeout>;
+    const loop = () => {
+      const n = Date.now();
+      setNow(n);
+      const left = timerEndsAt - n;
+      if (left <= 0) return;
+      t = setTimeout(loop, Math.min(left, 1000 - ((timerEndsAt - n) % 1000) + 5 || 1000));
+    };
+    t = setTimeout(loop, 1000 - ((timerEndsAt - Date.now()) % 1000) + 5);
+    return () => clearTimeout(t);
   }, [timerEndsAt]);
 
   useEffect(() => {
@@ -44,17 +53,17 @@ export default function TimerDisplay() {
   const seconds = totalSeconds % 60;
 
   return (
-    <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#38bdf8]/10 border border-[#38bdf8]/30 rounded-full">
-      <Clock size={14} className="text-[#38bdf8] animate-pulse" />
+    <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#ef2b3a]/10 border border-[#ef2b3a]/30 rounded-full">
+      <Clock size={14} className="text-[#ef2b3a]" />
       <Typography
         variant="button"
-        className="text-[#38bdf8] font-mono tabular-nums"
+        className="text-[#ef2b3a] font-mono tabular-nums"
       >
         {String(minutes).padStart(2, "0")}:{String(seconds).padStart(2, "0")}
       </Typography>
       <button
         onClick={stopTimer}
-        className="text-[#38bdf8]/60 hover:text-rose-500 transition-colors ml-0.5"
+        className="text-[#ef2b3a]/60 hover:text-rose-500 transition-colors ml-0.5"
         title="Stop timer"
       >
         <X size={12} />

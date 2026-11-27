@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useTool } from "@/providers/ToolProvider";
 import ColorPicker from "./ColorPicker";
+import { usePanInput } from "./usePanInput";
 
 const DEFAULT_ZOOM = 1;
 const MIN_ZOOM = 0.1;
@@ -45,20 +46,11 @@ export default function InfiniteCanvasViewer({
   const [panY, setPanY] = useState(0);
   const [scale, setScale] = useState(initialScale);
 
-  // استیت‌های مربوط به درگ کردن صفحه
-  const [dragX, setDragX] = useState(0);
-  const [dragY, setDragY] = useState(0);
-  const [isPanning, setIsPanning] = useState(false);
-
-  // ✅ استیت جدید برای تشخیص پن با غلطک ماوس
-  const [isMiddlePanning, setIsMiddlePanning] = useState(false);
-
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
 
   const viewerRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const panStartRef = useRef<{ x: number; y: number } | null>(null);
   const initializedRef = useRef(false);
 
   // اندازه‌ی container
@@ -126,13 +118,15 @@ export default function InfiniteCanvasViewer({
         setPanX(mx - wx * newScale);
         setPanY(my - wy * newScale);
         if (onScaleChange) onScaleChange(newScale);
-      } else if (tool === "pan") {
+      } else {
         e.preventDefault();
-        setPanX((p) => p - e.deltaX);
-        setPanY((p) => p - e.deltaY);
+        const dx = e.shiftKey && e.deltaX === 0 ? e.deltaY : e.deltaX;
+        const dy = e.shiftKey && e.deltaX === 0 ? 0 : e.deltaY;
+        setPanX((p) => p - dx);
+        setPanY((p) => p - dy);
       }
     },
-    [scale, panX, panY, tool, onScaleChange],
+    [scale, panX, panY, onScaleChange],
   );
 
   useEffect(() => {
@@ -142,96 +136,16 @@ export default function InfiniteCanvasViewer({
     return () => container.removeEventListener("wheel", handleWheel);
   }, [handleWheel]);
 
-  // ✅ هندلرهای مربوط به غلطک ماوس (Middle Mouse Button)
-  const handleContainerPointerDown = (
-    e: React.PointerEvent<HTMLDivElement>,
-  ) => {
-    // دکمه وسط ماوس (غلطک)
-    if (e.button === 1) {
-      e.preventDefault();
-      e.stopPropagation(); // جلوگیری از رسیدن به لایه رسم
-      setIsMiddlePanning(true);
-      setIsPanning(true);
-      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-      panStartRef.current = { x: e.clientX, y: e.clientY };
-    }
-  };
-
-  const handleContainerPointerMove = (
-    e: React.PointerEvent<HTMLDivElement>,
-  ) => {
-    if (isMiddlePanning && panStartRef.current) {
-      setDragX(e.clientX - panStartRef.current.x);
-      setDragY(e.clientY - panStartRef.current.y);
-    }
-  };
-
-  const handleContainerPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (e.button === 1 && isMiddlePanning) {
-      const dx = e.clientX - (panStartRef.current?.x ?? e.clientX);
-      const dy = e.clientY - (panStartRef.current?.y ?? e.clientY);
-
-      // کامیت کردن موقعیت جدید
-      setPanX((prev) => prev + dx);
-      setPanY((prev) => prev + dy);
-
-      panStartRef.current = null;
-      setDragX(0);
-      setDragY(0);
-      setIsPanning(false);
-      setIsMiddlePanning(false);
-
-      try {
-        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-      } catch {}
-    }
-  };
-
-  const handleContainerPointerCancel = (
-    e: React.PointerEvent<HTMLDivElement>,
-  ) => {
-    if (e.button === 1 && isMiddlePanning) {
-      // کنسل کردن پن بدون کامیت
-      panStartRef.current = null;
-      setDragX(0);
-      setDragY(0);
-      setIsPanning(false);
-      setIsMiddlePanning(false);
-      try {
-        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-      } catch {}
-    }
-  };
-
-  // هندلرهای مربوط به ابزار دستی (Hand Tool) - کلیک چپ
-  const handlePanDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (e.button !== 0 && e.button !== 1) return;
-    e.preventDefault();
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    panStartRef.current = { x: e.clientX, y: e.clientY };
-    setIsPanning(true);
-  };
-
-  const handlePanMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!panStartRef.current) return;
-    setDragX(e.clientX - panStartRef.current.x);
-    setDragY(e.clientY - panStartRef.current.y);
-  };
-
-  const handlePanUp = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!panStartRef.current) return;
-    const dx = e.clientX - panStartRef.current.x;
-    const dy = e.clientY - panStartRef.current.y;
-    setPanX((prev) => prev + dx);
-    setPanY((prev) => prev + dy);
-    panStartRef.current = null;
-    setDragX(0);
-    setDragY(0);
-    setIsPanning(false);
-    try {
-      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-    } catch {}
-  };
+  // Pen-first pan input (Space-hold, pen barrel, middle button, Hand tool).
+  const { drag, isPanning, panMode } = usePanInput({
+    containerRef,
+    tool,
+    setTool,
+    onCommit: (dx, dy) => {
+      setPanX((p) => p + dx);
+      setPanY((p) => p + dy);
+    },
+  });
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement)
@@ -271,7 +185,7 @@ export default function InfiniteCanvasViewer({
 
   const dragStyle: React.CSSProperties = isPanning
     ? {
-        transform: `translate(${dragX}px, ${dragY}px)`,
+        transform: `translate(${drag.x}px, ${drag.y}px)`,
         willChange: "transform",
       }
     : {};
@@ -284,7 +198,7 @@ export default function InfiniteCanvasViewer({
     >
       {/* کنترل‌های شناور */}
       <div className="absolute top-8 right-8 flex flex-col gap-4 z-50">
-        <div className="bg-black/20 backdrop-blur-xl border border-white/20 p-2 rounded-2xl flex flex-col gap-1.5 shadow-xl transition-all duration-300 hover:bg-white hover:border-zinc-300 group/panel">
+        <div className="bg-black/40 border border-white/20 p-2 rounded-2xl flex flex-col gap-1.5 shadow-xl transition-all duration-300 hover:bg-white hover:border-zinc-300 group/panel">
           <button
             onClick={toggleFullscreen}
             className="p-2.5 rounded-xl text-white/70 group-hover/panel:text-zinc-800 hover:bg-zinc-100 transition-all"
@@ -298,7 +212,7 @@ export default function InfiniteCanvasViewer({
             onClick={() => setTool("pan")}
             className={`p-2.5 rounded-xl transition-all duration-200 flex items-center justify-center ${
               tool === "pan"
-                ? "text-[#38bdf8] bg-zinc-100 shadow-[0_0_10px_rgba(56,189,248,0.3)]"
+                ? "text-[#ef2b3a] bg-zinc-100 shadow-[0_0_10px_rgba(239,43,58,0.3)]"
                 : "text-white/70 group-hover/panel:text-zinc-800 hover:bg-zinc-100"
             }`}
             title="Pan Tool (G)"
@@ -342,10 +256,10 @@ export default function InfiniteCanvasViewer({
       </div>
 
       {/* راهنمای pan */}
-      {(tool === "pan" || isMiddlePanning) && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 bg-black/40 backdrop-blur-xl px-4 py-2 rounded-full border border-white/20 text-white/90 text-xs font-medium flex items-center gap-2 pointer-events-none">
+      {(panMode || isPanning) && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 bg-black/40 px-4 py-2 rounded-full border border-white/20 text-white/90 text-xs font-medium flex items-center gap-2 pointer-events-none">
           <Hand size={14} />
-          Drag to pan · Scroll to pan · Ctrl+Scroll to zoom
+          Drag to pan · Scroll to pan · Ctrl+Scroll to zoom · Space / pen button to hold-pan
         </div>
       )}
 
@@ -353,21 +267,13 @@ export default function InfiniteCanvasViewer({
       <div
         ref={containerRef}
         className="flex-1 w-full h-full relative overflow-hidden"
-        style={{ cursor: isMiddlePanning ? "grabbing" : undefined }}
-        onPointerDownCapture={handleContainerPointerDown}
-        onPointerMoveCapture={handleContainerPointerMove}
-        onPointerUpCapture={handleContainerPointerUp}
-        onPointerCancelCapture={handleContainerPointerCancel}
-        onAuxClick={(e) => {
-          // جلوگیری از رفتار پیش‌فرض کلیک وسط (مثل Auto-scroll مرورگر)
-          if (e.button === 1) e.preventDefault();
-        }}
+        style={{ cursor: isPanning ? "grabbing" : undefined, touchAction: "none" }}
       >
         <div
           style={{
             ...dragStyle,
             // ✅ وقتی با غلطک در حال جابه‌جایی هستیم، لایه رسم نباید کلیک دریافت کند
-            pointerEvents: isMiddlePanning ? "none" : "auto",
+            pointerEvents: isPanning ? "none" : "auto",
           }}
           className="absolute inset-0"
         >
@@ -387,17 +293,13 @@ export default function InfiniteCanvasViewer({
           )}
         </div>
 
-        {tool === "pan" && (
+        {panMode && (
           <div
             className="absolute inset-0 z-30"
             style={{
               cursor: isPanning ? "grabbing" : "grab",
               touchAction: "none",
             }}
-            onPointerDown={handlePanDown}
-            onPointerMove={handlePanMove}
-            onPointerUp={handlePanUp}
-            onPointerCancel={handlePanUp}
           />
         )}
       </div>

@@ -131,7 +131,17 @@ export async function saveDb(immediate = false) {
   // ✅ NEW: never export mid-transaction — commit first.
   if (transactionDepth > 0) return;
 
-  const performSave = async () => {
+  const performSave = async (): Promise<void> => {
+    // PERF: exporting the whole SQLite file blocks the main thread; never do it
+    // in the middle of a pen stroke (non-forced saves only).
+    if (
+      !immediate &&
+      typeof window !== "undefined" &&
+      performance.now() - ((window as any).__margynInkTs ?? -1e9) < 600
+    ) {
+      saveTimeout = setTimeout(performSave, 800);
+      return;
+    }
     try {
       if (typeof window !== "undefined" && window.electronAPI) {
         const data = sqliteInstance!.export();

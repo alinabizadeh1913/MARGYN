@@ -16,6 +16,7 @@ import { REQUIRED_END_PHRASE, REQUIRED_RESET_PHRASE } from "./constants";
 import {
   clearPageDrawings,
   clearAllDrawings,
+  getAllDrawings,
   getDb,
   addRecentFile,
   markFileCompleted,
@@ -43,6 +44,7 @@ import {
   playWarningSound,
 } from "@/lib/audio";
 import { sessions, drawings, recentFiles, notes } from "@/db/schema";
+import { newGroupId, registerClearGroup } from "@/lib/clearHistory";
 import { eq, and } from "drizzle-orm";
 
 // ✅ Global guard so notifyRendererReady is called exactly once per app lifetime,
@@ -67,7 +69,7 @@ export function AppContent() {
     activeSessionFilePath,
   } = useSession();
 
-  const { setTool, size, setSize } = useTool();
+  const { tool, setTool, size, setSize } = useTool();
   const { setShortcutsEnabled } = useShortcuts();
 
   const [view, setView] = useState<
@@ -100,6 +102,7 @@ export function AppContent() {
   const [showNewDocumentModal, setShowNewDocumentModal] = useState(false);
 
   const [showResetProgressModal, setShowResetProgressModal] = useState(false);
+  const [showClearAllModal, setShowClearAllModal] = useState(false);
   const [resetProgressText, setResetProgressText] = useState("");
   const [resetProgressError, setResetProgressError] = useState(false);
   const resetProgressInputRef = useRef<HTMLInputElement>(null);
@@ -220,6 +223,7 @@ export function AppContent() {
         else if (showExportModal) setShowExportModal(false);
         else if (showNoteModal) setShowNoteModal(false);
         else if (showResetProgressModal) setShowResetProgressModal(false);
+        else if (showClearAllModal) setShowClearAllModal(false);
         else if (showNewDocumentModal) setShowNewDocumentModal(false);
       }
     };
@@ -234,6 +238,7 @@ export function AppContent() {
     showExportModal,
     showNoteModal,
     showResetProgressModal,
+    showClearAllModal,
     showNewDocumentModal,
   ]);
 
@@ -1827,26 +1832,52 @@ export function AppContent() {
   const handleClearCurrentPage = useCallback(async () => {
     if (!activeFilePath) return;
     await clearPageDrawings(activeFilePath, currentPage);
-    window.dispatchEvent(new CustomEvent(`margyn-clear-page-${currentPage}`));
+    // One shared group id: Ctrl+Z on any layer (PDF ink / margin) restores both.
+    window.dispatchEvent(
+      new CustomEvent(`margyn-clear-page-${currentPage}`, {
+        detail: { gid: newGroupId() },
+      }),
+    );
     setIsDirty(true);
     playDeleteSound();
   }, [currentPage, activeFilePath]);
 
-  const handleClearAllPages = useCallback(async () => {
+  // Any "clear all pages" trigger (shortcut, toolbar menu, ...) only asks for
+  // confirmation; the real work happens in handleConfirmClearAll.
+  const handleClearAllPages = useCallback(() => {
+    if (!activeFilePath) return;
+    setShowClearAllModal(true);
+  }, [activeFilePath]);
+
+  const handleConfirmClearAll = useCallback(async () => {
+    setShowClearAllModal(false);
     if (!activeFilePath) return;
     try {
+      await flushPendingInk();
+      const rows = await getAllDrawings(activeFilePath);
+      const gid = newGroupId();
+      registerClearGroup({
+        id: gid,
+        filePath: activeFilePath,
+        rows,
+        active: true,
+      });
       await clearAllDrawings(activeFilePath);
-      window.dispatchEvent(new CustomEvent("margyn-clear-all"));
+      window.dispatchEvent(
+        new CustomEvent("margyn-clear-all", { detail: { gid } }),
+      );
       setIsDirty(true);
       playDeleteSound();
-    } catch (error) {}
+    } catch (error) {
+      showToast("Failed to clear pages.", "error");
+    }
   }, [activeFilePath]);
 
   useShortcut("pen", () => setTool("pen"));
   useShortcut("eraser", () => setTool("eraser"));
 
   useShortcut("pan", () => {
-    if (activeTab?.isInfinite) setTool("pan");
+    if (activeTab?.isInfinite) setTool(tool === "pan" ? "pen" : "pan");
   });
 
   useShortcut("newBlank", () => {
@@ -2133,7 +2164,7 @@ export function AppContent() {
       <SplashScreen isAppReady={isAppReady} />
 
       {isAppReady && (
-        <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#09090b]">
+        <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#09080b]">
           <AppHeader
             view={view}
             setView={setView}
@@ -2239,6 +2270,9 @@ export function AppContent() {
             showNewDocumentModal={showNewDocumentModal}
             setShowNewDocumentModal={setShowNewDocumentModal}
             handleCreateBlankDocument={handleCreateBlankDocument}
+            showClearAllModal={showClearAllModal}
+            setShowClearAllModal={setShowClearAllModal}
+            handleConfirmClearAll={handleConfirmClearAll}
           />
 
           <NoteModal

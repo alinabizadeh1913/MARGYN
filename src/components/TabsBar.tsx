@@ -116,7 +116,7 @@ export default function TabsBar({
   if (tabs.length === 0) return null;
 
   return (
-    <div className="w-full h-12 bg-[#09090b] border-b border-[#27272a] flex items-center relative z-[60] select-none shrink-0 group/tabs transition-colors duration-300">
+    <div className="w-full h-12 bg-gradient-to-b from-[#0e0c11] to-[#09080b] border-b border-white/[0.06] flex items-center relative z-[60] select-none shrink-0 group/tabs transition-colors duration-300">
       <div
         ref={scrollContainerRef}
         onWheel={handleWheel}
@@ -206,16 +206,16 @@ export default function TabsBar({
               }}
               className={`group flex items-center gap-2 px-3 h-9 rounded-lg cursor-pointer transition-all duration-200 border max-w-[240px] shrink-0 ${
                 isActive
-                  ? "bg-[#18181b] border-[#27272a] text-[#fafafa] shadow-[0_0_15px_rgba(0,0,0,0.5)] translate-y-[-1px]"
-                  : "bg-transparent border-transparent text-[#a1a1aa] hover:bg-[#121214] hover:border-[#27272a]"
+                  ? "bg-[#19161c] border-[#2b2630] text-[#fbf8f9] shadow-[0_0_15px_rgba(0,0,0,0.5)] translate-y-[-1px]"
+                  : "bg-transparent border-transparent text-[#aaa3b4] hover:bg-[#121015] hover:border-[#2b2630]"
               } ${draggedIndex === index ? "opacity-50" : ""}`}
             >
               <div
                 className={`w-5 h-5 rounded flex items-center justify-center shrink-0 ${
                   isInfinite
-                    ? "bg-[#a855f7]/20 text-[#a855f7]"
+                    ? "bg-[#ff7a45]/20 text-[#ff7a45]"
                     : isBlank
-                      ? "bg-[#38bdf8]/20 text-[#38bdf8]"
+                      ? "bg-[#ef2b3a]/20 text-[#ef2b3a]"
                       : isProject
                         ? "bg-emerald-500/20 text-emerald-400"
                         : "bg-rose-500/20 text-rose-400"
@@ -234,7 +234,7 @@ export default function TabsBar({
 
               <Typography
                 variant="caption"
-                className={`truncate font-medium flex-1 ${isActive ? "text-[#fafafa]" : "text-[#a1a1aa]"}`}
+                className={`truncate font-medium flex-1 ${isActive ? "text-[#fbf8f9]" : "text-[#aaa3b4]"}`}
                 title={displayName}
               >
                 {displayName}
@@ -243,9 +243,9 @@ export default function TabsBar({
               <span
                 className={`px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider shrink-0 ${
                   isInfinite
-                    ? "bg-[#a855f7]/10 text-[#a855f7] border border-[#a855f7]/20"
+                    ? "bg-[#ff7a45]/10 text-[#ff7a45] border border-[#ff7a45]/20"
                     : isBlank
-                      ? "bg-[#38bdf8]/10 text-[#38bdf8] border border-[#38bdf8]/20"
+                      ? "bg-[#ef2b3a]/10 text-[#ef2b3a] border border-[#ef2b3a]/20"
                       : isProject
                         ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"
                         : "bg-rose-500/10 text-rose-500 border border-rose-500/20"
@@ -266,7 +266,7 @@ export default function TabsBar({
 
               <button
                 onClick={(e) => onCloseTab(e, tab.id)}
-                className={`p-1 rounded-md transition-colors shrink-0 hover:bg-rose-500/20 text-[#52525b] hover:text-rose-400`}
+                className={`p-1 rounded-md transition-colors shrink-0 hover:bg-rose-500/20 text-[#6f6878] hover:text-rose-400`}
               >
                 <X size={14} />
               </button>
@@ -276,24 +276,24 @@ export default function TabsBar({
       </div>
 
       <div
-        className="pl-2 pr-2 border-l border-[#27272a] h-6 flex items-center shrink-0 bg-[#09090b] z-10 opacity-60 group-hover/tabs:opacity-100 transition-opacity duration-300"
+        className="pl-2 pr-2 border-l border-[#2b2630] h-6 flex items-center shrink-0 bg-[#09080b] z-10 opacity-60 group-hover/tabs:opacity-100 transition-opacity duration-300"
         ref={dropdownRef}
       >
         <button
           onClick={() => setShowDropdown(!showDropdown)}
           className={`p-1.5 rounded-md transition-colors ${
             showDropdown
-              ? "bg-[#27272a] text-white"
-              : "text-[#a1a1aa] hover:bg-[#18181b] hover:text-white"
+              ? "bg-[#2b2630] text-white"
+              : "text-[#aaa3b4] hover:bg-[#19161c] hover:text-white"
           }`}
         >
           <MoreHorizontal size={18} />
         </button>
 
         {showDropdown && (
-          <div className="absolute top-12 right-2 w-64 bg-[#121214] border border-[#27272a] rounded-xl shadow-2xl py-2 z-[100] flex flex-col max-h-64 overflow-y-auto">
-            <div className="px-3 pb-2 mb-2 border-b border-[#27272a]">
-              <Typography variant="microLabel" className="text-[#52525b]">
+          <div className="absolute top-12 right-2 w-64 bg-[#121015] border border-[#2b2630] rounded-xl shadow-2xl py-2 z-[100] flex flex-col max-h-64 overflow-y-auto">
+            <div className="px-3 pb-2 mb-2 border-b border-[#2b2630]">
+              <Typography variant="microLabel" className="text-[#6f6878]">
                 Open Tabs ({tabs.length})
               </Typography>
             </div>
@@ -315,15 +315,15 @@ export default function TabsBar({
                     setShowDropdown(false);
                   }}
                   className={`flex items-center gap-3 px-3 py-2 cursor-pointer transition-colors ${
-                    isActive ? "bg-[#18181b]" : "hover:bg-[#18181b]"
+                    isActive ? "bg-[#19161c]" : "hover:bg-[#19161c]"
                   }`}
                 >
                   <div
                     className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 ${
                       isInfinite
-                        ? "bg-[#a855f7]/20 text-[#a855f7]"
+                        ? "bg-[#ff7a45]/20 text-[#ff7a45]"
                         : isBlank
-                          ? "bg-[#38bdf8]/20 text-[#38bdf8]"
+                          ? "bg-[#ef2b3a]/20 text-[#ef2b3a]"
                           : isProject
                             ? "bg-emerald-500/20 text-emerald-400"
                             : "bg-rose-500/20 text-rose-400"
@@ -341,7 +341,7 @@ export default function TabsBar({
                   </div>
                   <Typography
                     variant="caption"
-                    className={`truncate flex-1 ${isActive ? "text-[#fafafa] font-medium" : "text-[#a1a1aa]"}`}
+                    className={`truncate flex-1 ${isActive ? "text-[#fbf8f9] font-medium" : "text-[#aaa3b4]"}`}
                   >
                     {displayName}
                   </Typography>

@@ -11,6 +11,7 @@ import React, {
   ReactNode,
 } from "react";
 import { getSetting, setSetting } from "@/db";
+import { getKeyCode } from "@/lib/keys";
 
 export type ShortcutAction =
   | "pen"
@@ -48,7 +49,7 @@ export const DEFAULT_SHORTCUTS: Record<ShortcutAction, string> = {
   nextTab: "ctrl+pagedown", // ✅ NEW
   prevTab: "ctrl+pageup", // ✅ NEW
   clearPage: "delete",
-  clearAll: "shift+delete",
+  clearAll: "ctrl+shift+delete",
   toggleMargin: "ctrl+b",
   saveProject: "ctrl+s",
   importProject: "ctrl+i",
@@ -94,6 +95,9 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
             for (const [k, v] of Object.entries(parsed)) {
               if (typeof v === "string") normalized[k] = v.toLowerCase();
             }
+            // migrate the old default (shift+delete) to ctrl+shift+delete
+            if (normalized.clearAll === "shift+delete")
+              normalized.clearAll = DEFAULT_SHORTCUTS.clearAll;
             const validShortcuts = { ...DEFAULT_SHORTCUTS, ...normalized };
             setShortcuts(validShortcuts as Record<ShortcutAction, string>);
             await setSetting("shortcuts", JSON.stringify(validShortcuts));
@@ -170,7 +174,7 @@ export function ShortcutProvider({ children }: { children: ReactNode }) {
       if (e.altKey) keys.push("alt");
       if (e.shiftKey) keys.push("shift");
 
-      let key = e.code;
+      let key = getKeyCode(e);
       if (key.startsWith("Key")) key = key.replace("Key", "").toLowerCase();
       else if (key.startsWith("Digit")) key = key.replace("Digit", "");
       else if (key.startsWith("Numpad")) key = key.replace("Numpad", "");

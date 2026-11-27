@@ -266,3 +266,43 @@ MARGYN is free and open — released for personal and educational use. If you'd 
 Built quietly, with care — for readers who want to slow down a little. 🌿
 
 <p> <a href="https://github.com/alinabizadeh1913/MARGYN">GitHub</a> • <a href="mailto:alinabizadeh1913@gmail.com">Email</a> • <a href="http://instagram.com/ali.nabizadeh.79">Instagram</a> </p><p><b>Ali Nabizadeh</b> — Software Engineer & Creator of MARGYN</p><p>© 2026 MARGYN · Version 1.0.0</p></div>
+
+---
+
+## 🖊️ Pen tablets (Vinsa, Huion, XP-Pen, ...)
+
+Recommended driver setup (keep **Use Windows Ink** checked for pressure):
+
+| Pen button in driver | Assign | Result in MARGYN |
+| --- | --- | --- |
+| Button 1 | `Space` | Hold + drag with the pen = pan (a quick tap toggles the Hand tool) |
+| Button 2 | `Del` / `Shift + Del` | Clear page / clear all |
+| `-` / `+` | `-` / `=` | Brush size |
+
+Also works without any driver mapping: pen **barrel button + drag** pans, and the
+middle mouse button pans even when movement comes from the pen. The mouse wheel
+pans, `Ctrl + wheel` zooms (Infinite Canvas).
+
+Pen drivers send keys without a scancode, so MARGYN identifies keys by
+`event.key` whenever `event.code` is empty (`src/lib/keys.ts`).
+
+## ⚡ Performance notes
+
+- Time engine: one wake-up per second (was a permanent 60 fps rAF loop); timer widget ticks once per second.
+- PDF page cache: 7 pages / ±2 prefetch / DPR capped at 2 (was 20 pages / ±5 / uncapped) — hundreds of MB less RAM.
+- Full-screen modal overlays no longer use `backdrop-filter` (very GPU heavy); remaining glass panels use small blur radii.
+- Electron: GPU rasterization + zero-copy, spellcheck/background services disabled.
+
+## ✍️ Pen latency / feel
+
+- Raw pen samples (`pointerrawupdate`) are committed at the device rate; frame-aligned `pointermove` only refreshes the predicted tip.
+- Ink canvases use `desynchronized` (low-latency) presentation (`LOW_LATENCY_CANVAS` in `useInkCanvas.ts`).
+- Autosave / DB export is deferred while the pen is moving (no mid-stroke hitches).
+- Moving the window between laptop panel and monitor (DPI change) re-creates canvases and PDF page bitmaps automatically.
+- Software pen cursor for stylus (Windows hides the system cursor for pens).
+
+## 🎨 Design language — Obsidian & Crimson
+
+Warm obsidian surfaces, crimson (`#ef2b3a`) as the single brand accent with ember (`#ff7a45`) secondary,
+hairline glass borders, crimson-glow active states and a gradient primary CTA. Tokens live in
+`src/styles/globals.css` (`--mg-*`). Ink/drawing colour palettes are intentionally unchanged.

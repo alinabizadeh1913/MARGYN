@@ -5,10 +5,7 @@ import {
   Play,
   Square,
   Settings,
-  Library,
-  BookOpen,
   FileText,
-  FolderOpen,
   Activity,
   Lock,
   CheckCircle2,
@@ -18,6 +15,9 @@ import {
   Clock,
   FilePlus,
   RotateCcw,
+  Crown,
+  Castle,
+  ScrollText,
 } from "lucide-react";
 import Typography from "@/typography";
 import Toolbar from "../reader/Toolbar";
@@ -80,42 +80,43 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   const isInfinite = !!activeTab?.isInfinite;
 
   return (
-    <header className="h-16 flex items-center justify-between px-4 border-b border-white/5 bg-black/40 backdrop-blur-2xl shrink-0 z-[100] shadow-[0_4px_30px_rgba(0,0,0,0.5)] gap-2">
+    <header className="relative h-16 flex items-center justify-between px-4 border-b border-white/[0.06] bg-gradient-to-b from-[#16121a]/95 to-[#0b0a0e]/95 shrink-0 z-[100] shadow-[0_10px_40px_-12px_rgba(0,0,0,0.85)] gap-2">
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-[#ef2b3a]/70 to-transparent" />
       <div className="flex items-center gap-2 min-w-0 flex-1 overflow-visible">
-        <div className="flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/5 shrink-0 overflow-x-auto scrollbar-hide">
+        <div className="flex items-center gap-1 bg-black/30 p-1 rounded-2xl border border-white/[0.07] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] shrink-0 overflow-x-auto scrollbar-hide">
           <button
             onClick={() => setView("reader")}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all duration-300 ${view === "reader" ? "bg-[#27272a] text-white shadow-[0_2px_10px_rgba(0,0,0,0.5)] border border-white/10" : "text-[#a1a1aa] hover:text-white hover:bg-white/5"}`}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all duration-300 ${view === "reader" ? "bg-gradient-to-b from-[#ef2b3a]/30 to-[#ef2b3a]/10 text-white border border-[#ef2b3a]/50 shadow-[0_0_20px_-4px_rgba(239,43,58,0.6)]" : "text-[#aaa3b4] hover:text-white hover:bg-white/5"}`}
           >
-            <BookOpen size={15} />
-            <span className="hidden 2xl:inline">
+            <Crown size={16} />
+            <span className="hidden min-[1700px]:inline">
               <Typography variant="button">Reader</Typography>
             </span>
           </button>
           <button
             onClick={() => setView("library")}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all duration-300 ${view === "library" ? "bg-[#27272a] text-white shadow-[0_2px_10px_rgba(0,0,0,0.5)] border border-white/10" : "text-[#a1a1aa] hover:text-white hover:bg-white/5"}`}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all duration-300 ${view === "library" ? "bg-gradient-to-b from-[#ef2b3a]/30 to-[#ef2b3a]/10 text-white border border-[#ef2b3a]/50 shadow-[0_0_20px_-4px_rgba(239,43,58,0.6)]" : "text-[#aaa3b4] hover:text-white hover:bg-white/5"}`}
           >
-            <FolderOpen size={15} />
-            <span className="hidden 2xl:inline">
+            <Castle size={16} />
+            <span className="hidden min-[1700px]:inline">
               <Typography variant="button">Library</Typography>
             </span>
           </button>
           <button
             onClick={() => setView("history")}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all duration-300 ${view === "history" ? "bg-[#27272a] text-white shadow-[0_2px_10px_rgba(0,0,0,0.5)] border border-white/10" : "text-[#a1a1aa] hover:text-white hover:bg-white/5"}`}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all duration-300 ${view === "history" ? "bg-gradient-to-b from-[#ef2b3a]/30 to-[#ef2b3a]/10 text-white border border-[#ef2b3a]/50 shadow-[0_0_20px_-4px_rgba(239,43,58,0.6)]" : "text-[#aaa3b4] hover:text-white hover:bg-white/5"}`}
           >
-            <Library size={15} />
-            <span className="hidden 2xl:inline">
+            <ScrollText size={16} />
+            <span className="hidden min-[1700px]:inline">
               <Typography variant="button">History</Typography>
             </span>
           </button>
           <button
             onClick={() => setView("settings")}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all duration-300 ${view === "settings" ? "bg-[#27272a] text-white shadow-[0_2px_10px_rgba(0,0,0,0.5)] border border-white/10" : "text-[#a1a1aa] hover:text-white hover:bg-white/5"}`}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all duration-300 ${view === "settings" ? "bg-gradient-to-b from-[#ef2b3a]/30 to-[#ef2b3a]/10 text-white border border-[#ef2b3a]/50 shadow-[0_0_20px_-4px_rgba(239,43,58,0.6)]" : "text-[#aaa3b4] hover:text-white hover:bg-white/5"}`}
           >
-            <Settings size={15} />
-            <span className="hidden 2xl:inline">
+            <Settings size={16} />
+            <span className="hidden min-[1700px]:inline">
               <Typography variant="button">Settings</Typography>
             </span>
           </button>
@@ -138,18 +139,18 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
             {/* ✅ دکمه New Blank اکنون مدال را باز می‌کند */}
             <button
               onClick={onOpenNewDocument}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[#38bdf8] hover:text-white hover:bg-[#38bdf8]/20 transition-all duration-300 text-xs font-medium border border-transparent hover:border-[#38bdf8]/30 shrink-0"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[#ef2b3a] hover:text-white hover:bg-[#ef2b3a]/20 transition-all duration-300 text-xs font-medium border border-transparent hover:border-[#ef2b3a]/30 shrink-0"
             >
               <FilePlus size={15} />
-              <span className="hidden xl:inline">New Blank</span>
+              <span className="hidden min-[1700px]:inline">New Blank</span>
             </button>
 
             <button
               onClick={handleOpenPdf}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[#a1a1aa] hover:text-white hover:bg-white/10 transition-all duration-300 text-xs font-medium border border-transparent hover:border-white/10 shrink-0"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[#aaa3b4] hover:text-white hover:bg-white/10 transition-all duration-300 text-xs font-medium border border-transparent hover:border-white/10 shrink-0"
             >
               <FileText size={15} />
-              <span className="hidden xl:inline">Open PDF</span>
+              <span className="hidden min-[1700px]:inline">Open PDF</span>
             </button>
           </>
         )}
@@ -160,31 +161,31 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
               <>
                 <button
                   onClick={handleImportProject}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[#38bdf8] hover:text-white hover:bg-[#38bdf8]/20 transition-all duration-300 text-xs font-medium border border-[#38bdf8]/30 shrink-0"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[#ef2b3a] hover:text-white hover:bg-[#ef2b3a]/20 transition-all duration-300 text-xs font-medium border border-[#ef2b3a]/30 shrink-0"
                 >
                   <Download size={15} />
-                  <span className="hidden xl:inline">Import</span>
+                  <span className="hidden min-[1700px]:inline">Import</span>
                 </button>
 
                 <button
                   onClick={() => setShowExportModal(true)}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[#38bdf8] hover:text-white hover:bg-[#38bdf8]/20 transition-all duration-300 text-xs font-medium border border-[#38bdf8]/30 shrink-0"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[#ef2b3a] hover:text-white hover:bg-[#ef2b3a]/20 transition-all duration-300 text-xs font-medium border border-[#ef2b3a]/30 shrink-0"
                 >
                   <Upload size={15} />
-                  <span className="hidden xl:inline">Export</span>
+                  <span className="hidden min-[1700px]:inline">Export</span>
                 </button>
 
                 {activeProjectPath && (
                   <button
                     onClick={handleSaveProject}
-                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all duration-300 text-xs font-medium border shrink-0 ${isDirty ? "text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.2)]" : "text-[#52525b] border-transparent cursor-default"}`}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all duration-300 text-xs font-medium border shrink-0 ${isDirty ? "text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.2)]" : "text-[#6f6878] border-transparent cursor-default"}`}
                     disabled={!isDirty}
                   >
                     <Save
                       size={15}
                       className={isDirty ? "animate-pulse" : ""}
                     />
-                    <span className="hidden xl:inline">Save</span>
+                    <span className="hidden min-[1700px]:inline">Save</span>
                   </button>
                 )}
               </>
@@ -193,9 +194,9 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
             <div className="w-px h-6 bg-white/10 mx-0.5 shrink-0" />
 
             {activeTab?.isBlank || isInfinite ? (
-              <div className="flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-[#18181b] text-[#52525b] border border-[#27272a] cursor-not-allowed shrink-0">
+              <div className="flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-[#19161c] text-[#6f6878] border border-[#2b2630] cursor-not-allowed shrink-0">
                 <Lock size={14} />
-                <span className="hidden xl:inline">
+                <span className="hidden min-[1700px]:inline">
                   <Typography variant="button">No Session</Typography>
                 </span>
               </div>
@@ -210,38 +211,38 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                       !isSessionSyncing && (
                         <button
                           onClick={handleStartTimer}
-                          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[#38bdf8] hover:bg-[#38bdf8]/10 transition-all text-xs font-medium shrink-0"
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[#ef2b3a] hover:bg-[#ef2b3a]/10 transition-all text-xs font-medium shrink-0"
                           title="Set focus timer"
                         >
                           <Clock size={15} />
-                          <span className="hidden xl:inline">Timer</span>
+                          <span className="hidden min-[1700px]:inline">Timer</span>
                         </button>
                       )
                     )
                   ) : (
                     <button
                       disabled
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[#52525b] border border-[#27272a] cursor-not-allowed opacity-60 text-xs font-medium shrink-0"
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[#6f6878] border border-[#2b2630] cursor-not-allowed opacity-60 text-xs font-medium shrink-0"
                       title="Focus session is active in another file"
                     >
                       <Clock size={15} />
-                      <span className="hidden xl:inline">Timer</span>
+                      <span className="hidden min-[1700px]:inline">Timer</span>
                     </button>
                   )
                 ) : null}
 
                 {isSessionSyncing ? (
-                  <div className="flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-[#18181b] text-[#52525b] border border-[#27272a] cursor-wait shrink-0">
-                    <div className="w-3.5 h-3.5 border-2 border-[#52525b] border-t-transparent rounded-full animate-spin" />
-                    <span className="hidden xl:inline">
+                  <div className="flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-[#19161c] text-[#6f6878] border border-[#2b2630] cursor-wait shrink-0">
+                    <div className="w-3.5 h-3.5 border-2 border-[#6f6878] border-t-transparent rounded-full animate-spin" />
+                    <span className="hidden min-[1700px]:inline">
                       <Typography variant="button">Checking...</Typography>
                     </span>
                   </div>
                 ) : isCurrentPdfCompleted ? (
                   <div className="flex items-center gap-2 shrink-0">
-                    <div className="flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-[#18181b] text-[#52525b] border border-[#27272a] cursor-not-allowed">
+                    <div className="flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-[#19161c] text-[#6f6878] border border-[#2b2630] cursor-not-allowed">
                       <CheckCircle2 size={14} />
-                      <span className="hidden xl:inline">
+                      <span className="hidden min-[1700px]:inline">
                         <Typography variant="button">Completed</Typography>
                       </span>
                     </div>
@@ -256,7 +257,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                 ) : (
                   <button
                     onClick={handleTryEndSession}
-                    className={`group relative flex items-center gap-1.5 px-4 py-1.5 rounded-full transition-all duration-500 overflow-hidden shrink-0 ${isActive ? "bg-rose-500/10 text-rose-400 border border-rose-500/30" : showResumeButton ? "bg-amber-500/10 text-amber-500 border border-amber-500/30 hover:border-amber-400" : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:border-emerald-400"}`}
+                    className={`group relative flex items-center gap-1.5 px-5 py-2 rounded-full transition-all duration-500 overflow-hidden shrink-0 ${isActive ? "bg-rose-500/10 text-rose-400 border border-rose-500/30" : showResumeButton ? "bg-amber-500/10 text-amber-500 border border-amber-500/30 hover:border-amber-400" : "bg-gradient-to-b from-[#ff3b4a] to-[#c8102e] text-white border border-[#ff6b76]/50 shadow-[0_6px_24px_-6px_rgba(239,43,58,0.8)] hover:shadow-[0_8px_30px_-4px_rgba(239,43,58,0.95)] hover:brightness-110"}`}
                   >
                     <div
                       className={`absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 blur-md ${isActive ? "bg-rose-500/20" : showResumeButton ? "bg-amber-500/20" : "bg-emerald-500/20"}`}
@@ -268,14 +269,14 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                           fill="currentColor"
                           className="relative z-10"
                         />
-                        <span className="hidden xl:inline relative z-10">
+                        <span className="hidden min-[1700px]:inline relative z-10">
                           <Typography variant="button">End Session</Typography>
                         </span>
                       </>
                     ) : showResumeButton ? (
                       <>
                         <Activity size={13} className="relative z-10" />
-                        <span className="hidden xl:inline relative z-10">
+                        <span className="hidden min-[1700px]:inline relative z-10">
                           <Typography variant="button">
                             Resume Session
                           </Typography>
@@ -288,7 +289,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                           fill="currentColor"
                           className="relative z-10"
                         />
-                        <span className="hidden xl:inline relative z-10">
+                        <span className="hidden min-[1700px]:inline relative z-10">
                           <Typography variant="button">
                             Start Session
                           </Typography>

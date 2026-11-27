@@ -11,6 +11,7 @@ import React, {
 } from "react";
 import { getSetting, setSetting } from "@/db";
 import { useShortcuts } from "./ShortcutProvider";
+import { getKeyCode } from "@/lib/keys";
 
 export type ToolType =
   | "select"
@@ -178,16 +179,17 @@ export function ToolProvider({ children }: { children: ReactNode }) {
       )
         return;
 
+      const code = getKeyCode(e);
       if (!e.ctrlKey && !e.metaKey && !e.altKey) {
-        const t = TOOL_KEYS[e.code];
+        const t = TOOL_KEYS[code];
         if (t) {
           setTool(t);
           return;
         }
       }
 
-      if (e.code.startsWith("Digit")) {
-        const num = parseInt(e.code.replace("Digit", ""), 10);
+      if (code.startsWith("Digit")) {
+        const num = parseInt(code.replace("Digit", ""), 10);
         if (num >= 1 && num <= DEFAULT_COLORS.length) {
           setColor(DEFAULT_COLORS[num - 1]);
         }

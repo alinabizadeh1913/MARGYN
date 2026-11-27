@@ -68,18 +68,18 @@ function Countdown({ unlockTime }: { unlockTime: number }) {
       {items.map((item, i) => (
         <React.Fragment key={item.label}>
           <div className="flex flex-col items-center">
-            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-[#09090b] border border-[#27272a] rounded-2xl flex items-center justify-center shadow-inner relative overflow-hidden group">
+            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-[#09080b] border border-[#2b2630] rounded-2xl flex items-center justify-center shadow-inner relative overflow-hidden group">
               <div className="absolute inset-0 bg-gradient-to-t from-amber-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
               <span className="text-3xl font-mono font-bold text-amber-400 relative z-10">
                 {item.val.toString().padStart(2, "0")}
               </span>
             </div>
-            <span className="text-[10px] uppercase font-bold text-[#52525b] mt-3 tracking-widest">
+            <span className="text-[10px] uppercase font-bold text-[#6f6878] mt-3 tracking-widest">
               {item.label}
             </span>
           </div>
           {i < 3 && (
-            <span className="text-3xl font-bold text-[#3f3f46] -mt-6">:</span>
+            <span className="text-3xl font-bold text-[#443d4b] -mt-6">:</span>
           )}
         </React.Fragment>
       ))}
@@ -324,19 +324,19 @@ export default function HistoryView({
 
   if (!filePath) {
     return (
-      <div className="flex flex-col h-full w-full bg-[#09090b] p-8 overflow-y-auto items-center justify-center">
+      <div className="flex flex-col h-full w-full bg-[#09080b] p-8 overflow-y-auto items-center justify-center">
         <div className="max-w-md text-center flex flex-col items-center">
-          <div className="w-24 h-24 bg-[#121214] border border-[#27272a] rounded-full flex items-center justify-center mb-6 shadow-2xl">
-            <FolderArchive size={40} className="text-[#52525b]" />
+          <div className="w-24 h-24 bg-[#121015] border border-[#2b2630] rounded-full flex items-center justify-center mb-6 shadow-2xl">
+            <FolderArchive size={40} className="text-[#6f6878]" />
           </div>
           <Typography
             variant="pageTitle"
             as="h2"
-            className="text-[#fafafa] mb-3"
+            className="text-[#fbf8f9] mb-3"
           >
             No Active Document
           </Typography>
-          <Typography variant="body" as="p" className="text-[#a1a1aa]">
+          <Typography variant="body" as="p" className="text-[#aaa3b4]">
             Open or import a project to view its reading history and session
             statistics.
           </Typography>
@@ -346,7 +346,7 @@ export default function HistoryView({
   }
 
   return (
-    <div className="flex flex-col h-full w-full bg-[#09090b] overflow-y-auto relative">
+    <div className="flex flex-col h-full w-full bg-[#09080b] overflow-y-auto relative">
       <div className="max-w-[1200px] w-full mx-auto p-8 pb-20">
         <header className="mb-8 flex items-end justify-between flex-wrap gap-4">
           <div>
@@ -355,7 +355,7 @@ export default function HistoryView({
               <Typography
                 variant="pageTitle"
                 as="h1"
-                className="text-[#fafafa] text-3xl font-bold"
+                className="text-[#fbf8f9] text-3xl font-bold"
               >
                 The 7-Day Lock
               </Typography>
@@ -368,17 +368,17 @@ export default function HistoryView({
             <Typography
               variant="body"
               as="p"
-              className="text-[#a1a1aa] max-w-2xl leading-relaxed"
+              className="text-[#aaa3b4] max-w-2xl leading-relaxed"
             >
               To protect your mind from obsessive counting, your reading stats
               are kept hidden for 7 days. After a week has passed, the truth is
               revealed here.
             </Typography>
-            <div className="mt-5 flex items-center gap-2 bg-[#121214] border border-[#27272a] px-4 py-2 rounded-xl w-fit shadow-sm">
-              <FileText size={16} className="text-[#38bdf8]" />
+            <div className="mt-5 flex items-center gap-2 bg-[#121015] border border-[#2b2630] px-4 py-2 rounded-xl w-fit shadow-sm">
+              <FileText size={16} className="text-[#ef2b3a]" />
               <Typography
                 variant="bodyMedium"
-                className="text-[#fafafa] font-medium"
+                className="text-[#fbf8f9] font-medium"
               >
                 {fileName || "Current Document"}
               </Typography>
@@ -388,7 +388,7 @@ export default function HistoryView({
 
         {isLoading ? (
           <div className="flex justify-center py-32">
-            <div className="w-10 h-10 border-4 border-white/10 border-t-[#38bdf8] rounded-full animate-spin"></div>
+            <div className="w-10 h-10 border-4 border-white/10 border-t-[#ef2b3a] rounded-full animate-spin"></div>
           </div>
         ) : (
           <div className="flex flex-col gap-6">
@@ -400,13 +400,13 @@ export default function HistoryView({
               now={now}
             />
 
-            <div className="bg-[#121214] border border-[#27272a] rounded-3xl p-6 shadow-sm min-h-[400px] flex flex-col">
-              <div className="flex items-center justify-between mb-6 pb-4 border-b border-[#27272a]">
+            <div className="bg-[#121015] border border-[#2b2630] rounded-3xl p-6 shadow-sm min-h-[400px] flex flex-col">
+              <div className="flex items-center justify-between mb-6 pb-4 border-b border-[#2b2630]">
                 <div className="flex items-center gap-3">
-                  <BookOpen className="text-[#a1a1aa]" size={22} />
+                  <BookOpen className="text-[#aaa3b4]" size={22} />
                   <Typography
                     variant="cardTitle"
-                    className="text-[#fafafa] text-xl"
+                    className="text-[#fbf8f9] text-xl"
                   >
                     {selectedDate.toLocaleDateString("en-US", {
                       weekday: "long",
@@ -419,19 +419,19 @@ export default function HistoryView({
 
                 <div className="flex items-center gap-3">
                   {!isLocked && selectedSessions.length > 0 && (
-                    <div className="flex items-center gap-2 px-3 py-1.5 bg-[#38bdf8]/10 border border-[#38bdf8]/20 rounded-lg">
-                      <FileText size={14} className="text-[#38bdf8]" />
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-[#ef2b3a]/10 border border-[#ef2b3a]/20 rounded-lg">
+                      <FileText size={14} className="text-[#ef2b3a]" />
                       <Typography
                         variant="caption"
-                        className="text-[#38bdf8] font-bold text-sm"
+                        className="text-[#ef2b3a] font-bold text-sm"
                       >
                         {totalPagesForDay}{" "}
                         {totalPagesForDay === 1 ? "Page" : "Pages"} Read
                       </Typography>
                     </div>
                   )}
-                  <div className="px-3 py-1.5 bg-[#18181b] border border-[#27272a] rounded-lg">
-                    <Typography variant="caption" className="text-[#a1a1aa]">
+                  <div className="px-3 py-1.5 bg-[#19161c] border border-[#2b2630] rounded-lg">
+                    <Typography variant="caption" className="text-[#aaa3b4]">
                       {selectedSessions.length}{" "}
                       {selectedSessions.length === 1 ? "Session" : "Sessions"}
                     </Typography>
@@ -441,29 +441,29 @@ export default function HistoryView({
 
               {selectedSessions.length === 0 ? (
                 <div className="flex flex-col items-center justify-center flex-1 py-20 text-center">
-                  <div className="w-20 h-20 bg-[#18181b] rounded-full flex items-center justify-center mb-4 border border-[#27272a]">
-                    <FileText size={32} className="text-[#3f3f46]" />
+                  <div className="w-20 h-20 bg-[#19161c] rounded-full flex items-center justify-center mb-4 border border-[#2b2630]">
+                    <FileText size={32} className="text-[#443d4b]" />
                   </div>
                   <Typography
                     variant="cardTitle"
-                    className="text-[#fafafa] mb-2"
+                    className="text-[#fbf8f9] mb-2"
                   >
                     No Sessions
                   </Typography>
-                  <Typography variant="body" className="text-[#52525b]">
+                  <Typography variant="body" className="text-[#6f6878]">
                     No sessions were recorded on this day.
                   </Typography>
                 </div>
               ) : (
                 <div className="flex flex-col gap-6">
                   {isLocked && (
-                    <div className="bg-[#18181b] border border-amber-500/30 rounded-2xl p-8 flex flex-col items-center justify-center text-center relative overflow-hidden shadow-[0_0_40px_rgba(245,158,11,0.05)]">
+                    <div className="bg-[#19161c] border border-amber-500/30 rounded-2xl p-8 flex flex-col items-center justify-center text-center relative overflow-hidden shadow-[0_0_40px_rgba(245,158,11,0.05)]">
                       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] bg-amber-500/5 rounded-full blur-[80px] pointer-events-none" />
 
                       <div className="relative mb-6">
                         <div className="absolute inset-0 bg-amber-500/20 rounded-full animate-[pulse-ring_2s_ease-out_infinite]" />
                         <div className="absolute inset-0 bg-amber-500/20 rounded-full animate-[pulse-ring_2s_ease-out_infinite_0.5s]" />
-                        <div className="relative w-20 h-20 bg-[#121214] rounded-full flex items-center justify-center border border-amber-500/30 z-10">
+                        <div className="relative w-20 h-20 bg-[#121015] rounded-full flex items-center justify-center border border-amber-500/30 z-10">
                           <Timer size={36} className="text-amber-500" />
                         </div>
                       </div>
@@ -471,13 +471,13 @@ export default function HistoryView({
                       <Typography
                         variant="pageTitle"
                         as="h3"
-                        className="text-[#fafafa] mb-3 text-2xl"
+                        className="text-[#fbf8f9] mb-3 text-2xl"
                       >
                         Stats Locked
                       </Typography>
                       <Typography
                         variant="body"
-                        className="text-[#a1a1aa] max-w-md mb-8"
+                        className="text-[#aaa3b4] max-w-md mb-8"
                       >
                         To keep you focused on the present, the stats for this
                         day are encrypted and hidden. The truth will be revealed
@@ -492,25 +492,25 @@ export default function HistoryView({
                     {selectedSessions.map((session, index) => (
                       <div
                         key={session.id}
-                        className={`flex flex-col sm:flex-row items-start sm:items-center justify-between p-5 rounded-2xl bg-[#18181b] border transition-all duration-300 gap-4 ${
+                        className={`flex flex-col sm:flex-row items-start sm:items-center justify-between p-5 rounded-2xl bg-[#19161c] border transition-all duration-300 gap-4 ${
                           index === 0
                             ? "border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.05)]"
-                            : "border-[#27272a] opacity-80 hover:opacity-100"
+                            : "border-[#2b2630] opacity-80 hover:opacity-100"
                         }`}
                       >
                         <div className="flex items-center gap-5 w-full sm:w-auto">
                           <div
-                            className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border ${index === 0 ? "bg-emerald-500/10 border-emerald-500/20" : "bg-[#121214] border-[#27272a]"}`}
+                            className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border ${index === 0 ? "bg-emerald-500/10 border-emerald-500/20" : "bg-[#121015] border-[#2b2630]"}`}
                           >
                             {isLocked ? (
-                              <Lock size={20} className="text-[#52525b]" />
+                              <Lock size={20} className="text-[#6f6878]" />
                             ) : (
                               <CheckCircle2
                                 size={22}
                                 className={
                                   index === 0
                                     ? "text-emerald-500"
-                                    : "text-[#a1a1aa]"
+                                    : "text-[#aaa3b4]"
                                 }
                               />
                             )}
@@ -519,7 +519,7 @@ export default function HistoryView({
                             <div className="flex items-center gap-2 mb-1.5">
                               <Typography
                                 variant="cardTitle"
-                                className="text-[#fafafa] block truncate text-base"
+                                className="text-[#fbf8f9] block truncate text-base"
                               >
                                 Focus Session
                               </Typography>
@@ -530,10 +530,10 @@ export default function HistoryView({
                               )}
                             </div>
                             <div className="flex items-center gap-2 mt-1">
-                              <Clock size={14} className="text-[#52525b]" />
+                              <Clock size={14} className="text-[#6f6878]" />
                               <Typography
                                 variant="caption"
-                                className="text-[#a1a1aa] text-sm"
+                                className="text-[#aaa3b4] text-sm"
                               >
                                 {new Date(session.startTime).toLocaleTimeString(
                                   "en-US",
@@ -549,25 +549,25 @@ export default function HistoryView({
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-8 self-end sm:self-auto shrink-0 bg-[#09090b] px-6 py-3 rounded-xl border border-[#27272a]">
+                        <div className="flex items-center gap-8 self-end sm:self-auto shrink-0 bg-[#09080b] px-6 py-3 rounded-xl border border-[#2b2630]">
                           <div className="text-center min-w-[50px]">
                             <Typography
                               variant="microLabel"
-                              className="text-[#52525b] block mb-1"
+                              className="text-[#6f6878] block mb-1"
                             >
                               Pages
                             </Typography>
                             {isLocked ? (
                               <div className="flex justify-center">
-                                <Lock size={18} className="text-[#3f3f46]" />
+                                <Lock size={18} className="text-[#443d4b]" />
                               </div>
                             ) : (
                               <Typography
                                 variant="statSmall"
                                 className={
                                   index === 0
-                                    ? "text-[#38bdf8] font-bold text-lg"
-                                    : "text-[#a1a1aa] font-bold text-lg"
+                                    ? "text-[#ef2b3a] font-bold text-lg"
+                                    : "text-[#aaa3b4] font-bold text-lg"
                                 }
                               >
                                 {session.pagesRead}
@@ -575,39 +575,39 @@ export default function HistoryView({
                             )}
                           </div>
 
-                          <div className="w-px h-8 bg-[#27272a]" />
+                          <div className="w-px h-8 bg-[#2b2630]" />
 
                           <div className="text-center min-w-[70px]">
                             <Typography
                               variant="microLabel"
-                              className="text-[#52525b] block mb-1"
+                              className="text-[#6f6878] block mb-1"
                             >
                               Range
                             </Typography>
                             {isLocked ? (
                               <div className="flex justify-center">
-                                <Lock size={18} className="text-[#3f3f46]" />
+                                <Lock size={18} className="text-[#443d4b]" />
                               </div>
                             ) : (
                               <Typography
                                 variant="body"
-                                className="text-[#fafafa] font-mono text-sm"
+                                className="text-[#fbf8f9] font-mono text-sm"
                               >
                                 {session.startPage}{" "}
-                                <span className="text-[#52525b]">→</span>{" "}
+                                <span className="text-[#6f6878]">→</span>{" "}
                                 {session.endPage}
                               </Typography>
                             )}
                           </div>
 
-                          <div className="w-px h-8 bg-[#27272a]" />
+                          <div className="w-px h-8 bg-[#2b2630]" />
 
                           <div className="pl-2">
                             <button
                               onClick={() =>
                                 handleOpenDeleteModal(session.id, index)
                               }
-                              className="p-2 rounded-xl transition-all text-[#52525b] hover:text-rose-500 hover:bg-rose-500/10 cursor-pointer"
+                              className="p-2 rounded-xl transition-all text-[#6f6878] hover:text-rose-500 hover:bg-rose-500/10 cursor-pointer"
                               title="Delete Session"
                             >
                               <Trash2 size={20} />
@@ -625,8 +625,8 @@ export default function HistoryView({
 
         {/* ✅ بخش Developer Tools: Time Travel کامنت شد */}
         {/* 
-        <div className="mt-8 bg-[#121214] border border-amber-500/30 rounded-3xl p-6 shadow-[0_0_30px_rgba(245,158,11,0.05)] animate-in fade-in slide-in-from-bottom-8 duration-500 delay-150">
-          <div className="flex items-center justify-between mb-6 pb-4 border-b border-[#27272a]">
+        <div className="mt-8 bg-[#121015] border border-amber-500/30 rounded-3xl p-6 shadow-[0_0_30px_rgba(245,158,11,0.05)] animate-in fade-in slide-in-from-bottom-8 duration-500 delay-150">
+          <div className="flex items-center justify-between mb-6 pb-4 border-b border-[#2b2630]">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center border border-amber-500/20">
                 <Terminal className="text-amber-500" size={20} />
@@ -635,14 +635,14 @@ export default function HistoryView({
                 <Typography variant="cardTitle" className="text-amber-500">
                   Developer Tools: Time Travel
                 </Typography>
-                <Typography variant="caption" className="text-[#a1a1aa]">
+                <Typography variant="caption" className="text-[#aaa3b4]">
                   Simulate the passage of time to test the 7-day lock.
                 </Typography>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 px-4 py-2 bg-[#09090b] border border-[#27272a] rounded-xl shadow-inner">
-              <span className="text-xs font-mono font-bold text-[#52525b]">
+            <div className="flex items-center gap-2 px-4 py-2 bg-[#09080b] border border-[#2b2630] rounded-xl shadow-inner">
+              <span className="text-xs font-mono font-bold text-[#6f6878]">
                 Offset:
               </span>
               <span
@@ -656,23 +656,23 @@ export default function HistoryView({
           <div className="flex flex-wrap items-center gap-3">
             <button
               onClick={() => handleTimeTravel(24 * 60 * 60 * 1000)}
-              className="flex items-center gap-2 px-4 py-2.5 bg-[#18181b] hover:bg-[#27272a] text-[#fafafa] border border-[#3f3f46] rounded-xl transition-all font-medium text-sm active:scale-95 shadow-sm"
+              className="flex items-center gap-2 px-4 py-2.5 bg-[#19161c] hover:bg-[#2b2630] text-[#fbf8f9] border border-[#443d4b] rounded-xl transition-all font-medium text-sm active:scale-95 shadow-sm"
             >
               <FastForward size={16} className="text-amber-500" /> +1 Day
             </button>
             <button
               onClick={() => handleTimeTravel(60 * 60 * 1000)}
-              className="flex items-center gap-2 px-4 py-2.5 bg-[#18181b] hover:bg-[#27272a] text-[#fafafa] border border-[#3f3f46] rounded-xl transition-all font-medium text-sm active:scale-95 shadow-sm"
+              className="flex items-center gap-2 px-4 py-2.5 bg-[#19161c] hover:bg-[#2b2630] text-[#fbf8f9] border border-[#443d4b] rounded-xl transition-all font-medium text-sm active:scale-95 shadow-sm"
             >
               <FastForward size={16} className="text-amber-500" /> +1 Hour
             </button>
             <button
               onClick={() => handleTimeTravel(60 * 1000)}
-              className="flex items-center gap-2 px-4 py-2.5 bg-[#18181b] hover:bg-[#27272a] text-[#fafafa] border border-[#3f3f46] rounded-xl transition-all font-medium text-sm active:scale-95 shadow-sm"
+              className="flex items-center gap-2 px-4 py-2.5 bg-[#19161c] hover:bg-[#2b2630] text-[#fbf8f9] border border-[#443d4b] rounded-xl transition-all font-medium text-sm active:scale-95 shadow-sm"
             >
               <FastForward size={16} className="text-amber-500" /> +1 Min
             </button>
-            <div className="w-px h-8 bg-[#27272a] mx-2 hidden sm:block" />
+            <div className="w-px h-8 bg-[#2b2630] mx-2 hidden sm:block" />
             <button
               onClick={handleResetTime}
               className="flex items-center gap-2 px-4 py-2.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-xl transition-all font-medium text-sm active:scale-95 shadow-sm"
@@ -685,22 +685,22 @@ export default function HistoryView({
       </div>
 
       {showOrderErrorModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md transition-all duration-300">
-          <div className="bg-[#121214] border border-amber-500/30 p-8 rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] w-full max-w-md flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 transition-all duration-300">
+          <div className="bg-[#121015] border border-amber-500/30 p-8 rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] w-full max-w-md flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">
             <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mb-6 shadow-inner">
               <AlertTriangle size={32} className="text-amber-500" />
             </div>
             <Typography
               variant="pageTitle"
               as="h2"
-              className="text-[#fafafa] mb-2 font-semibold tracking-tight"
+              className="text-[#fbf8f9] mb-2 font-semibold tracking-tight"
             >
               Cannot Delete
             </Typography>
             <Typography
               variant="body"
               as="p"
-              className="text-[#a1a1aa] mb-8 leading-relaxed"
+              className="text-[#aaa3b4] mb-8 leading-relaxed"
             >
               To maintain data integrity, only sessions recorded in the last 24
               hours can be deleted. Older sessions are locked to keep your stats
@@ -717,22 +717,22 @@ export default function HistoryView({
       )}
 
       {showDeleteModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md transition-all duration-300">
-          <div className="bg-[#121214] border border-rose-500/30 p-8 rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] w-full max-w-md flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 transition-all duration-300">
+          <div className="bg-[#121015] border border-rose-500/30 p-8 rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] w-full max-w-md flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">
             <div className="w-16 h-16 bg-rose-500/10 rounded-full flex items-center justify-center mb-6 shadow-inner">
               <AlertTriangle size={32} className="text-rose-500" />
             </div>
             <Typography
               variant="pageTitle"
               as="h2"
-              className="text-[#fafafa] mb-2 font-semibold tracking-tight"
+              className="text-[#fbf8f9] mb-2 font-semibold tracking-tight"
             >
               Delete Session?
             </Typography>
             <Typography
               variant="body"
               as="p"
-              className="text-[#a1a1aa] mb-8 leading-relaxed"
+              className="text-[#aaa3b4] mb-8 leading-relaxed"
             >
               This will permanently remove this session from your history.
               <br />
@@ -740,9 +740,9 @@ export default function HistoryView({
               To confirm, type the following phrase in{" "}
               <strong>ALL CAPITAL LETTERS</strong>:
             </Typography>
-            <div className="w-full bg-[#09090b] border border-[#27272a] rounded-2xl p-4 mb-6 flex items-center justify-center gap-3 select-none">
-              <Lock size={16} className="text-[#52525b]" />
-              <span className="text-[#fafafa] font-mono text-base font-bold tracking-widest">
+            <div className="w-full bg-[#09080b] border border-[#2b2630] rounded-2xl p-4 mb-6 flex items-center justify-center gap-3 select-none">
+              <Lock size={16} className="text-[#6f6878]" />
+              <span className="text-[#fbf8f9] font-mono text-base font-bold tracking-widest">
                 {REQUIRED_DELETE_PHRASE}
               </span>
             </div>
@@ -766,10 +766,10 @@ export default function HistoryView({
               spellCheck="false"
               placeholder="TYPE HERE (UPPERCASE ONLY)"
               autoFocus
-              className={`w-full px-5 py-4 rounded-xl bg-[#18181b] border-2 outline-none transition-all text-center text-lg font-mono tracking-widest shadow-sm ${
+              className={`w-full px-5 py-4 rounded-xl bg-[#19161c] border-2 outline-none transition-all text-center text-lg font-mono tracking-widest shadow-sm ${
                 deleteError
                   ? "border-rose-400 focus:border-rose-500 text-rose-600 placeholder-rose-300 animate-shake"
-                  : "border-[#27272a] focus:border-rose-500/50 text-[#fafafa]"
+                  : "border-[#2b2630] focus:border-rose-500/50 text-[#fbf8f9]"
               }`}
             />
             {deleteError && (
@@ -783,7 +783,7 @@ export default function HistoryView({
             <div className="flex gap-3 w-full mt-8">
               <button
                 onClick={() => setShowDeleteModal(false)}
-                className="flex-1 px-4 py-3.5 rounded-xl bg-[#18181b] text-[#a1a1aa] hover:text-[#fafafa] hover:bg-[#27272a] border border-[#27272a] transition-all font-medium active:scale-[0.98]"
+                className="flex-1 px-4 py-3.5 rounded-xl bg-[#19161c] text-[#aaa3b4] hover:text-[#fbf8f9] hover:bg-[#2b2630] border border-[#2b2630] transition-all font-medium active:scale-[0.98]"
               >
                 Cancel
               </button>

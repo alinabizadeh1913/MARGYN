@@ -1,5 +1,6 @@
 "use client";
 
+import { useDprTick } from "@/lib/dpr";
 import React, {
   useCallback,
   useEffect,
@@ -36,8 +37,8 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = "pdf.worker.min.mjs";
 
 const REQUIRED_PHRASE = "I AM BREAKING MY FOCUS";
 const DEFAULT_SCALE = 1.3;
-const PREFETCH_WINDOW = 5;
-const MAX_CACHE_SIZE = 20;
+const PREFETCH_WINDOW = 2; // PERF: was 5 (up to 10 hi-DPI canvases in RAM)
+const MAX_CACHE_SIZE = 7; // PERF: was 20 pages of full-DPI bitmaps (hundreds of MB)
 
 interface LoadedDoc {
   id: number;
@@ -154,8 +155,9 @@ export default function PdfViewer({
   const isNavigationLocked =
     !isActive && lastFocusPage !== null && !isCompleted;
 
+  const dprTick = useDprTick();
   const requestKey = loadedDoc
-    ? `${loadedDoc.id}:${currentPage}:${scale}`
+    ? `${loadedDoc.id}:${currentPage}:${scale}@${dprTick}`
     : null;
   const isCacheHit = requestKey ? cacheRef.current.has(requestKey) : false;
   const isLoading =
@@ -230,7 +232,7 @@ export default function PdfViewer({
     });
     cacheRef.current.clear();
     prefetchingRef.current.clear();
-  }, [fileData, scale]);
+  }, [fileData, scale, dprTick]);
 
   useEffect(() => {
     setLoadedDoc(null);
@@ -274,7 +276,7 @@ export default function PdfViewer({
 
       for (let i = start; i <= end; i++) {
         if (i === current) continue;
-        const key = `${doc.id}:${i}:${scale}`;
+        const key = `${doc.id}:${i}:${scale}@${dprTick}`;
         if (cacheRef.current.has(key) || prefetchingRef.current.has(key))
           continue;
 
@@ -285,7 +287,7 @@ export default function PdfViewer({
           try {
             const page = await doc.doc.getPage(i);
             const viewport = page.getViewport({ scale });
-            const outputScale = window.devicePixelRatio || 1;
+            const outputScale = Math.min(window.devicePixelRatio || 1, 2);
 
             const offscreen = document.createElement("canvas");
             offscreen.width = Math.floor(viewport.width * outputScale);
@@ -319,7 +321,7 @@ export default function PdfViewer({
             });
 
             if (cacheRef.current.size > MAX_CACHE_SIZE) {
-              const protectedKey = `${doc.id}:${current}:${scale}`;
+              const protectedKey = `${doc.id}:${current}:${scale}@${dprTick}`;
               const oldestKey = cacheRef.current.keys().next().value;
               if (oldestKey && oldestKey !== protectedKey) {
                 const c = cacheRef.current.get(oldestKey)?.canvas;
@@ -339,7 +341,7 @@ export default function PdfViewer({
         }, delay);
       }
     },
-    [scale],
+    [scale, dprTick],
   );
 
   useLayoutEffect(() => {
@@ -408,7 +410,7 @@ export default function PdfViewer({
         }
 
         const viewport = page.getViewport({ scale });
-        const outputScale = window.devicePixelRatio || 1;
+        const outputScale = Math.min(window.devicePixelRatio || 1, 2);
         const cssWidth = Math.floor(viewport.width);
         const cssHeight = Math.floor(viewport.height);
 
@@ -714,17 +716,17 @@ export default function PdfViewer({
   if (!fileData) {
     return (
       <div
-        className={`w-full h-full flex flex-col items-center justify-center text-center px-6 bg-[#09090b] relative overflow-hidden transition-all duration-300 ${isDragging ? "bg-[#38bdf8]/5" : ""}`}
+        className={`w-full h-full flex flex-col items-center justify-center text-center px-6 bg-[#09080b] relative overflow-hidden transition-all duration-300 ${isDragging ? "bg-[#ef2b3a]/5" : ""}`}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
         <div
-          className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full blur-[120px] pointer-events-none transition-all duration-500 ${isDragging ? "bg-[#38bdf8]/20 scale-110" : "bg-[#38bdf8]/5"}`}
+          className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full blur-[120px] pointer-events-none transition-all duration-500 ${isDragging ? "bg-[#ef2b3a]/20 scale-110" : "bg-[#ef2b3a]/5"}`}
         />
-        <div className="absolute top-0 left-0 w-[500px] h-[500px] bg-[#a855f7]/5 rounded-full blur-[100px] -translate-x-1/2 -translate-y-1/2 pointer-events-none" />
+        <div className="absolute top-0 left-0 w-[500px] h-[500px] bg-[#ff7a45]/5 rounded-full blur-[100px] -translate-x-1/2 -translate-y-1/2 pointer-events-none" />
         <div className="absolute bottom-0 right-0 w-[500px] h-[500px] bg-[#10b981]/5 rounded-full blur-[100px] translate-x-1/2 translate-y-1/2 pointer-events-none" />
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,#27272a_1px,transparent_1px),linear-gradient(to_bottom,#27272a_1px,transparent_1px)] bg-[size:64px_64px] opacity-[0.02] pointer-events-none" />
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#2b2630_1px,transparent_1px),linear-gradient(to_bottom,#2b2630_1px,transparent_1px)] bg-[size:64px_64px] opacity-[0.02] pointer-events-none" />
 
         <div className="relative z-10 flex flex-col items-center animate-in fade-in zoom-in-95 duration-700 ease-out">
           <button
@@ -733,17 +735,17 @@ export default function PdfViewer({
             disabled={isDragging}
           >
             <div
-              className={`absolute inset-0 blur-xl rounded-3xl transition-all duration-500 ${isDragging ? "bg-[#38bdf8]/40" : "bg-[#38bdf8]/0 group-hover:bg-[#38bdf8]/20"}`}
+              className={`absolute inset-0 blur-xl rounded-3xl transition-all duration-500 ${isDragging ? "bg-[#ef2b3a]/40" : "bg-[#ef2b3a]/0 group-hover:bg-[#ef2b3a]/20"}`}
             />
             <div
-              className={`w-24 h-24 rounded-3xl bg-[#121214] border shadow-[0_0_40px_rgba(0,0,0,0.5)] flex items-center justify-center relative z-10 transition-all duration-500 ${isDragging ? "border-[#38bdf8] bg-[#18181b]" : "border-white/10 group-hover:-translate-y-2 group-hover:border-[#38bdf8]/40 group-hover:bg-[#18181b]"}`}
+              className={`w-24 h-24 rounded-3xl bg-[#121015] border shadow-[0_0_40px_rgba(0,0,0,0.5)] flex items-center justify-center relative z-10 transition-all duration-500 ${isDragging ? "border-[#ef2b3a] bg-[#19161c]" : "border-white/10 group-hover:-translate-y-2 group-hover:border-[#ef2b3a]/40 group-hover:bg-[#19161c]"}`}
             >
               {isDragging ? (
-                <FileDown size={36} className="text-[#38bdf8] animate-bounce" />
+                <FileDown size={36} className="text-[#ef2b3a] animate-bounce" />
               ) : (
                 <FolderOpen
                   size={36}
-                  className="text-[#71717a] group-hover:text-[#38bdf8] transition-colors duration-300"
+                  className="text-[#847d8e] group-hover:text-[#ef2b3a] transition-colors duration-300"
                 />
               )}
             </div>
@@ -760,7 +762,7 @@ export default function PdfViewer({
             <Typography
               variant="body"
               as="p"
-              className="text-[#a1a1aa] leading-relaxed text-sm transition-all duration-300"
+              className="text-[#aaa3b4] leading-relaxed text-sm transition-all duration-300"
             >
               {isDragging
                 ? "Release to start your focus session."
@@ -781,7 +783,7 @@ export default function PdfViewer({
       style={{ backgroundColor: canvasBg }}
     >
       <div className="absolute top-8 right-8 flex flex-col gap-4 z-50">
-        <div className="bg-black/20 backdrop-blur-xl border border-white/20 p-2 rounded-2xl flex flex-col gap-1.5 shadow-xl transition-all duration-300 hover:bg-white hover:border-zinc-300 group/panel">
+        <div className="bg-black/40 border border-white/20 p-2 rounded-2xl flex flex-col gap-1.5 shadow-xl transition-all duration-300 hover:bg-white hover:border-zinc-300 group/panel">
           <button
             onClick={toggleFullscreen}
             className="p-2.5 rounded-xl text-white/70 group-hover/panel:text-zinc-800 hover:bg-zinc-100 transition-all duration-200"
@@ -821,7 +823,7 @@ export default function PdfViewer({
 
         {loadedDoc && (
           <>
-            <div className="bg-black/20 backdrop-blur-xl border border-white/20 p-2 rounded-2xl flex flex-col gap-1.5 shadow-xl items-center transition-all duration-300 hover:bg-white hover:border-zinc-300 group/panel">
+            <div className="bg-black/40 border border-white/20 p-2 rounded-2xl flex flex-col gap-1.5 shadow-xl items-center transition-all duration-300 hover:bg-white hover:border-zinc-300 group/panel">
               <button
                 onClick={handlePrevPage}
                 disabled={currentPage === 1 || isNavigationLocked}
@@ -856,7 +858,7 @@ export default function PdfViewer({
             <button
               onClick={() => setShowGoToPageModal(true)}
               disabled={isNavigationLocked}
-              className={`bg-black/20 backdrop-blur-xl border border-white/20 p-3 rounded-2xl shadow-xl transition-all duration-300 flex items-center justify-center 
+              className={`bg-black/40 border border-white/20 p-3 rounded-2xl shadow-xl transition-all duration-300 flex items-center justify-center 
                 ${
                   isNavigationLocked
                     ? "text-white/30 group-hover/panel:text-zinc-400 cursor-not-allowed"
@@ -872,7 +874,7 @@ export default function PdfViewer({
         {onOpenNote && (
           <button
             onClick={onOpenNote}
-            className="bg-black/20 backdrop-blur-xl border border-white/20 p-3 rounded-2xl shadow-xl transition-all duration-300 text-white/70 hover:text-zinc-900 hover:bg-white hover:border-zinc-200 flex items-center justify-center"
+            className="bg-black/40 border border-white/20 p-3 rounded-2xl shadow-xl transition-all duration-300 text-white/70 hover:text-zinc-900 hover:bg-white hover:border-zinc-200 flex items-center justify-center"
             title="Page Notes (Ctrl+T)"
           >
             <Type size={20} />
@@ -920,8 +922,8 @@ export default function PdfViewer({
 
       {/* ✅ لودینگ شیشه‌ای مدرن با لوگوی وسط و فضای بازتر */}
       {showLoadingSpinner && (
-        <div className="absolute inset-0 z-[999] flex items-center justify-center bg-black/30 backdrop-blur-sm transition-all duration-500 animate-in fade-in">
-          <div className="relative flex flex-col items-center justify-center p-10 bg-[#121214]/80 backdrop-blur-2xl border border-white/10 rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)]">
+        <div className="absolute inset-0 z-[999] flex items-center justify-center bg-black/55 transition-all duration-500 animate-in fade-in">
+          <div className="relative flex flex-col items-center justify-center p-10 bg-[#121015]/80 border border-white/10 rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)]">
             {hasRenderError ? (
               <div className="flex flex-col items-center gap-3">
                 <ShieldAlert size={32} className="text-rose-500" />
@@ -937,13 +939,13 @@ export default function PdfViewer({
                 {/* لودر نئونی بزرگتر با لوگوی وسط */}
                 <div className="relative w-24 h-24 flex items-center justify-center">
                   <div className="absolute inset-0 border-[3px] border-white/5 rounded-full"></div>
-                  <div className="absolute inset-0 border-[3px] border-t-[#38bdf8] border-r-[#38bdf8] rounded-full animate-[spin_1s_ease-in-out_infinite] shadow-[0_0_20px_rgba(56,189,248,0.4)]"></div>
-                  <div className="absolute inset-[6px] border-[2px] border-b-[#a855f7] border-l-[#a855f7] rounded-full animate-[spin_1.5s_ease-in-out_infinite_reverse]"></div>
+                  <div className="absolute inset-0 border-[3px] border-t-[#ef2b3a] border-r-[#ef2b3a] rounded-full animate-[spin_1s_ease-in-out_infinite] shadow-[0_0_20px_rgba(239,43,58,0.4)]"></div>
+                  <div className="absolute inset-[6px] border-[2px] border-b-[#9f1239] border-l-[#9f1239] rounded-full animate-[spin_1.5s_ease-in-out_infinite_reverse]"></div>
 
                   <img
                     src="/logo.png"
                     alt="MARGYN Logo"
-                    className="w-12 h-12 object-contain drop-shadow-[0_0_8px_rgba(56,189,248,0.6)] z-10"
+                    className="w-12 h-12 object-contain drop-shadow-[0_0_8px_rgba(239,43,58,0.6)] z-10"
                   />
                 </div>
 
@@ -954,7 +956,7 @@ export default function PdfViewer({
                   >
                     Rendering Page
                   </Typography>
-                  <span className="text-[#52525b] text-xs font-mono">
+                  <span className="text-[#6f6878] text-xs font-mono">
                     Please wait
                   </span>
                 </div>
@@ -965,29 +967,29 @@ export default function PdfViewer({
       )}
 
       {showBackModal && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40 backdrop-blur-md transition-all duration-300">
-          <div className="bg-[#121214] border border-rose-500/30 p-8 rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] w-full max-w-lg flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 transition-all duration-300">
+          <div className="bg-[#121015] border border-rose-500/30 p-8 rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] w-full max-w-lg flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">
             <div className="w-16 h-16 bg-rose-500/10 rounded-full flex items-center justify-center mb-6 shadow-inner">
               <ShieldAlert size={32} className="text-rose-500" />
             </div>
             <Typography
               variant="pageTitle"
               as="h2"
-              className="text-[#fafafa] mb-2 font-semibold tracking-tight"
+              className="text-[#fbf8f9] mb-2 font-semibold tracking-tight"
             >
               Break Your Focus?
             </Typography>
             <Typography
               variant="body"
               as="p"
-              className="text-[#a1a1aa] mb-8 max-w-sm leading-relaxed"
+              className="text-[#aaa3b4] mb-8 max-w-sm leading-relaxed"
             >
               Going back breaks your flow. If you absolutely must, type the
               following phrase in <strong>ALL CAPITAL LETTERS</strong>:
             </Typography>
-            <div className="w-full bg-[#09090b] border border-[#27272a] rounded-2xl p-4 mb-6 flex items-center justify-center gap-3 select-none">
-              <Lock size={16} className="text-[#52525b]" />
-              <span className="text-[#fafafa] font-mono text-base font-bold tracking-widest">
+            <div className="w-full bg-[#09080b] border border-[#2b2630] rounded-2xl p-4 mb-6 flex items-center justify-center gap-3 select-none">
+              <Lock size={16} className="text-[#6f6878]" />
+              <span className="text-[#fbf8f9] font-mono text-base font-bold tracking-widest">
                 {REQUIRED_PHRASE}
               </span>
             </div>
@@ -1011,7 +1013,7 @@ export default function PdfViewer({
               autoComplete="off"
               spellCheck="false"
               placeholder="TYPE HERE (UPPERCASE ONLY)"
-              className={`w-full px-5 py-4 rounded-xl bg-[#18181b] border-2 outline-none transition-all text-center text-lg font-mono tracking-widest shadow-sm ${confirmError ? "border-rose-400 focus:border-rose-500 text-rose-600 placeholder-rose-300 animate-shake" : "border-[#27272a] focus:border-rose-500/50 text-[#fafafa]"}`}
+              className={`w-full px-5 py-4 rounded-xl bg-[#19161c] border-2 outline-none transition-all text-center text-lg font-mono tracking-widest shadow-sm ${confirmError ? "border-rose-400 focus:border-rose-500 text-rose-600 placeholder-rose-300 animate-shake" : "border-[#2b2630] focus:border-rose-500/50 text-[#fbf8f9]"}`}
             />
             {confirmError && (
               <Typography
@@ -1024,7 +1026,7 @@ export default function PdfViewer({
             <div className="flex gap-4 w-full mt-8">
               <button
                 onClick={() => setShowBackModal(false)}
-                className="flex-1 px-4 py-3.5 rounded-xl bg-[#18181b] text-[#a1a1aa] hover:text-[#fafafa] hover:bg-[#27272a] border border-[#27272a] transition-all font-medium active:scale-[0.98]"
+                className="flex-1 px-4 py-3.5 rounded-xl bg-[#19161c] text-[#aaa3b4] hover:text-[#fbf8f9] hover:bg-[#2b2630] border border-[#2b2630] transition-all font-medium active:scale-[0.98]"
               >
                 Keep Focusing
               </button>
@@ -1040,26 +1042,26 @@ export default function PdfViewer({
       )}
 
       {showGoToPageModal && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40 backdrop-blur-md transition-all duration-300">
-          <div className="bg-[#121214] border border-[#38bdf8]/30 p-8 rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] w-full max-w-sm flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">
-            <div className="w-16 h-16 bg-[#38bdf8]/10 rounded-full flex items-center justify-center mb-6 shadow-inner">
-              <Hash size={32} className="text-[#38bdf8]" />
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 transition-all duration-300">
+          <div className="bg-[#121015] border border-[#ef2b3a]/30 p-8 rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] w-full max-w-sm flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">
+            <div className="w-16 h-16 bg-[#ef2b3a]/10 rounded-full flex items-center justify-center mb-6 shadow-inner">
+              <Hash size={32} className="text-[#ef2b3a]" />
             </div>
             <Typography
               variant="pageTitle"
               as="h2"
-              className="text-[#fafafa] mb-2 font-semibold tracking-tight"
+              className="text-[#fbf8f9] mb-2 font-semibold tracking-tight"
             >
               Go to Page
             </Typography>
             <Typography
               variant="body"
               as="p"
-              className="text-[#a1a1aa] mb-8 leading-relaxed"
+              className="text-[#aaa3b4] mb-8 leading-relaxed"
             >
               Enter the page number you want to jump to.
             </Typography>
-            <div className="w-full flex items-center bg-[#18181b] border-2 border-[#27272a] focus-within:border-[#38bdf8]/50 rounded-xl transition-all shadow-sm overflow-hidden mb-8">
+            <div className="w-full flex items-center bg-[#19161c] border-2 border-[#2b2630] focus-within:border-[#ef2b3a]/50 rounded-xl transition-all shadow-sm overflow-hidden mb-8">
               <input
                 ref={goToPageInputRef}
                 type="number"
@@ -1087,16 +1089,16 @@ export default function PdfViewer({
                   if (e.key === "Escape") setShowGoToPageModal(false);
                 }}
                 autoFocus
-                className="flex-1 w-full px-5 py-4 bg-transparent outline-none text-center text-xl font-mono tracking-widest text-[#fafafa] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                className="flex-1 w-full px-5 py-4 bg-transparent outline-none text-center text-xl font-mono tracking-widest text-[#fbf8f9] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               />
-              <div className="flex flex-col h-full border-l border-[#27272a] shrink-0 bg-black/10">
+              <div className="flex flex-col h-full border-l border-[#2b2630] shrink-0 bg-black/10">
                 <button
                   onMouseDown={() => startContinuousChange("up")}
                   onMouseUp={stopContinuousChange}
                   onMouseLeave={stopContinuousChange}
                   onTouchStart={() => startContinuousChange("up")}
                   onTouchEnd={stopContinuousChange}
-                  className="flex-1 px-3.5 hover:bg-white/5 text-[#a1a1aa] hover:text-white transition-colors flex items-center justify-center border-b border-[#27272a] active:bg-white/10"
+                  className="flex-1 px-3.5 hover:bg-white/5 text-[#aaa3b4] hover:text-white transition-colors flex items-center justify-center border-b border-[#2b2630] active:bg-white/10"
                   tabIndex={-1}
                 >
                   <ChevronUp size={18} />
@@ -1107,7 +1109,7 @@ export default function PdfViewer({
                   onMouseLeave={stopContinuousChange}
                   onTouchStart={() => startContinuousChange("down")}
                   onTouchEnd={stopContinuousChange}
-                  className="flex-1 px-3.5 hover:bg-white/5 text-[#a1a1aa] hover:text-white transition-colors flex items-center justify-center active:bg-white/10"
+                  className="flex-1 px-3.5 hover:bg-white/5 text-[#aaa3b4] hover:text-white transition-colors flex items-center justify-center active:bg-white/10"
                   tabIndex={-1}
                 >
                   <ChevronDown size={18} />
@@ -1117,14 +1119,14 @@ export default function PdfViewer({
             <div className="flex gap-4 w-full">
               <button
                 onClick={() => setShowGoToPageModal(false)}
-                className="flex-1 px-4 py-3.5 rounded-xl bg-[#18181b] text-[#a1a1aa] hover:text-[#fafafa] hover:bg-[#27272a] border border-[#27272a] transition-all font-medium active:scale-[0.98]"
+                className="flex-1 px-4 py-3.5 rounded-xl bg-[#19161c] text-[#aaa3b4] hover:text-[#fbf8f9] hover:bg-[#2b2630] border border-[#2b2630] transition-all font-medium active:scale-[0.98]"
               >
                 Cancel
               </button>
               <button
                 onClick={handleGoToPage}
                 disabled={isNavigationLocked}
-                className={`flex-1 px-4 py-3.5 rounded-xl transition-all font-medium active:scale-[0.98] ${isNavigationLocked ? "bg-[#38bdf8]/50 text-black/50 cursor-not-allowed shadow-none" : "bg-[#38bdf8] text-black hover:bg-[#38bdf8]/90 shadow-[0_0_15px_rgba(56,189,248,0.3)]"}`}
+                className={`flex-1 px-4 py-3.5 rounded-xl transition-all font-medium active:scale-[0.98] ${isNavigationLocked ? "bg-[#ef2b3a]/50 text-white/60 cursor-not-allowed shadow-none" : "bg-[#ef2b3a] text-white hover:bg-[#ef2b3a]/90 shadow-[0_0_15px_rgba(239,43,58,0.3)]"}`}
               >
                 Go
               </button>

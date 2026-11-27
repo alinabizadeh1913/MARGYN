@@ -69,7 +69,7 @@ export const AppReader: React.FC<AppReaderProps> = ({
           {pdfData && !activeTab?.isBlank && (
             <>
               <div
-                className={`h-full border-r border-white/5 relative bg-[#0c0c0e] flex flex-col shrink-0 ${isMarginOpen ? "w-[40%]" : "w-0 border-r-0"}`}
+                className={`h-full border-r border-white/5 relative bg-[#0c0b0f] flex flex-col shrink-0 ${isMarginOpen ? "w-[40%]" : "w-0 border-r-0"}`}
               >
                 <div
                   className={`w-full h-full min-w-[300px] flex flex-col ${isMarginOpen ? "opacity-100" : "opacity-0 pointer-events-none"}`}
@@ -82,7 +82,7 @@ export const AppReader: React.FC<AppReaderProps> = ({
 
               <button
                 onClick={() => setIsMarginOpen(!isMarginOpen)}
-                className="absolute top-1/2 -translate-y-1/2 z-50 flex items-center justify-center w-8 h-24 bg-black/20 backdrop-blur-xl border-y border-r border-white/20 text-white/70 hover:text-zinc-900 hover:bg-white hover:border-zinc-200 rounded-r-xl transition-colors duration-200 shadow-xl group"
+                className="absolute top-1/2 -translate-y-1/2 z-50 flex items-center justify-center w-8 h-24 bg-black/40 border-y border-r border-white/20 text-white/70 hover:text-zinc-900 hover:bg-white hover:border-zinc-200 rounded-r-xl transition-colors duration-200 shadow-xl group"
                 style={{ left: isMarginOpen ? "calc(40% - 1px)" : "0px" }}
               >
                 {isMarginOpen ? (
@@ -164,7 +164,7 @@ export const AppReader: React.FC<AppReaderProps> = ({
       )}
 
       {view === "library" && (
-        <div className="flex-1 h-full overflow-hidden bg-[#09090b]">
+        <div className="flex-1 h-full overflow-hidden bg-[#09080b]">
           <LibraryView
             onSelectFile={handleSelectLibraryFile}
             onImportProject={handleImportProject}
@@ -173,7 +173,7 @@ export const AppReader: React.FC<AppReaderProps> = ({
       )}
 
       {view === "history" && (
-        <div className="flex-1 h-full overflow-hidden bg-[#09090b]">
+        <div className="flex-1 h-full overflow-hidden bg-[#09080b]">
           <HistoryView
             filePath={activeFilePath}
             fileName={activeFileName}
@@ -182,7 +182,7 @@ export const AppReader: React.FC<AppReaderProps> = ({
         </div>
       )}
       {view === "settings" && (
-        <div className="flex-1 h-full overflow-hidden bg-[#09090b]">
+        <div className="flex-1 h-full overflow-hidden bg-[#09080b]">
           <SettingsView />
         </div>
       )}

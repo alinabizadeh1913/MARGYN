@@ -1,9 +1,20 @@
 "use client";
 
+import { getKeyCode } from "@/lib/keys";
+import { subscribeDpr } from "@/lib/dpr";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTool } from "@/providers/ToolProvider";
 import { useContextMenu } from "@/providers/ContextMenuProvider";
 import { saveDrawing, loadDrawing } from "@/db";
+import {
+  undoMarks,
+  redoMarks,
+  undoClearGroup,
+  redoClearGroup,
+  getActiveClearGroup,
+  newGroupId,
+} from "@/lib/clearHistory";
 import {
   Undo2,
   Redo2,
@@ -68,12 +79,28 @@ interface Options {
 
 const SAVE_DELAY_MS = 500;
 const MIN_DIST2 = 0.3 * 0.3;
+/** Low-latency presentation for the ink canvases (set false if tearing is ever seen). */
+const LOW_LATENCY_CANVAS = true;
+/** Chromium delivers `pointerrawupdate` at the pen's native rate, not frame-aligned. */
+const RAW_SUPPORTED =
+  typeof window !== "undefined" && "onpointerrawupdate" in window;
+/** Timestamp of the last ink input; background saves are deferred while inking. */
+function markInking() {
+  if (typeof window !== "undefined")
+    (window as any).__margynInkTs = performance.now();
+}
+const isInkingNow = () =>
+  typeof window !== "undefined" &&
+  performance.now() - ((window as any).__margynInkTs ?? -1e9) < 600;
 const MAX_HISTORY = 100;
 const MAX_PREDICTED = 3;
 const PREDICT_TTL_MS = 40;
 
 /** Tools that need continuous hover feedback (cursor updates / overlay rings / anchor hints). */
 const HOVER_TOOLS = new Set(["select", "arrow", "eraser"]);
+
+/** history-cache keys of canvases that are currently mounted */
+const mountedHistoryKeys = new Set<string>();
 
 const globalHistoryCache = new Map<
   string,
@@ -93,6 +120,8 @@ interface PenState {
   pid: number;
   cx: number;
   cy: number;
+  /** true once raw (unaligned) pen samples are being received */
+  rawSeen?: boolean;
 }
 
 interface ShapeState {
@@ -398,12 +427,18 @@ export function useInkCanvas({
 
   const getStaticCtx = () => {
     if (!staticCtxRef.current)
-      staticCtxRef.current = staticRef.current?.getContext("2d") ?? null;
+      staticCtxRef.current =
+        staticRef.current?.getContext("2d", {
+          desynchronized: LOW_LATENCY_CANVAS,
+        }) ?? null;
     return staticCtxRef.current;
   };
   const getDynamicCtx = () => {
     if (!dynamicCtxRef.current)
-      dynamicCtxRef.current = dynamicRef.current?.getContext("2d") ?? null;
+      dynamicCtxRef.current =
+        dynamicRef.current?.getContext("2d", {
+          desynchronized: LOW_LATENCY_CANVAS,
+        }) ?? null;
     return dynamicCtxRef.current;
   };
 
@@ -446,7 +481,15 @@ export function useInkCanvas({
       lines: linesRef.current.slice(),
     };
     if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(flush, SAVE_DELAY_MS);
+    // PERF: never serialise/encrypt/export while the pen is moving -> no hitches.
+    const run = () => {
+      if (isInkingNow()) {
+        timerRef.current = setTimeout(run, 400);
+        return;
+      }
+      flush();
+    };
+    timerRef.current = setTimeout(run, SAVE_DELAY_MS);
 
     window.dispatchEvent(new Event("margyn-data-changed"));
   }, [flush]);
@@ -614,22 +657,27 @@ export function useInkCanvas({
     scheduleIdle();
   }
 
-  function undo() {
+  function undo(silent = false) {
     const h = hist.current;
     if (!loadedRef.current || ix.current || !h.past.length) return;
+    const gid = undoMarks.get(h.past[h.past.length - 1]);
+    if (gid) redoMarks.set(linesRef.current, gid);
     h.future.push(linesRef.current);
     linesRef.current = h.past.pop()!;
     saveHistoryToCache();
     afterHistoryChange();
+    if (gid && silent !== true) void undoClearGroup(gid, me.current.token);
   }
 
-  function redo() {
+  function redo(silent = false) {
     const h = hist.current;
     if (!loadedRef.current || ix.current || !h.future.length) return;
+    const gid = redoMarks.get(h.future[h.future.length - 1]);
     h.past.push(linesRef.current);
     linesRef.current = h.future.pop()!;
     saveHistoryToCache();
     afterHistoryChange();
+    if (gid && silent !== true) void redoClearGroup(gid, me.current.token);
   }
 
   function findBind(x: number, y: number, excludeId?: string): BindHit | null {
@@ -1294,6 +1342,7 @@ export function useInkCanvas({
     if (!c) return;
 
     hasDrawnRef.current = true;
+    markInking();
 
     const t = cfg.current.tool;
     const rect = c.getBoundingClientRect();
@@ -1691,16 +1740,21 @@ export function useInkCanvas({
     X.cy = cyScaled;
 
     if (X.kind === "pen") {
-      const co = ne.getCoalescedEvents?.();
-      const list = co && co.length ? co : [ne];
-      let added = false;
-      for (const ev of list) {
-        const [ex, ey] = toCanvasCoords(ev.clientX, ev.clientY, r);
-        if (addPenPoint(X, ex, ey)) added = true;
-      }
-      if (!added) return;
+      markInking();
+      if (!(RAW_SUPPORTED && X.rawSeen)) {
+        const co = ne.getCoalescedEvents?.();
+        const list = co && co.length ? co : [ne];
+        let added = false;
+        for (const ev of list) {
+          const [ex, ey] = toCanvasCoords(ev.clientX, ev.clientY, r);
+          if (addPenPoint(X, ex, ey)) added = true;
+        }
+        if (!added) return;
 
-      penCommit(X);
+        penCommit(X);
+      }
+      // (when raw samples are flowing, points were already committed by
+      //  rawPen(); this frame-aligned event only refreshes the prediction)
 
       const pred: number[] = [];
       const pe = ne.getPredictedEvents?.();
@@ -1757,6 +1811,29 @@ export function useInkCanvas({
     lp.y = cyScaled;
     lp.m = mk;
     schedulePreview();
+  }
+
+  /**
+   * Native `pointerrawupdate` handler: commits pen samples immediately at the
+   * device rate instead of waiting for the next frame-aligned `pointermove`.
+   */
+  function rawPen(ev: PointerEvent) {
+    const X = ix.current;
+    if (!X || X.kind !== "pen" || ev.pointerId !== X.pid) return;
+    const r = rectRef.current;
+    if (!r) return;
+    markInking();
+    X.rawSeen = true;
+    const co = (ev as any).getCoalescedEvents?.() as PointerEvent[] | undefined;
+    const list = co && co.length ? co : [ev];
+    let added = false;
+    for (const s of list) {
+      const [sx, sy] = toCanvasCoords(s.clientX, s.clientY, r);
+      if (addPenPoint(X, sx, sy)) added = true;
+    }
+    if (!added) return;
+    penCommit(X);
+    drawPenHead(X, []);
   }
 
   function finish(e: React.PointerEvent<HTMLCanvasElement>, ok: boolean) {
@@ -2052,20 +2129,21 @@ export function useInkCanvas({
     )
       return;
     const mod = e.ctrlKey || e.metaKey;
+    const code = getKeyCode(e);
 
-    if (mod && e.code === "KeyZ") {
+    if (mod && code === "KeyZ") {
       e.preventDefault();
       e.shiftKey ? redo() : undo();
       return;
     }
-    if (mod && e.code === "KeyY") {
+    if (mod && code === "KeyY") {
       e.preventDefault();
       redo();
       return;
     }
 
-    if (e.code === "Delete" || e.code === "Backspace") {
-      if (selRef.current.size > 0) {
+    if (code === "Delete" || code === "Backspace") {
+      if (selRef.current.size > 0 && !mod && !e.shiftKey && !e.altKey) {
         e.preventDefault();
         deleteSelected();
         return;
@@ -2073,19 +2151,19 @@ export function useInkCanvas({
     }
 
     if (cfg.current.tool !== "select" || ix.current) return;
-    if (mod && e.code === "KeyA") {
+    if (mod && code === "KeyA") {
       e.preventDefault();
       selectAll();
       return;
     }
     if (!selRef.current.size) return;
-    if (mod && e.code === "KeyD") {
+    if (mod && code === "KeyD") {
       e.preventDefault();
       duplicateSelected();
       return;
     }
     const step = e.shiftKey ? 10 : 1;
-    switch (e.code) {
+    switch (code) {
       case "Escape":
         clearSelection();
         break;
@@ -2130,11 +2208,14 @@ export function useInkCanvas({
     down,
     move,
     finish,
+    rawPen,
   };
 
   useEffect(() => {
     const cacheKey = getCacheKey();
+    const hadCachedHistory = globalHistoryCache.has(cacheKey);
     hist.current = globalHistoryCache.get(cacheKey) || { past: [], future: [] };
+    mountedHistoryKeys.add(cacheKey);
 
     let alive = true;
     loadedRef.current = false;
@@ -2169,6 +2250,17 @@ export function useInkCanvas({
         }
 
         loadedRef.current = true;
+
+        // This page was not mounted when "clear all" ran: give it an undo
+        // entry so Ctrl+Z works here too and restores the whole document.
+        if (!hadCachedHistory && arr.length === 0 && filePath) {
+          const g = getActiveClearGroup(filePath);
+          if (g && hist.current.past.length === 0) {
+            const empty: Stroke[] = [];
+            undoMarks.set(empty, g.id);
+            hist.current.past.push(empty);
+          }
+        }
         redrawStatic();
       })
       .catch((err) => {
@@ -2181,6 +2273,7 @@ export function useInkCanvas({
     return () => {
       alive = false;
       flush();
+      mountedHistoryKeys.delete(cacheKey);
       globalHistoryCache.set(cacheKey, hist.current);
     };
   }, [filePath, page, kind, flush, getCacheKey]);
@@ -2192,28 +2285,66 @@ export function useInkCanvas({
   }, [kind]);
 
   useEffect(() => {
-    const handleClearPage = () => {
-      dropPendingSave();
-      linesRef.current = [];
-      selRef.current = new Set();
-      hist.current = { past: [], future: [] };
-      globalHistoryCache.delete(getCacheKey());
-      redrawStatic();
-      clearLiveAll();
+    const claimActive = () => {
+      if (activeInk && activeInk.token !== me.current.token)
+        activeInk.clearSelection();
+      activeInk = me.current;
     };
 
-    const handleClearAll = () => {
+    // Clearing is recorded as a normal history step so it can be undone/redone.
+    const clearWithHistory = (gid?: string) => {
       dropPendingSave();
+      const prev = linesRef.current;
+      if (gid || prev.length > 0) {
+        pushHistory(prev);
+        if (gid) undoMarks.set(prev, gid);
+      }
       linesRef.current = [];
       selRef.current = new Set();
-      hist.current = { past: [], future: [] };
-      for (const key of globalHistoryCache.keys()) {
-        if (key.startsWith(`${kind}:${filePath}:`)) {
+      hiddenRef.current = null;
+      redrawStatic();
+      clearLiveAll();
+      scheduleSave();
+    };
+
+    const handleClearPage = (e: Event) => {
+      const gid = (e as CustomEvent<{ gid?: string } | undefined>).detail?.gid;
+      claimActive();
+      clearWithHistory(gid);
+    };
+
+    const handleClearAll = (e: Event) => {
+      const gid = (e as CustomEvent<{ gid?: string } | undefined>).detail?.gid;
+      // Pages that are not mounted can't be undone through their own
+      // history any more (their DB rows are gone) -> drop stale history.
+      const own = getCacheKey();
+      for (const key of Array.from(globalHistoryCache.keys())) {
+        if (
+          key !== own &&
+          key.startsWith(`${kind}:${filePath}:`) &&
+          !mountedHistoryKeys.has(key)
+        ) {
           globalHistoryCache.delete(key);
         }
       }
-      redrawStatic();
-      clearLiveAll();
+      claimActive();
+      clearWithHistory(gid);
+    };
+
+    const handleGroupUndo = (e: Event) => {
+      const d = (e as CustomEvent<{ gid: string; origin: object }>).detail;
+      if (!d || d.origin === me.current.token) return;
+      const h = hist.current;
+      const top = h.past[h.past.length - 1];
+      if (top && undoMarks.get(top) === d.gid) undo(true);
+    };
+
+    const handleGroupRedo = (e: Event) => {
+      const d = (e as CustomEvent<{ gid: string; origin: object }>).detail;
+      if (!d || d.origin === me.current.token) return;
+      const h = hist.current;
+      const top = h.future[h.future.length - 1];
+      if (top && redoMarks.get(top) === d.gid) redo(true);
     };
 
     const handleReload = () => {
@@ -2329,6 +2460,14 @@ export function useInkCanvas({
       }
     };
 
+    const rawCanvas = dynamicRef.current;
+    const onRaw = (ev: Event) => api.current.rawPen(ev as PointerEvent);
+    if (RAW_SUPPORTED && rawCanvas)
+      rawCanvas.addEventListener("pointerrawupdate", onRaw);
+    // Moving between laptop panel / monitor changes devicePixelRatio:
+    // re-create the backing stores so strokes stay sharp and correctly mapped.
+    const unsubDpr = subscribeDpr(handleFocus);
+
     window.addEventListener("pointerup", handleGlobalPointerUp);
     window.addEventListener("pointercancel", handleGlobalPointerCancel);
     window.addEventListener("blur", handleWindowBlur);
@@ -2336,6 +2475,8 @@ export function useInkCanvas({
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     window.addEventListener("margyn-clear-all", handleClearAll);
+    window.addEventListener("margyn-group-undo", handleGroupUndo);
+    window.addEventListener("margyn-group-redo", handleGroupRedo);
     window.addEventListener(`margyn-clear-page-${page}`, handleClearPage);
     window.addEventListener("margyn-reload-all", handleReload);
     window.addEventListener("margyn-undo", handleUndo);
@@ -2347,6 +2488,9 @@ export function useInkCanvas({
     window.addEventListener("margyn-clear-active-ink", handleClearActiveInk);
 
     return () => {
+      if (RAW_SUPPORTED && rawCanvas)
+        rawCanvas.removeEventListener("pointerrawupdate", onRaw);
+      unsubDpr();
       window.removeEventListener("pointerup", handleGlobalPointerUp);
       window.removeEventListener("pointercancel", handleGlobalPointerCancel);
       window.removeEventListener("blur", handleWindowBlur);
@@ -2354,6 +2498,8 @@ export function useInkCanvas({
       document.removeEventListener("visibilitychange", handleVisibilityChange);
 
       window.removeEventListener("margyn-clear-all", handleClearAll);
+      window.removeEventListener("margyn-group-undo", handleGroupUndo);
+      window.removeEventListener("margyn-group-redo", handleGroupRedo);
       window.removeEventListener(`margyn-clear-page-${page}`, handleClearPage);
       window.removeEventListener("margyn-reload-all", handleReload);
       window.removeEventListener("margyn-undo", handleUndo);
@@ -2488,7 +2634,9 @@ export function useInkCanvas({
           icon: Eraser,
           onClick: () =>
             window.dispatchEvent(
-              new CustomEvent(`margyn-clear-page-${cfg.current.page}`),
+              new CustomEvent(`margyn-clear-page-${cfg.current.page}`, {
+                detail: { gid: newGroupId() },
+              }),
             ),
         },
         {

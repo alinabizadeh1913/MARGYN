@@ -4,6 +4,7 @@ import React, { useLayoutEffect, useMemo, useCallback } from "react";
 import { useTool } from "@/providers/ToolProvider";
 import { useInkCanvas } from "./useInkCanvas";
 import { getToolCursor } from "./inkGeometry";
+import { useSoftPenCursor, SoftPenCursor } from "./useSoftPenCursor";
 import type { TextLine } from "./inkTypes";
 
 interface PdfDrawingLayerProps {
@@ -94,6 +95,8 @@ export default function PdfDrawingLayer({
   const toolCursor = useMemo(() => getToolCursor(tool, color), [tool, color]);
   const cursor = tool === "select" ? hoverCursor : toolCursor;
 
+  const softRef = useSoftPenCursor(dynamicRef, cursor);
+
   return (
     <div className="absolute inset-0 z-10 pointer-events-none select-none">
       <canvas
@@ -106,6 +109,7 @@ export default function PdfDrawingLayer({
         style={{ touchAction: "none", cursor }}
         className="absolute inset-0 touch-none pointer-events-auto"
       />
+      <SoftPenCursor spriteRef={softRef} />
     </div>
   );
 }

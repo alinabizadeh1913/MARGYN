@@ -103,16 +103,16 @@ export default function LibraryView({
   });
 
   return (
-    <div className="flex flex-col h-full w-full bg-[#09090b] p-10 overflow-y-auto relative">
+    <div className="flex flex-col h-full w-full bg-[#09080b] p-10 overflow-y-auto relative">
       <div className="max-w-4xl w-full mx-auto">
         <header className="mb-6 flex flex-wrap items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-3 mb-3">
-              <BookOpen className="text-[#38bdf8]" size={28} />
+              <BookOpen className="text-[#ef2b3a]" size={28} />
               <Typography
                 variant="pageTitle"
                 as="h1"
-                className="text-[#fafafa]"
+                className="text-[#fbf8f9]"
               >
                 Library
               </Typography>
@@ -120,7 +120,7 @@ export default function LibraryView({
             <Typography
               variant="body"
               as="p"
-              className="text-[#a1a1aa] max-w-xl"
+              className="text-[#aaa3b4] max-w-xl"
             >
               Quickly jump back into your recent documents. Your annotations
               will be exactly where you left them.
@@ -130,7 +130,7 @@ export default function LibraryView({
           <div className="flex items-center gap-3">
             <button
               onClick={onImportProject}
-              className="flex items-center gap-2 px-4 py-2 text-sm text-[#38bdf8] bg-[#38bdf8]/10 border border-[#38bdf8]/20 rounded-xl hover:bg-[#38bdf8]/20 transition-all font-medium"
+              className="flex items-center gap-2 px-4 py-2 text-sm text-[#ef2b3a] bg-[#ef2b3a]/10 border border-[#ef2b3a]/20 rounded-xl hover:bg-[#ef2b3a]/20 transition-all font-medium"
             >
               <Download size={16} />
               Import Project
@@ -147,13 +147,13 @@ export default function LibraryView({
           </div>
         </header>
 
-        <div className="flex items-center gap-2 mb-6 bg-[#121214] p-1.5 rounded-2xl w-fit border border-[#27272a]">
+        <div className="flex items-center gap-2 mb-6 bg-[#121015] p-1.5 rounded-2xl w-fit border border-[#2b2630]">
           <button
             onClick={() => setActiveTab("pdfs")}
             className={`flex items-center gap-2 px-6 py-2.5 rounded-xl transition-all duration-300 font-medium text-sm ${
               activeTab === "pdfs"
-                ? "bg-[#27272a] text-white shadow-md border border-white/10"
-                : "text-[#a1a1aa] hover:text-white hover:bg-white/5"
+                ? "bg-[#2b2630] text-white shadow-md border border-white/10"
+                : "text-[#aaa3b4] hover:text-white hover:bg-white/5"
             }`}
           >
             <FileText size={16} />
@@ -163,8 +163,8 @@ export default function LibraryView({
             onClick={() => setActiveTab("projects")}
             className={`flex items-center gap-2 px-6 py-2.5 rounded-xl transition-all duration-300 font-medium text-sm ${
               activeTab === "projects"
-                ? "bg-[#27272a] text-white shadow-md border border-white/10"
-                : "text-[#a1a1aa] hover:text-white hover:bg-white/5"
+                ? "bg-[#2b2630] text-white shadow-md border border-white/10"
+                : "text-[#aaa3b4] hover:text-white hover:bg-white/5"
             }`}
           >
             <FolderArchive size={16} />
@@ -174,22 +174,22 @@ export default function LibraryView({
 
         {isLoading ? (
           <div className="flex justify-center py-20">
-            <div className="w-8 h-8 border-4 border-white/10 border-t-[#38bdf8] rounded-full animate-spin"></div>
+            <div className="w-8 h-8 border-4 border-white/10 border-t-[#ef2b3a] rounded-full animate-spin"></div>
           </div>
         ) : filteredFiles.length === 0 ? (
-          <div className="flex flex-col items-center justify-center text-center py-24 bg-[#121214] border border-[#27272a] rounded-3xl">
+          <div className="flex flex-col items-center justify-center text-center py-24 bg-[#121015] border border-[#2b2630] rounded-3xl">
             {activeTab === "pdfs" ? (
-              <FileText size={48} className="text-[#3f3f46] mb-4" />
+              <FileText size={48} className="text-[#443d4b] mb-4" />
             ) : (
-              <FolderArchive size={48} className="text-[#3f3f46] mb-4" />
+              <FolderArchive size={48} className="text-[#443d4b] mb-4" />
             )}
             <Typography
               variant="cardTitle"
-              className="text-[#fafafa] mb-2 block"
+              className="text-[#fbf8f9] mb-2 block"
             >
               No recent {activeTab === "pdfs" ? "PDFs" : "Projects"}
             </Typography>
-            <Typography variant="body" className="text-[#a1a1aa] block">
+            <Typography variant="body" className="text-[#aaa3b4] block">
               {activeTab === "pdfs"
                 ? "Open a PDF to see it appear here."
                 : "Export or Import a project to see it here."}
@@ -233,12 +233,12 @@ export default function LibraryView({
                       },
                     ]);
                   }}
-                  className="group flex items-center justify-between p-5 bg-[#121214] border border-[#27272a] rounded-2xl cursor-pointer hover:bg-[#18181b] hover:border-[#38bdf8]/50 transition-all duration-300 relative overflow-hidden"
+                  className="group flex items-center justify-between p-5 bg-[#121015] border border-[#2b2630] rounded-2xl cursor-pointer hover:bg-[#19161c] hover:border-[#ef2b3a]/50 transition-all duration-300 relative overflow-hidden"
                 >
-                  <div className="absolute inset-0 bg-gradient-to-r from-[#38bdf8]/0 via-[#38bdf8]/0 to-[#38bdf8]/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+                  <div className="absolute inset-0 bg-gradient-to-r from-[#ef2b3a]/0 via-[#ef2b3a]/0 to-[#ef2b3a]/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
 
                   <div className="flex items-center gap-5 relative z-10">
-                    <div className="w-12 h-12 rounded-xl bg-[#09090b] border border-[#27272a] flex items-center justify-center group-hover:border-[#38bdf8]/30 transition-colors shrink-0">
+                    <div className="w-12 h-12 rounded-xl bg-[#09080b] border border-[#2b2630] flex items-center justify-center group-hover:border-[#ef2b3a]/30 transition-colors shrink-0">
                       {isProject ? (
                         <FolderArchive
                           size={20}
@@ -255,7 +255,7 @@ export default function LibraryView({
                       <div className="flex items-center gap-2 mb-1">
                         <Typography
                           variant="cardTitle"
-                          className="text-[#fafafa] group-hover:text-[#38bdf8] transition-colors line-clamp-1"
+                          className="text-[#fbf8f9] group-hover:text-[#ef2b3a] transition-colors line-clamp-1"
                         >
                           {displayName}
                         </Typography>
@@ -272,11 +272,11 @@ export default function LibraryView({
                           </span>
                         )}
                       </div>
-                      <div className="flex items-center gap-2 text-[#52525b]">
+                      <div className="flex items-center gap-2 text-[#6f6878]">
                         <Clock size={12} />
                         <Typography
                           variant="caption"
-                          className="text-[#52525b]"
+                          className="text-[#6f6878]"
                         >
                           {formatDate(file.lastOpened)}
                         </Typography>
@@ -288,7 +288,7 @@ export default function LibraryView({
                     onClick={(e) =>
                       handleDeleteSingle(e, file.id, file.filePath)
                     }
-                    className="p-3 text-[#52525b] hover:text-rose-500 hover:bg-rose-500/10 rounded-xl transition-all opacity-0 group-hover:opacity-100 relative z-10"
+                    className="p-3 text-[#6f6878] hover:text-rose-500 hover:bg-rose-500/10 rounded-xl transition-all opacity-0 group-hover:opacity-100 relative z-10"
                     title="Remove from history"
                   >
                     <Trash2 size={18} />
@@ -301,26 +301,26 @@ export default function LibraryView({
       </div>
 
       {showConfirmClear && (
-        <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm transition-all duration-300">
-          <div className="bg-[#121214] border border-[#27272a] p-8 rounded-3xl shadow-2xl w-full max-w-md flex flex-col items-center text-center">
+        <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/60 transition-all duration-300">
+          <div className="bg-[#121015] border border-[#2b2630] p-8 rounded-3xl shadow-2xl w-full max-w-md flex flex-col items-center text-center">
             <div className="w-16 h-16 bg-rose-500/10 rounded-full flex items-center justify-center mb-6">
               <AlertTriangle size={32} className="text-rose-500" />
             </div>
             <Typography
               variant="pageTitle"
               as="h2"
-              className="text-[#fafafa] mb-2"
+              className="text-[#fbf8f9] mb-2"
             >
               Clear History?
             </Typography>
-            <Typography variant="body" as="p" className="text-[#a1a1aa] mb-8">
+            <Typography variant="body" as="p" className="text-[#aaa3b4] mb-8">
               This will remove all files from your library. Your actual PDF
               files on your computer will not be deleted.
             </Typography>
             <div className="flex gap-3 w-full">
               <button
                 onClick={() => setShowConfirmClear(false)}
-                className="flex-1 px-4 py-3 rounded-xl bg-[#18181b] text-[#a1a1aa] hover:text-[#fafafa] hover:bg-[#27272a] transition-colors font-medium border border-[#27272a]"
+                className="flex-1 px-4 py-3 rounded-xl bg-[#19161c] text-[#aaa3b4] hover:text-[#fbf8f9] hover:bg-[#2b2630] transition-colors font-medium border border-[#2b2630]"
               >
                 Cancel
               </button>
