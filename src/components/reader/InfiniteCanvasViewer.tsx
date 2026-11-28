@@ -21,6 +21,14 @@ import { useTool } from "@/providers/ToolProvider";
 import ColorPicker from "./ColorPicker";
 import { usePanInput } from "./usePanInput";
 import { usePaneFocused } from "./PaneContext";
+import CanvasPatternPicker from "./CanvasPatternPicker";
+import {
+  DEFAULT_PATTERN,
+  drawPattern,
+  loadPattern,
+  savePattern,
+  type CanvasPatternState,
+} from "./canvasPattern";
 
 const DEFAULT_ZOOM = 1;
 const MIN_ZOOM = 0.1;
@@ -51,6 +59,10 @@ export default function InfiniteCanvasViewer({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
 
+  const [pattern, setPattern] = useState<CanvasPatternState>(DEFAULT_PATTERN);
+  const patternLoadedRef = useRef(false);
+  const patternCanvasRef = useRef<HTMLCanvasElement>(null);
+
   const viewerRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const initializedRef = useRef(false);
@@ -73,6 +85,21 @@ export default function InfiniteCanvasViewer({
   useEffect(() => {
     setScale(initialScale);
   }, [initialScale]);
+
+  // بارگذاری / ذخیره‌ی استایل صفحه به ازای هر کنواس
+  useEffect(() => {
+    patternLoadedRef.current = false;
+    setPattern(loadPattern(filePath));
+    patternLoadedRef.current = true;
+  }, [filePath]);
+
+  const handlePatternChange = useCallback(
+    (next: CanvasPatternState) => {
+      setPattern(next);
+      if (patternLoadedRef.current) savePattern(filePath, next);
+    },
+    [filePath],
+  );
 
   useLayoutEffect(() => {
     if (initializedRef.current) return;
@@ -149,6 +176,40 @@ export default function InfiniteCanvasViewer({
       setPanY((p) => p + dy);
     },
   });
+
+  // رسم الگوی پس‌زمینه (هنگام کشیدن/پن هم با drag همگام می‌شود)
+  useEffect(() => {
+    const c = patternCanvasRef.current;
+    if (!c || containerSize.width <= 0 || containerSize.height <= 0) return;
+    const dpr = window.devicePixelRatio || 1;
+    const w = containerSize.width;
+    const h = containerSize.height;
+    if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) {
+      c.width = Math.round(w * dpr);
+      c.height = Math.round(h * dpr);
+    }
+    drawPattern(
+      c,
+      w,
+      h,
+      dpr,
+      pattern,
+      panX + (isPanning ? drag.x : 0),
+      panY + (isPanning ? drag.y : 0),
+      scale,
+      canvasBg,
+    );
+  }, [
+    pattern,
+    panX,
+    panY,
+    scale,
+    containerSize,
+    canvasBg,
+    isPanning,
+    drag.x,
+    drag.y,
+  ]);
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement)
@@ -255,6 +316,8 @@ export default function InfiniteCanvasViewer({
           >
             <RotateCcw size={18} />
           </button>
+          <div className="h-px w-full bg-white/20 group-hover/panel:bg-nm-line my-0.5" />
+          <CanvasPatternPicker value={pattern} onChange={handlePatternChange} />
         </div>
       </div>
 
@@ -272,6 +335,11 @@ export default function InfiniteCanvasViewer({
         className="flex-1 w-full h-full relative overflow-hidden"
         style={{ cursor: isPanning ? "grabbing" : undefined, touchAction: "none" }}
       >
+        <canvas
+          ref={patternCanvasRef}
+          className="absolute inset-0 w-full h-full pointer-events-none"
+          style={{ width: "100%", height: "100%" }}
+        />
         <div
           style={{
             ...dragStyle,
