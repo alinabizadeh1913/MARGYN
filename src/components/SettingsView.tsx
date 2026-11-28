@@ -496,7 +496,6 @@ export default function SettingsView() {
 
           <section className="relative bg-nm-panel border border-nm-accent/30 rounded-2xl p-6 overflow-hidden group">
             <div className="absolute inset-0 bg-gradient-to-r from-nm-accent/5 via-transparent to-nm-ember/5 opacity-50 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
-            <div className="absolute -inset-x-10 -top-10 h-32 bg-nm-accent/10 blur-[50px] pointer-events-none" />
 
             <div className="relative z-10 flex items-center justify-between flex-wrap gap-4">
               <div className="flex items-center gap-4">
@@ -559,8 +558,6 @@ export default function SettingsView() {
 
       {showDevModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 transition-all duration-300 p-4 sm:p-8">
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-nm-accent/10 rounded-full blur-[120px] pointer-events-none animate-pulse" />
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] bg-nm-ember/10 rounded-full blur-[100px] pointer-events-none" />
 
           <div className="relative bg-nm-panel border border-nm-accent/30 rounded-3xl shadow-nm-glow w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-300 flex flex-col max-h-[90vh]">
             <div className="h-32 bg-nm-raise relative shrink-0">

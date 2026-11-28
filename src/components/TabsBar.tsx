@@ -13,6 +13,9 @@ import {
   Upload,
   FilePlus,
   ArrowRight,
+  PanelLeft,
+  PanelRight,
+  RotateCcw,
   Move, // ✅ NEW
 } from "lucide-react";
 import Typography from "@/typography";
@@ -46,6 +49,12 @@ interface TabsBarProps {
   onCloseTab: (e: React.MouseEvent, id: string) => void;
   onCloseMultipleTabs: (tabIds: string[]) => void;
   onReorderTabs: (draggedIndex: number, hoveredIndex: number) => void;
+  /** ids of the tabs currently shown side by side (empty = no split) */
+  splitIds?: string[];
+  onSplitTab?: (tabId: string, side: "left" | "right") => void;
+  onRemoveFromSplit?: (tabId: string) => void;
+  onExitSplit?: () => void;
+  onResetSplitSizes?: () => void;
 }
 
 export default function TabsBar({
@@ -55,6 +64,11 @@ export default function TabsBar({
   onCloseTab,
   onCloseMultipleTabs,
   onReorderTabs,
+  splitIds = [],
+  onSplitTab,
+  onRemoveFromSplit,
+  onExitSplit,
+  onResetSplitSizes,
 }: TabsBarProps) {
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -116,11 +130,11 @@ export default function TabsBar({
   if (tabs.length === 0) return null;
 
   return (
-    <div className="w-full h-12 bg-gradient-to-b from-nm-deep to-nm-deep border-b border-nm-edge flex items-center relative z-[60] select-none shrink-0 group/tabs transition-colors duration-300">
+    <div className="w-full h-11 bg-nm-deep border-b border-nm-edge flex items-center relative z-[60] select-none shrink-0">
       <div
         ref={scrollContainerRef}
         onWheel={handleWheel}
-        className="flex-1 min-w-0 flex items-center overflow-x-auto overflow-y-hidden h-full gap-1 px-2 py-1 tabs-scrollbar opacity-60 group-hover/tabs:opacity-100 transition-opacity duration-300"
+        className="flex-1 min-w-0 flex items-end overflow-x-auto overflow-y-hidden h-full gap-0.5 px-2 pt-1.5 tabs-scrollbar"
       >
         {tabs.map((tab, index) => {
           const isActive = tab.id === activeTabId;
@@ -145,7 +159,17 @@ export default function TabsBar({
               onContextMenu={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                if (tab.id !== activeTabId) onSelectTab(tab.id);
+                // NOTE: the tab is deliberately NOT selected here any more, so
+                // "Split Left/Right" can use the currently focused pane as anchor.
+                const inSplit = splitIds.includes(tab.id);
+                const canSplit = tabs.length > 1 && !!onSplitTab;
+                // actions that work on the "active" document: focus the tab first
+                const runOnTab = (fn: () => void) => {
+                  if (tab.id !== activeTabId) {
+                    onSelectTab(tab.id);
+                    setTimeout(fn, 80);
+                  } else fn();
+                };
 
                 const tabIndex = tabs.findIndex((t) => t.id === tab.id);
                 const tabsToRight = tabs.slice(tabIndex + 1).map((t) => t.id);
@@ -181,14 +205,52 @@ export default function TabsBar({
                   },
                   { separator: true },
                   {
+                    label: "Split Right",
+                    icon: PanelRight,
+                    disabled: !canSplit,
+                    onClick: () => onSplitTab?.(tab.id, "right"),
+                  },
+                  {
+                    label: "Split Left",
+                    icon: PanelLeft,
+                    disabled: !canSplit,
+                    onClick: () => onSplitTab?.(tab.id, "left"),
+                  },
+                  ...(splitIds.length > 1
+                    ? [
+                        {
+                          label: "Reset Split Sizes",
+                          icon: RotateCcw,
+                          onClick: () => onResetSplitSizes?.(),
+                        },
+                        ...(inSplit
+                          ? [
+                              {
+                                label: "Remove from Split",
+                                icon: X,
+                                onClick: () => onRemoveFromSplit?.(tab.id),
+                              },
+                            ]
+                          : []),
+                        {
+                          label: "Exit Split View",
+                          icon: Files,
+                          onClick: () => onExitSplit?.(),
+                        },
+                      ]
+                    : []),
+                  { separator: true },
+                  {
                     label: "Save Project",
                     icon: Save,
                     shortcut: "Ctrl+S",
                     onClick: () =>
-                      window.dispatchEvent(
-                        new CustomEvent("margyn-shortcut", {
-                          detail: "ctrl+s",
-                        }),
+                      runOnTab(() =>
+                        window.dispatchEvent(
+                          new CustomEvent("margyn-shortcut", {
+                            detail: "ctrl+s",
+                          }),
+                        ),
                       ),
                   },
                   {
@@ -196,22 +258,26 @@ export default function TabsBar({
                     icon: Upload,
                     shortcut: "Ctrl+E",
                     onClick: () =>
-                      window.dispatchEvent(
-                        new CustomEvent("margyn-shortcut", {
-                          detail: "ctrl+e",
-                        }),
+                      runOnTab(() =>
+                        window.dispatchEvent(
+                          new CustomEvent("margyn-shortcut", {
+                            detail: "ctrl+e",
+                          }),
+                        ),
                       ),
                   },
                 ]);
               }}
-              className={`group flex items-center gap-2 px-3 h-9 rounded-lg cursor-pointer transition-all duration-200 border max-w-[240px] shrink-0 ${
+              className={`group relative flex items-center gap-2 px-3 h-full rounded-t-xl cursor-pointer transition-colors duration-150 max-w-[240px] shrink-0 ${
                 isActive
-                  ? "bg-nm-raise border-nm-edge text-nm-text shadow-nm-float translate-y-[-1px]"
-                  : "bg-transparent border-transparent text-nm-muted hover:bg-nm-panel hover:border-nm-edge"
+                  ? "bg-nm-panel text-nm-text shadow-[inset_0_0_0_1px_var(--nm-edge),inset_0_2px_0_rgb(var(--nm-accent))]"
+                  : splitIds.includes(tab.id)
+                    ? "bg-nm-panel/60 text-nm-text shadow-[inset_0_0_0_1px_rgb(var(--nm-accent)/0.4)]"
+                    : "bg-transparent text-nm-muted hover:bg-nm-panel/60 hover:text-nm-text"
               } ${draggedIndex === index ? "opacity-50" : ""}`}
             >
               <div
-                className={`w-5 h-5 rounded flex items-center justify-center shrink-0 ${
+                className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 ${
                   isInfinite
                     ? "bg-nm-ember/20 text-nm-ember"
                     : isBlank
@@ -241,7 +307,7 @@ export default function TabsBar({
               </Typography>
 
               <span
-                className={`px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider shrink-0 ${
+                className={`${isActive ? "inline-flex" : "hidden group-hover:inline-flex"} px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider shrink-0 ${
                   isInfinite
                     ? "bg-nm-ember/10 text-nm-ember border border-nm-ember/20"
                     : isBlank
@@ -266,7 +332,7 @@ export default function TabsBar({
 
               <button
                 onClick={(e) => onCloseTab(e, tab.id)}
-                className={`p-1 rounded-md transition-colors shrink-0 hover:bg-rose-500/20 text-nm-dim hover:text-rose-400`}
+                className={`p-1 rounded-md transition-colors shrink-0 hover:bg-rose-500/15 text-nm-dim hover:text-rose-400 ${isActive ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
               >
                 <X size={14} />
               </button>
@@ -276,7 +342,7 @@ export default function TabsBar({
       </div>
 
       <div
-        className="pl-2 pr-2 border-l border-nm-edge h-6 flex items-center shrink-0 bg-nm-deep z-10 opacity-60 group-hover/tabs:opacity-100 transition-opacity duration-300"
+        className="px-2 border-l border-nm-edge h-6 flex items-center shrink-0 bg-nm-deep z-10"
         ref={dropdownRef}
       >
         <button
@@ -291,7 +357,7 @@ export default function TabsBar({
         </button>
 
         {showDropdown && (
-          <div className="absolute top-12 right-2 w-64 bg-nm-panel border border-nm-edge rounded-xl shadow-2xl py-2 z-[100] flex flex-col max-h-64 overflow-y-auto">
+          <div className="absolute top-11 right-2 w-64 bg-nm-panel border border-nm-edge-strong rounded-xl shadow-nm-float py-2 z-[100] flex flex-col max-h-64 overflow-y-auto">
             <div className="px-3 pb-2 mb-2 border-b border-nm-edge">
               <Typography variant="microLabel" className="text-nm-dim">
                 Open Tabs ({tabs.length})
@@ -363,11 +429,11 @@ export default function TabsBar({
           background: transparent;
         }
         .tabs-scrollbar::-webkit-scrollbar-thumb {
-          background: rgba(255, 255, 255, 0.1);
+          background: rgb(var(--nm-line));
           border-radius: 4px;
         }
         .tabs-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: rgba(255, 255, 255, 0.2);
+          background: rgb(var(--nm-dim));
         }
       `}</style>
     </div>

@@ -112,7 +112,7 @@ export default function Toolbar({
 
   return (
     // ✅ overflow-x-auto و scrollbar-hide حذف شدند تا دراپ‌دان‌ها بریده نشوند
-    <div className="relative z-[100] flex items-center gap-1 p-1.5 rounded-2xl bg-gradient-to-b from-white/[0.07] to-white/[0.02] border border-nm-edge shadow-nm-float shrink-0">
+    <div className="relative z-[100] flex items-center gap-1 p-1 rounded-2xl bg-nm-panel border border-nm-edge shrink-0">
       <div className="flex items-center gap-0.5 pr-1 border-r border-nm-edge shrink-0">
         {baseTools.map((t) => (
           <button
@@ -120,17 +120,14 @@ export default function Toolbar({
             onClick={() => setTool(t.id)}
             disabled={t.disabled}
             title={t.disabled ? t.tooltip : t.label}
-            className={`relative p-[7px] rounded-xl transition-all duration-300 ${
+            className={`relative p-[7px] rounded-xl transition-colors duration-150 ${
               tool === t.id
-                ? "bg-nm-accent/20 text-nm-hot ring-1 ring-nm-accent/50"
+                ? "bg-nm-accent/15 text-nm-hot shadow-[inset_0_0_0_1px_rgb(var(--nm-accent)/0.45)]"
                 : t.disabled
                   ? "text-nm-faint cursor-not-allowed"
-                  : "text-nm-muted hover:text-white hover:bg-white/10"
+                  : "text-nm-muted hover:text-white hover:bg-white/[0.07]"
             }`}
           >
-            {tool === t.id && (
-              <div className="absolute inset-0 bg-nm-accent/30 blur-md rounded-lg" />
-            )}
             <t.icon size={17} className="relative z-10" />
           </button>
         ))}
@@ -139,15 +136,12 @@ export default function Toolbar({
           <button
             onClick={() => setIsShapeMenuOpen(!isShapeMenuOpen)}
             title="Shapes"
-            className={`relative p-[7px] rounded-xl transition-all duration-300 flex items-center gap-0.5 ${
+            className={`relative p-[7px] rounded-xl transition-colors duration-150 flex items-center gap-0.5 ${
               activeShape
-                ? "bg-nm-accent/20 text-nm-hot ring-1 ring-nm-accent/50"
-                : "text-nm-muted hover:text-white hover:bg-white/10"
+                ? "bg-nm-accent/15 text-nm-hot shadow-[inset_0_0_0_1px_rgb(var(--nm-accent)/0.45)]"
+                : "text-nm-muted hover:text-white hover:bg-white/[0.07]"
             }`}
           >
-            {activeShape && (
-              <div className="absolute inset-0 bg-nm-accent/30 blur-md rounded-lg" />
-            )}
             <ActiveShapeIcon size={17} className="relative z-10" />
             <ChevronDown
               size={10}
@@ -159,7 +153,7 @@ export default function Toolbar({
 
           {isShapeMenuOpen && (
             // ✅ استایل شیک‌تر و مدرن‌تر برای منوی کشویی اشکال
-            <div className="absolute top-full left-0 mt-2 w-44 bg-nm-panel border border-nm-edge rounded-xl shadow-nm-float flex flex-col z-[999] p-1.5 animate-in fade-in zoom-in-95 duration-150">
+            <div className="absolute top-full left-0 mt-2 w-44 bg-nm-panel border border-nm-edge rounded-xl border-nm-edge-strong shadow-nm-float flex flex-col z-[999] p-1.5 animate-in fade-in zoom-in-95 duration-150">
               {shapeTools.map((t) => (
                 <button
                   key={t.id}
@@ -186,14 +180,14 @@ export default function Toolbar({
         <button
           onClick={() => window.dispatchEvent(new Event("margyn-undo"))}
           title="Undo (Ctrl+Z)"
-          className="p-[7px] rounded-xl text-nm-muted hover:text-white hover:bg-white/10 transition-colors"
+          className="p-[7px] rounded-xl text-nm-muted hover:text-white hover:bg-white/[0.07] transition-colors"
         >
           <Undo2 size={17} />
         </button>
         <button
           onClick={() => window.dispatchEvent(new Event("margyn-redo"))}
           title="Redo (Ctrl+Shift+Z)"
-          className="p-[7px] rounded-xl text-nm-muted hover:text-white hover:bg-white/10 transition-colors"
+          className="p-[7px] rounded-xl text-nm-muted hover:text-white hover:bg-white/[0.07] transition-colors"
         >
           <Redo2 size={17} />
         </button>
@@ -206,7 +200,7 @@ export default function Toolbar({
               key={c}
               onClick={() => setColor(c)}
               aria-label={`Color ${c}`}
-              className={`w-4 h-4 rounded-full transition-all duration-300 ${
+              className={`w-4 h-4 rounded-full transition-colors duration-150 ${
                 color === c
                   ? "scale-125 ring-2 ring-white/80 ring-offset-1 ring-offset-nm-deep"
                   : "hover:scale-110 opacity-70 hover:opacity-100 border border-nm-edge"
@@ -224,7 +218,7 @@ export default function Toolbar({
               trigger={
                 <div
                   aria-label="Custom color"
-                  className={`w-4 h-4 rounded-full flex items-center justify-center transition-all duration-300 border border-nm-edge ${
+                  className={`w-4 h-4 rounded-full flex items-center justify-center transition-colors duration-150 border border-nm-edge ${
                     color === customColor
                       ? "scale-125 ring-2 ring-white/80 ring-offset-1 ring-offset-nm-deep"
                       : "hover:scale-110 opacity-70 hover:opacity-100"
@@ -249,7 +243,7 @@ export default function Toolbar({
         <button
           onClick={() => setIsSizeMenuOpen(!isSizeMenuOpen)}
           title="Brush Size"
-          className="flex items-center gap-1 p-[5px] rounded-xl text-nm-muted hover:text-white hover:bg-white/10 transition-colors"
+          className="flex items-center gap-1 p-[5px] rounded-xl text-nm-muted hover:text-white hover:bg-white/[0.07] transition-colors"
         >
           <div className="w-4 h-4 flex items-center justify-center">
             <div
@@ -267,7 +261,7 @@ export default function Toolbar({
 
         {isSizeMenuOpen && (
           // ✅ استایل شیک‌تر و چیدمان گرید ۴ ستونه برای انتخاب سایز
-          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-[160px] bg-nm-panel border border-nm-edge rounded-xl shadow-nm-float p-2 grid grid-cols-4 gap-1.5 z-[999] animate-in fade-in zoom-in-95 duration-150">
+          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-[160px] bg-nm-panel border border-nm-edge rounded-xl border-nm-edge-strong shadow-nm-float p-2 grid grid-cols-4 gap-1.5 z-[999] animate-in fade-in zoom-in-95 duration-150">
             {sizes.map((s) => (
               <button
                 key={s}
@@ -283,7 +277,7 @@ export default function Toolbar({
                 <div
                   className={`rounded-full transition-all ${
                     size === s
-                      ? "bg-nm-accent shadow-nm-glow-sm"
+                      ? "bg-nm-accent"
                       : "bg-nm-muted"
                   }`}
                   style={{ width: s / 1.8, height: s / 1.8 }}
@@ -298,7 +292,7 @@ export default function Toolbar({
         <button
           onClick={() => setIsDeleteMenuOpen(!isDeleteMenuOpen)}
           title="Clear Options"
-          className={`flex items-center gap-1 p-[5px] rounded-xl transition-all duration-300 ${
+          className={`flex items-center gap-1 p-[5px] rounded-xl transition-colors duration-150 ${
             isDeleteMenuOpen
               ? "bg-rose-500/20 text-rose-400"
               : "text-nm-muted hover:text-rose-400 hover:bg-rose-500/10"
@@ -315,7 +309,7 @@ export default function Toolbar({
 
         {isDeleteMenuOpen && (
           // ✅ استایل شیک‌تر برای منوی پاک کردن
-          <div className="absolute top-full right-0 mt-2 w-52 bg-nm-panel border border-nm-edge rounded-xl shadow-nm-float overflow-hidden flex flex-col z-[999] p-1.5 animate-in fade-in zoom-in-95 duration-150">
+          <div className="absolute top-full right-0 mt-2 w-52 bg-nm-panel border border-nm-edge rounded-xl border-nm-edge-strong shadow-nm-float overflow-hidden flex flex-col z-[999] p-1.5 animate-in fade-in zoom-in-95 duration-150">
             <button
               onClick={() => {
                 onClearCurrentPage();

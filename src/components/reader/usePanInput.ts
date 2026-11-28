@@ -32,12 +32,20 @@ interface Params {
   tool: ToolType;
   setTool: (t: ToolType) => void;
   onCommit: (dx: number, dy: number) => void;
+  /** false = passive split pane: do not listen to global input */
+  enabled?: boolean;
 }
 
 const TAP_MS = 250;
 const PAN_KEYS = new Set(["Space"]);
 
-export function usePanInput({ containerRef, tool, setTool, onCommit }: Params) {
+export function usePanInput({
+  containerRef,
+  tool,
+  setTool,
+  onCommit,
+  enabled = true,
+}: Params) {
   const [drag, setDrag] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const [keyHeld, setKeyHeld] = useState(false);
@@ -211,6 +219,7 @@ export function usePanInput({ containerRef, tool, setTool, onCommit }: Params) {
       if (e.key === "Escape" && startRef.current) end(false);
     };
 
+    if (!enabled) return;
     window.addEventListener("pointerdown", onPointerDown, true);
     window.addEventListener("pointermove", onPointerMove, true);
     window.addEventListener("pointerup", onPointerUp, true);
@@ -238,7 +247,7 @@ export function usePanInput({ containerRef, tool, setTool, onCommit }: Params) {
       window.removeEventListener("blur", onBlur);
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [containerRef, begin, move, end]);
+  }, [containerRef, begin, move, end, enabled]);
 
   const panMode = keyHeld || tool === "pan";
   return { drag, isPanning, panMode, keyHeld };

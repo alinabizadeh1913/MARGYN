@@ -360,7 +360,7 @@ export default function HistoryView({
                 The 7-Day Lock
               </Typography>
               {unseenDaysCount > 0 && (
-                <span className="ml-2 px-3 py-1 bg-rose-500/10 border border-rose-500/20 text-rose-500 text-xs font-bold rounded-full animate-pulse shadow-nm-glow">
+                <span className="ml-2 px-3 py-1 bg-rose-500/10 border border-rose-500/20 text-rose-500 text-xs font-bold rounded-full">
                   {unseenDaysCount} New {unseenDaysCount === 1 ? "Day" : "Days"}
                 </span>
               )}
@@ -458,8 +458,6 @@ export default function HistoryView({
                 <div className="flex flex-col gap-6">
                   {isLocked && (
                     <div className="bg-nm-raise border border-amber-500/30 rounded-2xl p-8 flex flex-col items-center justify-center text-center relative overflow-hidden shadow-nm-glow-warn">
-                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] bg-amber-500/5 rounded-full blur-[80px] pointer-events-none" />
-
                       <div className="relative mb-6">
                         <div className="absolute inset-0 bg-amber-500/20 rounded-full animate-[pulse-ring_2s_ease-out_infinite]" />
                         <div className="absolute inset-0 bg-amber-500/20 rounded-full animate-[pulse-ring_2s_ease-out_infinite_0.5s]" />

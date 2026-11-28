@@ -9,6 +9,7 @@ import { useShortcut, useShortcuts } from "@/providers/ShortcutProvider";
 import SplashScreen from "../SplashScreen";
 import TabsBar, { OpenTab } from "../TabsBar";
 import { AppHeader } from "./AppHeader";
+import { AppRail } from "./AppRail";
 import { AppReader } from "./AppReader";
 import { AppModals } from "./AppModals";
 import NoteModal from "./NoteModal";
@@ -67,9 +68,24 @@ export function AppContent() {
     startTimer,
     stopTimer,
     activeSessionFilePath,
+    setCurrentPage,
   } = useSession();
 
-  const { tool, setTool, size, setSize } = useTool();
+  const toolCtx = useTool();
+  const { tool, setTool, size, setSize } = toolCtx;
+  // latest tool settings (kept when focus moves between split panes)
+  const toolRef = useRef({
+    tool: toolCtx.tool,
+    color: toolCtx.color,
+    size: toolCtx.size,
+    customColor: toolCtx.customColor,
+  });
+  toolRef.current = {
+    tool: toolCtx.tool,
+    color: toolCtx.color,
+    size: toolCtx.size,
+    customColor: toolCtx.customColor,
+  };
   const { setShortcutsEnabled } = useShortcuts();
 
   const [view, setView] = useState<
@@ -152,6 +168,240 @@ export function AppContent() {
 
   const activeTab = openTabs.find((t) => t.id === activeTabId);
 
+  // ============================================================
+  // SPLIT VIEW (2-3 documents side by side, VS Code style)
+  // ============================================================
+  const [split, setSplit] = useState<{ ids: string[]; sizes: number[] }>({
+    ids: [],
+    sizes: [],
+  });
+  const splitRef = useRef(split);
+  splitRef.current = split;
+  const prevSplitActive = useRef<string | null>(null);
+  const prevInkTab = useRef<string | null>(null);
+  /** last page seen for each document (filePath) - lets panes swap focus without flicker */
+  const pageMapRef = useRef<Map<string, number>>(new Map());
+  const sessionRef = useRef({ isActive, setCurrentPage });
+  sessionRef.current = { isActive, setCurrentPage };
+  const paneScaleTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(
+    new Map(),
+  );
+  const equalSizes = (n: number) => Array.from({ length: n }, () => 1 / n);
+
+  /** Single entry point for "focus this tab / pane". */
+  const selectTab = useCallback((id: string) => {
+    const st = stateRef.current;
+    if (id === st.activeTabId) return;
+    const sp = splitRef.current;
+    if (sp.ids.length && !sp.ids.includes(id)) {
+      // opening a tab that is not in the split replaces the focused pane
+      const anchor =
+        st.activeTabId && sp.ids.includes(st.activeTabId)
+          ? st.activeTabId
+          : sp.ids[0];
+      setSplit({
+        ids: sp.ids.map((x) => (x === anchor ? id : x)),
+        sizes: sp.sizes,
+      });
+    }
+    const tab = st.openTabs.find((t) => t.id === id);
+    const saved = tab ? pageMapRef.current.get(tab.filePath) : undefined;
+    // same React batch as the focus change -> no frame with the wrong page
+    if (saved && !sessionRef.current.isActive)
+      sessionRef.current.setCurrentPage(saved);
+    setActiveTabId(id);
+  }, []);
+
+  const handleSplitTab = useCallback(
+    (tabId: string, side: "left" | "right") => {
+      const st = stateRef.current;
+      const tabs = st.openTabs;
+      const active = st.activeTabId;
+      const cur = splitRef.current.ids;
+      const L = cur.length > 1 ? cur : active ? [active] : [];
+      if (!L.length || tabs.length < 2) return;
+      const anchor = active && L.includes(active) ? active : L[0];
+      let target = tabId;
+      if (target === anchor) {
+        // splitting the focused tab with itself: pair it with a neighbour tab
+        const idx = tabs.findIndex((t) => t.id === anchor);
+        const cand = [
+          ...tabs.slice(idx + 1),
+          ...tabs.slice(0, idx).reverse(),
+        ].find((t) => !L.includes(t.id));
+        if (!cand) return;
+        target = cand.id;
+      }
+      const base = L.filter((x) => x !== target);
+      const ai = base.indexOf(anchor);
+      base.splice(side === "right" ? ai + 1 : ai, 0, target);
+      while (base.length > 3) {
+        const ti = base.indexOf(target);
+        let drop = -1;
+        let best = -1;
+        base.forEach((id, i) => {
+          if (id === target || id === anchor) return;
+          const d = Math.abs(i - ti);
+          if (d > best) {
+            best = d;
+            drop = i;
+          }
+        });
+        base.splice(drop, 1);
+      }
+      setSplit({ ids: base, sizes: equalSizes(base.length) });
+      selectTab(target);
+    },
+    [selectTab],
+  );
+
+  const handleRemoveFromSplit = useCallback(
+    (tabId: string) => {
+      const sp = splitRef.current;
+      const ids = sp.ids.filter((x) => x !== tabId);
+      if (ids.length < 2) {
+        setSplit({ ids: [], sizes: [] });
+        if (ids.length === 1 && stateRef.current.activeTabId !== ids[0])
+          selectTab(ids[0]);
+        return;
+      }
+      setSplit({ ids, sizes: equalSizes(ids.length) });
+      if (stateRef.current.activeTabId === tabId) selectTab(ids[0]);
+    },
+    [selectTab],
+  );
+
+  const handleExitSplit = useCallback(() => {
+    setSplit({ ids: [], sizes: [] });
+  }, []);
+
+  const handleResetSplitSizes = useCallback(() => {
+    setSplit((p) => ({ ids: p.ids, sizes: equalSizes(p.ids.length) }));
+  }, []);
+
+  const handleSplitSizesChange = useCallback((sizes: number[]) => {
+    setSplit((p) => ({ ids: p.ids, sizes }));
+  }, []);
+
+  /** Ctrl+Tab & co: cycle between the split panes (or all tabs without a split). */
+  const cycleTab = useCallback(
+    (dir: 1 | -1) => {
+      const st = stateRef.current;
+      const ids =
+        splitRef.current.ids.length > 1
+          ? splitRef.current.ids
+          : st.openTabs.map((t) => t.id);
+      if (ids.length < 2) return;
+      const i = ids.indexOf(st.activeTabId || "");
+      if (i === -1) return;
+      playSwitchSound();
+      selectTab(ids[(i + dir + ids.length) % ids.length]);
+    },
+    [selectTab],
+  );
+
+  // keep the split consistent with the open tabs / focused tab
+  useEffect(() => {
+    const st = splitRef.current;
+    if (!st.ids.length) {
+      prevSplitActive.current = activeTabId;
+      return;
+    }
+    let ids = st.ids.filter((id) => openTabs.some((t) => t.id === id));
+    if (ids.length >= 2 && activeTabId && !ids.includes(activeTabId)) {
+      const prev = prevSplitActive.current;
+      const anchor = prev && ids.includes(prev) ? prev : ids[0];
+      ids = ids.map((x) => (x === anchor ? activeTabId : x));
+    }
+    prevSplitActive.current = activeTabId;
+    if (ids.length < 2) {
+      setSplit({ ids: [], sizes: [] });
+      return;
+    }
+    const same =
+      ids.length === st.ids.length && ids.every((x, i) => x === st.ids[i]);
+    if (!same)
+      setSplit({
+        ids,
+        sizes: ids.length === st.ids.length ? st.sizes : equalSizes(ids.length),
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openTabs, activeTabId]);
+
+  // remember the page of the focused document
+  useEffect(() => {
+    if (!activeTab || isSessionSyncing) return;
+    pageMapRef.current.set(activeTab.filePath, currentPage);
+  }, [currentPage, activeTab?.filePath, isSessionSyncing]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // persist the split layout
+  useEffect(() => {
+    if (!isAppReady) return;
+    setSetting("splitState", JSON.stringify(split)).catch(() => {});
+  }, [split, isAppReady]);
+
+  // ── per-pane callbacks (a pane is not necessarily the focused tab) ──
+  const handlePaneScaleChange = useCallback(
+    (tabId: string, filePath: string, s: number) => {
+      if (tabId === stateRef.current.activeTabId) setActiveScale(s);
+      setOpenTabs((prev) =>
+        prev.map((t) => (t.id === tabId && t.scale !== s ? { ...t, scale: s } : t)),
+      );
+      const m = paneScaleTimers.current;
+      const old = m.get(filePath);
+      if (old) clearTimeout(old);
+      m.set(
+        filePath,
+        setTimeout(async () => {
+          m.delete(filePath);
+          try {
+            const db = await getDb();
+            await db
+              .update(recentFiles)
+              .set({ scale: s })
+              .where(eq(recentFiles.filePath, filePath));
+            await saveDb();
+          } catch (e) {}
+        }, 500),
+      );
+    },
+    [],
+  );
+
+  const handlePaneCanvasBgChange = useCallback(
+    (tabId: string, filePath: string, color: string) => {
+      const t = stateRef.current.openTabs.find((x) => x.id === tabId);
+      if (!t || t.canvasBg === color) return;
+      if (tabId === stateRef.current.activeTabId) setActiveCanvasBg(color);
+      setOpenTabs((prev) =>
+        prev.map((x) => (x.id === tabId ? { ...x, canvasBg: color } : x)),
+      );
+      updateRecentFileCanvasBg(filePath, color);
+    },
+    [],
+  );
+
+  const handlePaneDocumentLoad = useCallback((tabId: string, pages: number) => {
+    if (tabId === stateRef.current.activeTabId) setTotalPages(pages);
+    setOpenTabs((prev) =>
+      prev.map((t) =>
+        t.id === tabId && t.totalPages !== pages ? { ...t, totalPages: pages } : t,
+      ),
+    );
+  }, []);
+
+  const handlePaneBlankPageAdded = useCallback((tabId: string, total: number) => {
+    if (tabId === stateRef.current.activeTabId) setTotalPages(total);
+    setOpenTabs((prev) =>
+      prev.map((t) => (t.id === tabId ? { ...t, totalPages: total } : t)),
+    );
+  }, []);
+
+  const getSavedPage = useCallback(
+    (filePath: string) => pageMapRef.current.get(filePath),
+    [],
+  );
+
   const resetActiveTabState = useCallback(() => {
     setActiveTabId(null);
     setPdfData(null);
@@ -172,11 +422,20 @@ export function AppContent() {
     if (!isAppReady) return;
     if (activeTabId !== prevActiveTabId.current) {
       const tab = openTabs.find((t) => t.id === activeTabId);
+      const sp = splitRef.current.ids;
+      const prevId = prevActiveTabId.current;
+      // moving focus between split panes keeps the current tool/colour/size
+      const keepTools =
+        sp.length > 1 &&
+        !!activeTabId &&
+        !!prevId &&
+        sp.includes(activeTabId) &&
+        sp.includes(prevId);
       window.dispatchEvent(
         new CustomEvent("margyn-tab-switched", {
           detail: {
             tabId: activeTabId,
-            toolState: tab?.toolState,
+            toolState: keepTools ? { ...toolRef.current } : tab?.toolState,
           },
         }),
       );
@@ -209,6 +468,18 @@ export function AppContent() {
   }, [view, setShortcutsEnabled]);
 
   useEffect(() => {
+    const prev = prevInkTab.current;
+    prevInkTab.current = activeTabId;
+    const ids = splitRef.current.ids;
+    // focus moved between split panes: keep ink selection / active canvas
+    if (
+      ids.length > 1 &&
+      prev &&
+      activeTabId &&
+      ids.includes(prev) &&
+      ids.includes(activeTabId)
+    )
+      return;
     window.dispatchEvent(new Event("margyn-clear-active-ink"));
   }, [activeTabId]);
 
@@ -289,19 +560,21 @@ export function AppContent() {
   );
 
   useEffect(() => {
-    if (!activeFilePath || currentPage < 1) return;
+    // use the focused TAB's path (activeFilePath lags one render behind)
+    const savePath = activeTab?.filePath;
+    if (!savePath || currentPage < 1) return;
     const saveLastPage = async () => {
       try {
         const db = await getDb();
         await db
           .update(recentFiles)
           .set({ lastPage: currentPage })
-          .where(eq(recentFiles.filePath, activeFilePath));
+          .where(eq(recentFiles.filePath, savePath));
         await saveDb();
       } catch (e) {}
     };
     saveLastPage();
-  }, [currentPage, activeFilePath]);
+  }, [currentPage, activeTab?.filePath]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const tab = openTabs.find((t) => t.id === activeTabId);
@@ -847,43 +1120,11 @@ export function AppContent() {
     }
   });
 
-  useShortcut("switchTab", () => {
-    if (stateRef.current.openTabs.length < 2) return;
-    const currentIndex = stateRef.current.openTabs.findIndex(
-      (t) => t.id === stateRef.current.activeTabId,
-    );
-    if (currentIndex !== -1) {
-      const nextIndex = (currentIndex + 1) % stateRef.current.openTabs.length;
-      playSwitchSound();
-      setActiveTabId(stateRef.current.openTabs[nextIndex].id);
-    }
-  });
+  useShortcut("switchTab", () => cycleTab(1));
 
-  useShortcut("nextTab", () => {
-    if (stateRef.current.openTabs.length < 2) return;
-    const currentIndex = stateRef.current.openTabs.findIndex(
-      (t) => t.id === stateRef.current.activeTabId,
-    );
-    if (currentIndex !== -1) {
-      const nextIndex = (currentIndex + 1) % stateRef.current.openTabs.length;
-      playSwitchSound();
-      setActiveTabId(stateRef.current.openTabs[nextIndex].id);
-    }
-  });
+  useShortcut("nextTab", () => cycleTab(1));
 
-  useShortcut("prevTab", () => {
-    if (stateRef.current.openTabs.length < 2) return;
-    const currentIndex = stateRef.current.openTabs.findIndex(
-      (t) => t.id === stateRef.current.activeTabId,
-    );
-    if (currentIndex !== -1) {
-      const prevIndex =
-        (currentIndex - 1 + stateRef.current.openTabs.length) %
-        stateRef.current.openTabs.length;
-      playSwitchSound();
-      setActiveTabId(stateRef.current.openTabs[prevIndex].id);
-    }
-  });
+  useShortcut("prevTab", () => cycleTab(-1));
 
   const handleReorderTabs = useCallback(
     (draggedIndex: number, hoveredIndex: number) => {
@@ -1298,36 +1539,38 @@ export function AppContent() {
   // ✅ NEW: lazy loading of pdfData when a tab becomes active
   // ============================================================
   useEffect(() => {
-    if (!isAppReady) return;
-    const tab = openTabs.find((t) => t.id === activeTabId);
-    if (!tab || tab.isBlank || tab.isInfinite) return;
-    if (tab.pdfData && tab.pdfData.length > 0) return;
-    if (!window.electronAPI) return;
-    if (loadingPdfPathsRef.current.has(tab.filePath)) return;
-
-    loadingPdfPathsRef.current.add(tab.filePath);
-    let cancelled = false;
-    (async () => {
-      try {
-        const data = await window.electronAPI!.loadLibraryFile(tab.filePath);
-        if (cancelled || !data) return;
-        setOpenTabs((prev) =>
-          prev.map((t) =>
-            t.id === tab.id && (!t.pdfData || t.pdfData.length === 0)
-              ? { ...t, pdfData: new Uint8Array(data) }
-              : t,
-          ),
-        );
-      } catch (e) {
-        console.error("[MARGYN] Lazy pdf load failed:", e);
-      } finally {
-        loadingPdfPathsRef.current.delete(tab.filePath);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [activeTabId, openTabs, isAppReady]);
+    if (!isAppReady || !window.electronAPI) return;
+    const wanted = new Set<string>(split.ids);
+    if (activeTabId) wanted.add(activeTabId);
+    const need = openTabs.filter(
+      (t) =>
+        wanted.has(t.id) &&
+        !t.isBlank &&
+        !t.isInfinite &&
+        (!t.pdfData || t.pdfData.length === 0) &&
+        !loadingPdfPathsRef.current.has(t.filePath),
+    );
+    for (const tab of need) {
+      loadingPdfPathsRef.current.add(tab.filePath);
+      (async () => {
+        try {
+          const data = await window.electronAPI!.loadLibraryFile(tab.filePath);
+          if (!data) return;
+          setOpenTabs((prev) =>
+            prev.map((t) =>
+              t.id === tab.id && (!t.pdfData || t.pdfData.length === 0)
+                ? { ...t, pdfData: new Uint8Array(data) }
+                : t,
+            ),
+          );
+        } catch (e) {
+          console.error("[MARGYN] Lazy pdf load failed:", e);
+        } finally {
+          loadingPdfPathsRef.current.delete(tab.filePath);
+        }
+      })();
+    }
+  }, [activeTabId, openTabs, isAppReady, split.ids]);
 
   // ============================================================
   // ✅ REWRITTEN: init effect
@@ -1399,6 +1642,36 @@ export function AppContent() {
                   (t) => t.id === savedActiveId,
                 );
                 setActiveTabId(validActive?.id || restoredTabs[0]?.id || null);
+
+                // restore the split layout (only if every tab still exists)
+                try {
+                  const savedSplit = await getSetting("splitState");
+                  if (savedSplit) {
+                    const sp = JSON.parse(savedSplit);
+                    if (
+                      Array.isArray(sp?.ids) &&
+                      sp.ids.length >= 2 &&
+                      sp.ids.length <= 3 &&
+                      sp.ids.every((id: string) =>
+                        restoredTabs.some((t) => t.id === id),
+                      )
+                    ) {
+                      const okSizes =
+                        Array.isArray(sp.sizes) &&
+                        sp.sizes.length === sp.ids.length &&
+                        sp.sizes.every((n: number) => n > 0);
+                      setSplit({
+                        ids: sp.ids,
+                        sizes: okSizes
+                          ? sp.sizes
+                          : Array.from(
+                              { length: sp.ids.length },
+                              () => 1 / sp.ids.length,
+                            ),
+                      });
+                    }
+                  }
+                } catch {}
               }
             }
           } else if (window.electronAPI && !hadPendingFiles) {
@@ -1839,7 +2112,7 @@ export function AppContent() {
     // One shared group id: Ctrl+Z on any layer (PDF ink / margin) restores both.
     window.dispatchEvent(
       new CustomEvent(`margyn-clear-page-${currentPage}`, {
-        detail: { gid: newGroupId() },
+        detail: { gid: newGroupId(), filePath: activeFilePath },
       }),
     );
     setIsDirty(true);
@@ -1868,7 +2141,9 @@ export function AppContent() {
       });
       await clearAllDrawings(activeFilePath);
       window.dispatchEvent(
-        new CustomEvent("margyn-clear-all", { detail: { gid } }),
+        new CustomEvent("margyn-clear-all", {
+          detail: { gid, filePath: activeFilePath },
+        }),
       );
       setIsDirty(true);
       playDeleteSound();
@@ -2163,12 +2438,19 @@ export function AppContent() {
   const showResumeButton =
     !isActive && lastFocusPage !== null && !isCurrentPdfCompleted;
 
+  const splitTabs = split.ids
+    .map((id) => openTabs.find((t) => t.id === id))
+    .filter((t): t is OpenTab => !!t);
+
   return (
     <>
       <SplashScreen isAppReady={isAppReady} />
 
       {isAppReady && (
-        <div className="flex flex-col h-screen w-screen overflow-hidden bg-nm-deep">
+        <div className="flex h-full w-full overflow-hidden bg-nm-deep">
+          <AppRail view={view} setView={setView} />
+
+          <div className="flex-1 min-w-0 flex flex-col h-full overflow-hidden">
           <AppHeader
             view={view}
             setView={setView}
@@ -2200,10 +2482,15 @@ export function AppContent() {
             <TabsBar
               tabs={openTabs}
               activeTabId={activeTabId}
-              onSelectTab={setActiveTabId}
+              onSelectTab={selectTab}
               onCloseTab={handleCloseTab}
               onCloseMultipleTabs={handleCloseMultipleTabs}
               onReorderTabs={handleReorderTabs}
+              splitIds={split.ids}
+              onSplitTab={handleSplitTab}
+              onRemoveFromSplit={handleRemoveFromSplit}
+              onExitSplit={handleExitSplit}
+              onResetSplitSizes={handleResetSplitSizes}
             />
           )}
 
@@ -2231,6 +2518,15 @@ export function AppContent() {
             handleSelectLibraryFile={handleSelectLibraryFile}
             handleImportProject={handleImportProject}
             onOpenNote={() => setShowNoteModal(true)}
+            splitTabs={splitTabs}
+            splitSizes={split.sizes}
+            onSplitSizesChange={handleSplitSizesChange}
+            onFocusPane={selectTab}
+            onPaneScaleChange={handlePaneScaleChange}
+            onPaneCanvasBgChange={handlePaneCanvasBgChange}
+            onPaneDocumentLoad={handlePaneDocumentLoad}
+            onPaneBlankPageAdded={handlePaneBlankPageAdded}
+            getSavedPage={getSavedPage}
           />
 
           <AppModals
@@ -2295,6 +2591,7 @@ export function AppContent() {
               }
             }}
           />
+          </div>
         </div>
       )}
     </>

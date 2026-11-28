@@ -32,6 +32,7 @@ import PdfDrawingLayer from "./PdfDrawingLayer";
 import { buildTextLines } from "./pdfText";
 import type { TextLine } from "./inkTypes";
 import ColorPicker from "./ColorPicker";
+import { usePaneFocused } from "./PaneContext";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "pdf.worker.min.mjs";
 
@@ -105,6 +106,7 @@ export default function PdfViewer({
 
   const { isActive, lastFocusPage, currentPage, setCurrentPage } = useSession();
   const { tool } = useTool();
+  const paneFocused = usePaneFocused();
 
   const [loadedDoc, setLoadedDoc] = useState<LoadedDoc | null>(null);
   const [scale, setScale] = useState(initialScale || DEFAULT_SCALE);
@@ -592,6 +594,7 @@ export default function PdfViewer({
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (!paneFocused) return;
       if (showBackModal || showGoToPageModal) return;
       const target = e.target as HTMLElement;
       if (
@@ -618,6 +621,7 @@ export default function PdfViewer({
     showBackModal,
     showGoToPageModal,
     isNavigationLocked,
+    paneFocused,
   ]);
 
   const handleConfirmBack = () => {
@@ -721,12 +725,8 @@ export default function PdfViewer({
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
-        <div
-          className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full blur-[120px] pointer-events-none transition-all duration-500 ${isDragging ? "bg-nm-accent/20 scale-110" : "bg-nm-accent/5"}`}
-        />
-        <div className="absolute top-0 left-0 w-[500px] h-[500px] bg-nm-ember/5 rounded-full blur-[100px] -translate-x-1/2 -translate-y-1/2 pointer-events-none" />
-        <div className="absolute bottom-0 right-0 w-[500px] h-[500px] bg-[#10b981]/5 rounded-full blur-[100px] translate-x-1/2 translate-y-1/2 pointer-events-none" />
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,#2b2630_1px,transparent_1px),linear-gradient(to_bottom,#2b2630_1px,transparent_1px)] bg-[size:64px_64px] opacity-[0.02] pointer-events-none" />
+        <div className="absolute inset-0 mg-aurora pointer-events-none" />
+        <div className="absolute inset-0 mg-dots opacity-30 pointer-events-none" />
 
         <div className="relative z-10 flex flex-col items-center animate-in fade-in zoom-in-95 duration-700 ease-out">
           <button
@@ -735,7 +735,7 @@ export default function PdfViewer({
             disabled={isDragging}
           >
             <div
-              className={`absolute inset-0 blur-xl rounded-3xl transition-all duration-500 ${isDragging ? "bg-nm-accent/40" : "bg-nm-accent/0 group-hover:bg-nm-accent/20"}`}
+              className={`absolute -inset-2 rounded-[32px] transition-colors duration-300 ${isDragging ? "bg-nm-accent/20" : "bg-nm-accent/0 group-hover:bg-nm-accent/10"}`}
             />
             <div
               className={`w-24 h-24 rounded-3xl bg-nm-panel border shadow-nm-float flex items-center justify-center relative z-10 transition-all duration-500 ${isDragging ? "border-nm-accent bg-nm-raise" : "border-nm-edge group-hover:-translate-y-2 group-hover:border-nm-accent/40 group-hover:bg-nm-raise"}`}

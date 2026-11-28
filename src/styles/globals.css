@@ -79,45 +79,50 @@
   src: url("/fonts/YekanBakh-Bold.ttf") format("truetype");
 }
 
+
 :root {
   --font-sans:
     "Space Grotesk", "YekanBakh", ui-sans-serif, system-ui, sans-serif;
-  --titlebar-height: 40px;
+  --titlebar-height: 36px;
+  --rail-width: 68px;
 
-  /* ---------- Soft UI palette (RGB channels, opacity-friendly) ---------- */
-  --nm-deep: 30 28 36; /* canvas / recessed wells      */
-  --nm-panel: 30 28 36; /* panels share the base colour */
-  --nm-raise: 36 34 43; /* hover / selected surfaces    */
-  --nm-line: 52 49 62; /* dividers, chips              */
-  --nm-text: 242 239 246;
-  --nm-muted: 172 166 186;
-  --nm-dim: 128 121 143;
-  --nm-faint: 92 86 106;
+  /* ---------- "Obsidian Studio" palette (RGB channels) ----------
+     Depth comes from LIGHTNESS STEPS + hairlines, never from heavy shadows:
+     deep (canvas) < panel (surface) < raise (hover / selected) < line     */
+  --nm-deep: 13 12 17;
+  --nm-panel: 20 19 26;
+  --nm-raise: 28 27 36;
+  --nm-line: 42 40 52;
+  --nm-text: 244 242 248;
+  --nm-muted: 168 163 183;
+  --nm-dim: 122 117 138;
+  --nm-faint: 86 82 100;
   --nm-accent: 240 62 77;
   --nm-hot: 255 107 120;
   --nm-ember: 255 133 82;
   --nm-deep-red: 159 18 57;
 
-  /* ---------- Light / dark shadow pair (the heart of neumorphism) ---------- */
+  /* hairlines */
+  --nm-edge: rgba(255, 255, 255, 0.07);
+  --nm-edge-strong: rgba(255, 255, 255, 0.12);
   --nm-hi: rgba(255, 255, 255, 0.05);
-  --nm-lo: rgba(8, 7, 12, 0.62);
+  --nm-lo: rgba(0, 0, 0, 0.45);
 
-  --nm-raised: -7px -7px 16px var(--nm-hi), 8px 8px 18px var(--nm-lo);
-  --nm-raised-sm: -4px -4px 9px var(--nm-hi), 5px 5px 11px var(--nm-lo);
-  --nm-inset: inset 5px 5px 11px var(--nm-lo), inset -5px -5px 11px var(--nm-hi);
-  --nm-inset-sm: inset 3px 3px 7px var(--nm-lo), inset -3px -3px 7px var(--nm-hi);
-  --nm-float: -6px -6px 18px var(--nm-hi), 14px 18px 38px rgba(6, 5, 10, 0.72);
-  --nm-pop: 2px 2px 5px var(--nm-lo), -2px -2px 5px var(--nm-hi);
-  --nm-glow:
-    -4px -4px 10px var(--nm-hi), 5px 5px 12px var(--nm-lo),
-    0 0 18px -4px rgb(var(--nm-accent) / 0.5);
-  --nm-glow-sm: 0 0 8px rgb(var(--nm-accent) / 0.55);
-  --nm-glow-ok:
-    -4px -4px 10px var(--nm-hi), 5px 5px 12px var(--nm-lo),
-    0 0 16px -4px rgba(16, 185, 129, 0.45);
-  --nm-glow-warn:
-    -4px -4px 10px var(--nm-hi), 5px 5px 12px var(--nm-lo),
-    0 0 16px -4px rgba(245, 158, 11, 0.45);
+  /* ---------- Elevation (all static, tiny, GPU-cached) ---------- */
+  --nm-raised: inset 0 1px 0 var(--nm-hi), 0 1px 2px rgba(0, 0, 0, 0.35);
+  --nm-raised-sm: inset 0 1px 0 var(--nm-hi), 0 1px 1px rgba(0, 0, 0, 0.3);
+  --nm-inset: inset 0 0 0 1px var(--nm-edge);
+  --nm-inset-sm: inset 0 0 0 1px var(--nm-edge);
+  --nm-float: 0 10px 30px -10px rgba(0, 0, 0, 0.7), 0 0 0 1px var(--nm-edge);
+  --nm-pop: 0 0 0 1px var(--nm-edge);
+  /* glows: one soft, low-alpha halo — never stacked */
+  --nm-glow: 0 0 0 1px rgb(var(--nm-accent) / 0.35),
+    0 4px 18px -6px rgb(var(--nm-accent) / 0.4);
+  --nm-glow-sm: 0 0 6px rgb(var(--nm-accent) / 0.35);
+  --nm-glow-ok: 0 0 0 1px rgba(16, 185, 129, 0.3),
+    0 4px 14px -6px rgba(16, 185, 129, 0.35);
+  --nm-glow-warn: 0 0 0 1px rgba(245, 158, 11, 0.3),
+    0 4px 14px -6px rgba(245, 158, 11, 0.35);
 
   --mg-ease: cubic-bezier(0.22, 1, 0.36, 1);
 
@@ -149,6 +154,7 @@ body {
   color: rgb(var(--nm-text));
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeSpeed;
+  transition: background-color 0.2s ease;
 }
 
 * {
@@ -157,19 +163,18 @@ body {
 
 /* =========================================================
    THEME ACCENTS — blue / red (default above) / yellow / orange / green
-   Each block re-tints the whole palette (base surfaces, text, accent).
-   Switching = one attribute change on <html>; no re-render needed.
+   Each block re-tints neutrals + accent. One attribute change on <html>.
 ========================================================= */
 
 html[data-accent="blue"] {
-  --nm-deep: 26 30 42;
-  --nm-panel: 26 30 42;
-  --nm-raise: 32 37 51;
-  --nm-line: 46 53 72;
+  --nm-deep: 11 13 20;
+  --nm-panel: 17 20 30;
+  --nm-raise: 24 28 41;
+  --nm-line: 38 44 62;
   --nm-text: 238 242 251;
-  --nm-muted: 163 174 197;
-  --nm-dim: 117 129 155;
-  --nm-faint: 82 93 117;
+  --nm-muted: 160 171 195;
+  --nm-dim: 114 126 152;
+  --nm-faint: 80 91 115;
   --nm-accent: 59 130 246;
   --nm-hot: 125 176 255;
   --nm-ember: 56 189 248;
@@ -177,14 +182,14 @@ html[data-accent="blue"] {
 }
 
 html[data-accent="yellow"] {
-  --nm-deep: 34 31 25;
-  --nm-panel: 34 31 25;
-  --nm-raise: 41 37 29;
-  --nm-line: 60 54 42;
+  --nm-deep: 15 14 11;
+  --nm-panel: 23 21 16;
+  --nm-raise: 32 29 22;
+  --nm-line: 50 46 35;
   --nm-text: 251 247 236;
-  --nm-muted: 188 180 160;
-  --nm-dim: 140 132 114;
-  --nm-faint: 103 96 80;
+  --nm-muted: 186 178 158;
+  --nm-dim: 138 130 112;
+  --nm-faint: 101 94 78;
   --nm-accent: 234 179 8;
   --nm-hot: 250 204 21;
   --nm-ember: 245 158 11;
@@ -192,14 +197,14 @@ html[data-accent="yellow"] {
 }
 
 html[data-accent="orange"] {
-  --nm-deep: 34 30 28;
-  --nm-panel: 34 30 28;
-  --nm-raise: 41 36 33;
-  --nm-line: 60 52 47;
+  --nm-deep: 15 13 12;
+  --nm-panel: 24 21 19;
+  --nm-raise: 33 29 26;
+  --nm-line: 52 45 40;
   --nm-text: 252 245 240;
-  --nm-muted: 190 177 168;
-  --nm-dim: 142 129 120;
-  --nm-faint: 104 93 85;
+  --nm-muted: 188 175 166;
+  --nm-dim: 140 127 118;
+  --nm-faint: 102 91 83;
   --nm-accent: 249 115 22;
   --nm-hot: 251 146 60;
   --nm-ember: 251 191 36;
@@ -207,37 +212,32 @@ html[data-accent="orange"] {
 }
 
 html[data-accent="green"] {
-  --nm-deep: 25 33 31;
-  --nm-panel: 25 33 31;
-  --nm-raise: 31 41 38;
-  --nm-line: 44 59 54;
+  --nm-deep: 10 15 14;
+  --nm-panel: 16 23 21;
+  --nm-raise: 23 32 29;
+  --nm-line: 36 49 45;
   --nm-text: 238 248 243;
-  --nm-muted: 164 186 176;
-  --nm-dim: 117 139 129;
-  --nm-faint: 82 103 93;
+  --nm-muted: 162 184 174;
+  --nm-dim: 115 137 127;
+  --nm-faint: 80 101 91;
   --nm-accent: 34 197 94;
   --nm-hot: 74 222 128;
   --nm-ember: 163 230 53;
   --nm-deep-red: 21 128 61;
 }
 
-/* Yellow is too light for white labels: use a dark ink on accent fills */
+/* Yellow is too light for white labels: dark ink on accent fills */
 html[data-accent="yellow"] :is([class~="bg-nm-accent"], [class~="bg-nm-accent"] *) {
   color: #1c1500;
 }
 
-/* Smooth, GPU-cheap cross-fade of the base colour when the theme changes */
-body {
-  transition: background-color 0.25s ease;
-}
-
 /* =========================================================
-   Scrollbars
+   Scrollbars — thin, quiet
 ========================================================= */
 
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
@@ -245,10 +245,12 @@ body {
 ::-webkit-scrollbar-thumb {
   background: rgb(var(--nm-line));
   border-radius: 10px;
-  box-shadow: inset 1px 1px 2px rgba(255, 255, 255, 0.06);
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgb(var(--nm-accent) / 0.7);
+  background: rgb(var(--nm-dim));
+  background-clip: padding-box;
 }
 
 .scrollbar-hide::-webkit-scrollbar {
@@ -279,7 +281,7 @@ body {
 }
 
 /* =========================================================
-   Splash Screen Animations
+   Splash Screen Animations (transform/opacity only)
 ========================================================= */
 
 @keyframes loadingBar {
@@ -301,17 +303,17 @@ body {
 }
 
 /* =========================================================
-   MARGYN — Design system polish (visual only, no layout impact)
+   MARGYN — Design system polish
 ========================================================= */
 
 ::selection {
-  background: rgb(var(--nm-accent) / 0.45);
+  background: rgb(var(--nm-accent) / 0.4);
   color: #fff;
 }
 
 /* Keyboard / pen-hover focus ring */
 :where(button, [role="button"], a, input, select, textarea):focus-visible {
-  outline: 2px solid rgb(var(--nm-hot) / 0.85);
+  outline: 2px solid rgb(var(--nm-hot) / 0.8);
   outline-offset: 2px;
   border-radius: inherit;
 }
@@ -319,7 +321,6 @@ body {
   outline: none;
 }
 
-/* Tactile press feedback (individual `scale` property composes with Tailwind transforms) */
 button:not(:disabled),
 [role="button"] {
   transition-timing-function: var(--mg-ease);
@@ -329,37 +330,28 @@ button:not(:disabled):active {
   scale: 0.97;
 }
 
-/* Native form controls pick up the brand colour */
-input[type="range"],
-input[type="checkbox"],
-input[type="radio"] {
-  accent-color: var(--mg-accent);
-}
 input,
 textarea {
   caret-color: var(--mg-accent-hot);
 }
 
-/* Smoother, deliberate entrance for overlays/menus (existing animate-in classes) */
 .animate-in {
   animation-timing-function: var(--mg-ease);
 }
 
-/* Subtle brand glow utility for primary surfaces */
 .mg-glow {
   box-shadow: var(--nm-glow);
 }
 
-
 /* =========================================================
-   SOFT UI (NEUMORPHISM) — role based surfaces
-   Static box-shadows only: no blur filters, no JS, no animation loops.
+   OBSIDIAN STUDIO — role based surfaces
+   Hairline borders + 1px top highlight. No dual neumorphic shadows.
    Lives in @layer components, so any explicit Tailwind `shadow-*`
    utility on an element still wins.
 ========================================================= */
 
 @layer components {
-  /* Raised surfaces: panels / cards / buttons */
+  /* Surfaces: panels / cards / buttons */
   [class~="bg-nm-panel"][class*="rounded"]:not([class*="rounded-full"]),
   [class~="bg-nm-raise"][class*="rounded"]:not([class*="rounded-full"]) {
     box-shadow: var(--nm-raised-sm);
@@ -371,71 +363,187 @@ textarea {
     box-shadow: var(--nm-raised);
   }
 
-  /* Recessed wells: icon holders, info bars, read-outs */
+  /* Wells: icon holders, info bars, read-outs — hairline only */
   [class~="bg-nm-deep"][class*="rounded"]:not([class*="rounded-full"]) {
     box-shadow: var(--nm-inset-sm);
   }
 
-  /* Primary (accent) buttons: raised with a soft coloured halo */
+  /* Primary (accent) buttons: soft single halo */
   [class~="bg-nm-accent"][class*="rounded"]:not([class*="rounded-full"]) {
-    box-shadow: var(--nm-raised-sm), 0 0 14px -5px rgb(var(--nm-accent) / 0.55);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.18),
+      0 4px 14px -6px rgb(var(--nm-accent) / 0.5);
   }
 
-  /* Chips / tracks */
   [class~="bg-nm-line"][class*="rounded"]:not([class*="rounded-full"]) {
     box-shadow: var(--nm-pop);
   }
 
-  /* Text fields are always recessed */
+  /* Text fields: flat dark well with a hairline, accent ring on focus */
   :is(input, textarea, select):not([type="range"], [type="checkbox"], [type="radio"], [type="color"]):not([class~="bg-transparent"]) {
     background-color: rgb(var(--nm-deep));
-    box-shadow: var(--nm-inset-sm);
+    box-shadow: inset 0 0 0 1px var(--nm-edge);
     border-color: transparent;
+    transition: box-shadow 0.15s ease;
+  }
+  :is(input, textarea, select):not([type="range"], [type="checkbox"], [type="radio"], [type="color"]):not([class~="bg-transparent"]):focus {
+    box-shadow:
+      inset 0 0 0 1px rgb(var(--nm-accent) / 0.65),
+      0 0 0 3px rgb(var(--nm-accent) / 0.12);
   }
 
-  /* Pressed state: the surface sinks into the base */
-  button:not(:disabled):active:not([class~="bg-transparent"]):not([class*="rounded-full"]) {
-    box-shadow: var(--nm-inset-sm);
-  }
-
-  /* Soften hover fills so raised surfaces keep their depth */
   button:not(:disabled):hover {
-    transition-property: color, background-color, box-shadow, scale, opacity;
+    transition-property: color, background-color, box-shadow, scale, opacity,
+      border-color;
   }
 }
 
-/* Range sliders: recessed track, raised knob */
+/* Range sliders: slim track, crisp knob */
 input[type="range"] {
   -webkit-appearance: none;
   appearance: none;
-  height: 8px;
+  height: 4px;
   border-radius: 999px;
-  background: rgb(var(--nm-deep));
-  box-shadow: var(--nm-inset-sm);
+  background: rgb(var(--nm-line));
   outline: none;
 }
 input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
-  background: rgb(var(--nm-raise));
-  box-shadow: var(--nm-pop), 0 0 0 3px rgb(var(--nm-accent) / 0.55);
+  background: rgb(var(--nm-text));
+  box-shadow:
+    0 0 0 3px rgb(var(--nm-accent) / 0.45),
+    0 1px 3px rgba(0, 0, 0, 0.5);
   cursor: pointer;
   border: 0;
 }
 
-/* Native checkbox / radio: sit on a soft well */
 input[type="checkbox"],
 input[type="radio"] {
   accent-color: rgb(var(--nm-accent));
 }
 
-/* Overlays: slightly lighter dim, no blur */
+/* Overlays: plain dim, no blur */
 [class*="bg-black/6"],
 [class*="bg-black/5"] {
-  background-color: rgba(10, 9, 14, 0.62);
+  background-color: rgba(6, 5, 9, 0.66);
+}
+
+/* =========================================================
+   OBSIDIAN STUDIO — signature pieces
+========================================================= */
+
+/* Left navigation rail */
+.mg-rail-btn {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  color: rgb(var(--nm-dim));
+  transition:
+    color 0.18s ease,
+    background-color 0.18s ease;
+}
+.mg-rail-btn:hover {
+  color: rgb(var(--nm-text));
+  background-color: rgb(var(--nm-raise));
+}
+.mg-rail-btn[data-active="true"] {
+  color: rgb(var(--nm-hot));
+  background-color: rgb(var(--nm-accent) / 0.12);
+}
+.mg-rail-btn[data-active="true"]::before {
+  content: "";
+  position: absolute;
+  left: -12px;
+  top: 12px;
+  bottom: 12px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: rgb(var(--nm-accent));
+  box-shadow: 0 0 10px rgb(var(--nm-accent) / 0.55);
+}
+/* Rail tooltip (CSS only — zero JS) */
+.mg-rail-btn::after {
+  content: attr(data-label);
+  position: absolute;
+  left: calc(100% + 12px);
+  top: 50%;
+  translate: -4px -50%;
+  padding: 5px 9px;
+  border-radius: 8px;
+  background: rgb(var(--nm-raise));
+  box-shadow: 0 0 0 1px var(--nm-edge-strong);
+  color: rgb(var(--nm-text));
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.15s ease,
+    translate 0.15s ease;
+  z-index: 300;
+}
+.mg-rail-btn:hover::after {
+  opacity: 1;
+  translate: 0 -50%;
+}
+
+/* Subtle dotted canvas texture for empty / hero areas (static, no animation) */
+.mg-dots {
+  background-image: radial-gradient(
+    rgb(var(--nm-line) / 0.7) 1px,
+    transparent 1px
+  );
+  background-size: 22px 22px;
+}
+
+/* Hero aurora: one static radial gradient (replaces big blurred blobs) */
+.mg-aurora {
+  background:
+    radial-gradient(
+      60% 55% at 15% 0%,
+      rgb(var(--nm-accent) / 0.1),
+      transparent 70%
+    ),
+    radial-gradient(
+      45% 50% at 100% 100%,
+      rgb(var(--nm-ember) / 0.06),
+      transparent 70%
+    );
+}
+
+/* Document card */
+.mg-card {
+  position: relative;
+  border-radius: 18px;
+  background: rgb(var(--nm-panel));
+  box-shadow: inset 0 0 0 1px var(--nm-edge);
+  transition:
+    background-color 0.18s ease,
+    box-shadow 0.18s ease,
+    translate 0.18s var(--mg-ease);
+}
+.mg-card:hover {
+  background: rgb(var(--nm-raise));
+  box-shadow:
+    inset 0 0 0 1px rgb(var(--nm-accent) / 0.4),
+    0 12px 28px -14px rgba(0, 0, 0, 0.7);
+  translate: 0 -2px;
+}
+
+/* Skip painting off-screen sections (cheap scroll perf) */
+.mg-cv {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 96px;
 }
 
 @media (prefers-reduced-motion: reduce) {

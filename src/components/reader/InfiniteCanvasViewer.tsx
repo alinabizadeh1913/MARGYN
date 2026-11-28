@@ -20,6 +20,7 @@ import {
 import { useTool } from "@/providers/ToolProvider";
 import ColorPicker from "./ColorPicker";
 import { usePanInput } from "./usePanInput";
+import { usePaneFocused } from "./PaneContext";
 
 const DEFAULT_ZOOM = 1;
 const MIN_ZOOM = 0.1;
@@ -41,6 +42,7 @@ export default function InfiniteCanvasViewer({
   onScaleChange,
 }: InfiniteCanvasViewerProps) {
   const { tool, setTool } = useTool();
+  const paneFocused = usePaneFocused();
 
   const [panX, setPanX] = useState(0);
   const [panY, setPanY] = useState(0);
@@ -141,6 +143,7 @@ export default function InfiniteCanvasViewer({
     containerRef,
     tool,
     setTool,
+    enabled: paneFocused,
     onCommit: (dx, dy) => {
       setPanX((p) => p + dx);
       setPanY((p) => p + dy);

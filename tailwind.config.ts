@@ -1,6 +1,6 @@
 import type { Config } from "tailwindcss";
 
-// Soft-UI (neumorphism) tokens. Colours are RGB channels in CSS variables
+// "Obsidian Studio" tokens: layered flat surfaces + hairlines. Colours are RGB channels in CSS variables
 // (see globals.css) so Tailwind opacity modifiers like `bg-nm-accent/20` work.
 const c = (v: string) => `rgb(var(--${v}) / <alpha-value>)`;
 
@@ -37,10 +37,11 @@ export default {
         "nm-hot": c("nm-hot"),
         "nm-ember": c("nm-ember"),
         "nm-deep-red": c("nm-deep-red"),
-        "nm-edge": "rgba(255, 255, 255, 0.035)",
+        "nm-edge": "var(--nm-edge)",
+        "nm-edge-strong": "var(--nm-edge-strong)",
       },
-      // Neumorphic shadows are plain static box-shadows: zero JS, no blur
-      // filters, no per-frame cost. They are painted once and cached by the GPU.
+      // Elevation = plain static box-shadows (tiny + hairline): zero JS, no blur
+      // filters, no per-frame cost. Painted once and cached by the GPU.
       boxShadow: {
         "nm-raised": "var(--nm-raised)",
         "nm-raised-sm": "var(--nm-raised-sm)",
@@ -52,7 +53,7 @@ export default {
         "nm-glow-sm": "var(--nm-glow-sm)",
         "nm-glow-ok": "var(--nm-glow-ok)",
         "nm-glow-warn": "var(--nm-glow-warn)",
-        // Tailwind's stock elevations are re-mapped to the soft-UI language.
+        // Tailwind's stock elevations are re-mapped to the Obsidian language.
         DEFAULT: "var(--nm-raised-sm)",
         sm: "var(--nm-raised-sm)",
         md: "var(--nm-raised-sm)",

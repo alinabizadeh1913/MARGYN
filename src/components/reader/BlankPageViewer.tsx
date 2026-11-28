@@ -16,6 +16,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { useSession } from "@/providers/SessionProvider";
+import { usePaneFocused } from "./PaneContext";
 import ColorPicker from "./ColorPicker";
 
 interface BlankPageViewerProps {
@@ -45,6 +46,7 @@ export default function BlankPageViewer({
   onOpenNote,
 }: BlankPageViewerProps) {
   const { currentPage, setCurrentPage } = useSession();
+  const paneFocused = usePaneFocused();
   const [scale, setScale] = useState(initialScale);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const viewerRef = useRef<HTMLDivElement>(null);
@@ -151,6 +153,7 @@ export default function BlankPageViewer({
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (!paneFocused) return;
       const target = e.target as HTMLElement;
       if (
         target.tagName === "INPUT" ||
@@ -175,7 +178,7 @@ export default function BlankPageViewer({
       container.removeEventListener("wheel", handleWheel);
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [handleNextPage, handlePrevPage, scale, changeScale]); // ✅ scale و changeScale به وابستگی‌ها اضافه شدند
+  }, [handleNextPage, handlePrevPage, scale, changeScale, paneFocused]); // ✅ scale و changeScale به وابستگی‌ها اضافه شدند
 
   const pageW = PAGE_WIDTH * scale;
   const pageH = PAGE_HEIGHT * scale;

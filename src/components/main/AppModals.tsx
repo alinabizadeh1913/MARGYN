@@ -325,7 +325,7 @@ export const AppModals: React.FC<AppModalsProps> = ({
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 transition-all duration-500">
           <div className="bg-nm-panel border border-emerald-500/30 p-10 rounded-3xl shadow-nm-glow-ok w-full max-w-lg flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-300">
             <div className="w-24 h-24 bg-emerald-500/10 rounded-full flex items-center justify-center mb-6 relative">
-              <div className="absolute inset-0 bg-emerald-500/20 rounded-full blur-xl animate-pulse" />
+              <div className="absolute inset-0 bg-emerald-500/15 rounded-full" />
               <Trophy size={48} className="text-emerald-500 relative z-10" />
             </div>
             <Typography

@@ -36,7 +36,7 @@ interface SessionContextType {
   timerFile: string | null; // ✅ اضافه شد
 }
 
-const SessionContext = createContext<SessionContextType | undefined>(undefined);
+export const SessionContext = createContext<SessionContextType | undefined>(undefined);
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [isActive, setIsActive] = useState(false);

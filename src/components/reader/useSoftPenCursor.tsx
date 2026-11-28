@@ -23,7 +23,14 @@ export interface PenCursorState {
   inStroke: boolean;
   /** set by the ink engine: is a pen stroke still really in progress? */
   active: (() => boolean) | null;
-  setStroke: (v: boolean) => void;
+  /**
+   * Called by the ink engine when a pen/mouse stroke starts/ends. For a MOUSE
+   * stroke the real (hardware) cursor is hidden for its duration: it always
+   * runs ahead of the ink by the display latency, which is exactly the "ink
+   * is not in sync with my hand" feeling. The engine paints the same artwork
+   * (same hot-spot) into the canvas together with the ink instead.
+   */
+  setStroke: (v: boolean, pointerType?: string) => void;
   /** pre-rasterised cursor at the given device pixel ratio (cached) */
   getBitmap: (dpr: number) => HTMLCanvasElement | null;
   /** internal bitmap cache (reset whenever the artwork changes) */
@@ -111,6 +118,7 @@ export function useSoftPenCursor(
     let shown = false;
     let displayed = false;
     let stroke = false;
+    let mouseStroke = false;
 
     const showSprite = (v: boolean) => {
       if (displayed === v) return;
@@ -122,7 +130,7 @@ export function useSoftPenCursor(
       if (!shown) return;
       shown = false;
       showSprite(false);
-      canvas.classList.remove("soft-cursor");
+      if (!mouseStroke) canvas.classList.remove("soft-cursor");
     };
     const paint = () => {
       raf = 0;
@@ -131,29 +139,45 @@ export function useSoftPenCursor(
       sprite.style.transform = `translate3d(${x - p.hx}px, ${y - p.hy}px, 0)`;
     };
 
-    st.setStroke = (v: boolean) => {
+    const endMouseStroke = () => {
+      if (!mouseStroke) return;
+      mouseStroke = false;
+      // keep the system cursor hidden only if the pen sprite mode needs it
+      if (!shown) canvas.classList.remove("soft-cursor");
+    };
+
+    st.setStroke = (v: boolean, pointerType?: string) => {
       stroke = v;
       st.inStroke = v;
       if (v) {
         showSprite(false); // the engine draws the icon inside the canvas now
-      } else if (shown) {
-        const p = parsedRef.current;
-        if (p) {
-          sprite.style.transform = `translate3d(${x - p.hx}px, ${y - p.hy}px, 0)`;
-          showSprite(true);
+        if (pointerType === "mouse") {
+          mouseStroke = true;
+          canvas.classList.add("soft-cursor");
+        }
+      } else {
+        endMouseStroke();
+        if (shown) {
+          const p = parsedRef.current;
+          if (p) {
+            sprite.style.transform = `translate3d(${x - p.hx}px, ${y - p.hy}px, 0)`;
+            showSprite(true);
+          }
         }
       }
     };
 
     const onMove = (e: PointerEvent) => {
-      if (e.pointerType !== "pen" || !parsedRef.current) {
-        hide();
-        return;
-      }
-      // self-heal: a stroke that ended without a clean pointerup
+      // self-heal: a stroke that ended without a clean pointerup (never leave
+      // the real cursor hidden)
       if (stroke && st.active && !st.active()) {
         stroke = false;
         st.inStroke = false;
+        endMouseStroke();
+      }
+      if (e.pointerType !== "pen" || !parsedRef.current) {
+        hide();
+        return;
       }
       const r = canvas.getBoundingClientRect();
       x = e.clientX - r.left;

@@ -12,6 +12,8 @@ import {
   Download,
   FolderArchive,
   FolderOpen,
+  ArrowUpRight,
+  CheckCircle2,
 } from "lucide-react";
 import Typography from "@/typography";
 import { playDeleteSound } from "@/lib/audio";
@@ -102,13 +104,58 @@ export default function LibraryView({
     return !file.projectPath;
   });
 
+  const pdfCount = files.filter((f) => !f.projectPath).length;
+  const projectCount = files.length - pdfCount;
+
+  const nameOf = (file: RecentFile) => {
+    const isProject = !!file.projectPath;
+    const projectName = isProject
+      ? file.projectPath!.split(/[/\\]/).pop()?.replace(".margyn", "")
+      : null;
+    return projectName || file.name || "Untitled Project";
+  };
+
+  const openFileMenu = (e: React.MouseEvent, file: RecentFile) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const isProject = !!file.projectPath;
+    openMenu(e.clientX, e.clientY, [
+      {
+        label: isProject ? "Open Project" : "Open PDF",
+        icon: FolderOpen,
+        onClick: () => onSelectFile(file.filePath),
+      },
+      { separator: true },
+      {
+        label: "Remove from Library",
+        icon: Trash2,
+        danger: true,
+        onClick: () =>
+          handleDeleteSingle(
+            { stopPropagation: () => {} } as any,
+            file.id,
+            file.filePath,
+          ),
+      },
+    ]);
+  };
+
+  const featured = filteredFiles[0];
+  const rest = filteredFiles.slice(1);
+
   return (
-    <div className="flex flex-col h-full w-full bg-nm-deep p-10 overflow-y-auto relative">
-      <div className="max-w-4xl w-full mx-auto">
-        <header className="mb-6 flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-3 mb-3">
-              <BookOpen className="text-nm-accent" size={28} />
+    <div className="flex flex-col h-full w-full bg-nm-deep overflow-y-auto relative">
+      {/* Hero */}
+      <div className="mg-aurora border-b border-nm-edge">
+        <div className="max-w-6xl w-full mx-auto px-10 pt-10 pb-7">
+          <div className="flex flex-wrap items-end justify-between gap-6">
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <BookOpen className="text-nm-accent" size={16} />
+                <span className="text-[11px] font-semibold uppercase tracking-[0.3em] text-nm-dim">
+                  Your shelf
+                </span>
+              </div>
               <Typography
                 variant="pageTitle"
                 as="h1"
@@ -116,73 +163,87 @@ export default function LibraryView({
               >
                 Library
               </Typography>
-            </div>
-            <Typography
-              variant="body"
-              as="p"
-              className="text-nm-muted max-w-xl"
-            >
-              Quickly jump back into your recent documents. Your annotations
-              will be exactly where you left them.
-            </Typography>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <button
-              onClick={onImportProject}
-              className="flex items-center gap-2 px-4 py-2 text-sm text-nm-accent bg-nm-accent/10 border border-nm-accent/20 rounded-xl hover:bg-nm-accent/20 transition-all font-medium"
-            >
-              <Download size={16} />
-              Import Project
-            </button>
-            {files.length > 0 && (
-              <button
-                onClick={() => setShowConfirmClear(true)}
-                className="flex items-center gap-2 px-4 py-2 text-sm text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-xl hover:bg-rose-500/20 transition-all font-medium"
+              <Typography
+                variant="body"
+                as="p"
+                className="text-nm-muted max-w-xl mt-2"
               >
-                <Trash2 size={16} />
-                Clear History
+                Quickly jump back into your recent documents. Your annotations
+                will be exactly where you left them.
+              </Typography>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={onImportProject}
+                className="flex items-center gap-2 px-4 py-2 text-sm text-nm-accent bg-nm-accent/10 border border-nm-accent/25 rounded-xl hover:bg-nm-accent/20 transition-colors font-medium"
+              >
+                <Download size={16} />
+                Import Project
               </button>
-            )}
+              {files.length > 0 && (
+                <button
+                  onClick={() => setShowConfirmClear(true)}
+                  className="flex items-center gap-2 px-4 py-2 text-sm text-nm-muted border border-nm-edge rounded-xl hover:text-rose-400 hover:border-rose-500/30 hover:bg-rose-500/10 transition-colors font-medium"
+                >
+                  <Trash2 size={16} />
+                  Clear History
+                </button>
+              )}
+            </div>
           </div>
-        </header>
 
-        <div className="flex items-center gap-2 mb-6 bg-nm-panel p-1.5 rounded-2xl w-fit border border-nm-edge">
-          <button
-            onClick={() => setActiveTab("pdfs")}
-            className={`flex items-center gap-2 px-6 py-2.5 rounded-xl transition-all duration-300 font-medium text-sm ${
-              activeTab === "pdfs"
-                ? "bg-nm-line text-white shadow-md border border-nm-edge"
-                : "text-nm-muted hover:text-white hover:bg-white/5"
-            }`}
-          >
-            <FileText size={16} />
-            PDF Documents
-          </button>
-          <button
-            onClick={() => setActiveTab("projects")}
-            className={`flex items-center gap-2 px-6 py-2.5 rounded-xl transition-all duration-300 font-medium text-sm ${
-              activeTab === "projects"
-                ? "bg-nm-line text-white shadow-md border border-nm-edge"
-                : "text-nm-muted hover:text-white hover:bg-white/5"
-            }`}
-          >
-            <FolderArchive size={16} />
-            Projects
-          </button>
+          {/* Underline tabs */}
+          <div className="flex items-center gap-6 mt-8">
+            {(
+              [
+                { id: "pdfs", label: "PDF Documents", icon: FileText, n: pdfCount },
+                { id: "projects", label: "Projects", icon: FolderArchive, n: projectCount },
+              ] as const
+            ).map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setActiveTab(t.id)}
+                className={`relative flex items-center gap-2 pb-3 text-sm font-medium transition-colors ${
+                  activeTab === t.id
+                    ? "text-nm-text"
+                    : "text-nm-dim hover:text-nm-muted"
+                }`}
+              >
+                <t.icon size={15} />
+                {t.label}
+                <span
+                  className={`px-1.5 py-px rounded-md text-[10px] font-bold tabular-nums ${
+                    activeTab === t.id
+                      ? "bg-nm-accent/15 text-nm-hot"
+                      : "bg-nm-raise text-nm-dim"
+                  }`}
+                >
+                  {t.n}
+                </span>
+                {activeTab === t.id && (
+                  <span className="absolute left-0 right-0 -bottom-px h-[2px] rounded-full bg-nm-accent" />
+                )}
+              </button>
+            ))}
+          </div>
         </div>
+      </div>
 
+      <div className="max-w-6xl w-full mx-auto px-10 py-8">
         {isLoading ? (
           <div className="flex justify-center py-20">
-            <div className="w-8 h-8 border-4 border-nm-edge border-t-[#ef2b3a] rounded-full animate-spin"></div>
+            <div className="w-7 h-7 border-[3px] border-nm-line border-t-nm-accent rounded-full animate-spin"></div>
           </div>
         ) : filteredFiles.length === 0 ? (
-          <div className="flex flex-col items-center justify-center text-center py-24 bg-nm-panel border border-nm-edge rounded-3xl">
-            {activeTab === "pdfs" ? (
-              <FileText size={48} className="text-nm-faint mb-4" />
-            ) : (
-              <FolderArchive size={48} className="text-nm-faint mb-4" />
-            )}
+          <div className="mg-dots flex flex-col items-center justify-center text-center py-24 rounded-3xl border border-dashed border-nm-edge-strong">
+            <div className="w-16 h-16 rounded-2xl bg-nm-panel border border-nm-edge flex items-center justify-center mb-5">
+              {activeTab === "pdfs" ? (
+                <FileText size={28} className="text-nm-dim" />
+              ) : (
+                <FolderArchive size={28} className="text-nm-dim" />
+              )}
+            </div>
             <Typography
               variant="cardTitle"
               className="text-nm-text mb-2 block"
@@ -196,115 +257,137 @@ export default function LibraryView({
             </Typography>
           </div>
         ) : (
-          <div className="grid gap-3">
-            {filteredFiles.map((file) => {
-              const isProject = !!file.projectPath;
-              const projectName = isProject
-                ? file.projectPath!.split(/[/\\]/).pop()?.replace(".margyn", "")
-                : null;
-              const displayName =
-                projectName || file.name || "Untitled Project";
-
-              return (
-                <div
-                  key={file.id}
-                  onClick={() => onSelectFile(file.filePath)}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-
-                    openMenu(e.clientX, e.clientY, [
-                      {
-                        label: isProject ? "Open Project" : "Open PDF",
-                        icon: FolderOpen,
-                        onClick: () => onSelectFile(file.filePath),
-                      },
-                      { separator: true },
-                      {
-                        label: "Remove from Library",
-                        icon: Trash2,
-                        danger: true,
-                        onClick: () =>
-                          handleDeleteSingle(
-                            { stopPropagation: () => {} } as any,
-                            file.id,
-                            file.filePath,
-                          ),
-                      },
-                    ]);
-                  }}
-                  className="group flex items-center justify-between p-5 bg-nm-panel border border-nm-edge rounded-2xl cursor-pointer hover:bg-nm-raise hover:border-nm-accent/50 transition-all duration-300 relative overflow-hidden"
-                >
-                  <div className="absolute inset-0 bg-gradient-to-r from-nm-accent/0 via-nm-accent/0 to-nm-accent/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
-
-                  <div className="flex items-center gap-5 relative z-10">
-                    <div className="w-12 h-12 rounded-xl bg-nm-deep border border-nm-edge flex items-center justify-center group-hover:border-nm-accent/30 transition-colors shrink-0">
-                      {isProject ? (
-                        <FolderArchive
-                          size={20}
-                          className="text-emerald-400 group-hover:text-emerald-300 transition-colors"
-                        />
-                      ) : (
-                        <FileText
-                          size={20}
-                          className="text-rose-400 group-hover:text-rose-300 transition-colors"
-                        />
+          <>
+            {/* Continue reading */}
+            {featured && (
+              <div
+                onClick={() => onSelectFile(featured.filePath)}
+                onContextMenu={(e) => openFileMenu(e, featured)}
+                className="mg-card group cursor-pointer p-6 mb-8 flex items-center justify-between gap-6 overflow-hidden"
+              >
+                <div className="flex items-center gap-5 min-w-0">
+                  <div className="w-16 h-20 rounded-xl bg-nm-deep border border-nm-edge-strong flex items-center justify-center shrink-0">
+                    {featured.projectPath ? (
+                      <FolderArchive size={26} className="text-emerald-400" />
+                    ) : (
+                      <FileText size={26} className="text-rose-400" />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <span className="text-[10px] font-bold uppercase tracking-[0.25em] text-nm-accent">
+                      Continue reading
+                    </span>
+                    <Typography
+                      variant="cardTitle"
+                      className="text-nm-text block line-clamp-1 mt-1.5"
+                    >
+                      {nameOf(featured)}
+                    </Typography>
+                    <div className="flex items-center gap-2 text-nm-dim mt-1.5">
+                      <Clock size={12} />
+                      <Typography variant="caption" className="text-nm-dim">
+                        {formatDate(featured.lastOpened)}
+                      </Typography>
+                      {featured.completed === 1 && (
+                        <span className="inline-flex items-center gap-1 ml-2 text-[10px] font-bold text-emerald-500">
+                          <CheckCircle2 size={12} /> Completed
+                        </span>
                       )}
                     </div>
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <Typography
-                          variant="cardTitle"
-                          className="text-nm-text group-hover:text-nm-accent transition-colors line-clamp-1"
-                        >
-                          {displayName}
-                        </Typography>
-
-                        <span
-                          className={`px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider shrink-0 ${isProject ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" : "bg-rose-500/10 text-rose-500 border border-rose-500/20"}`}
-                        >
-                          {isProject ? "MARGYN" : "PDF"}
-                        </span>
-
-                        {file.completed === 1 && (
-                          <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-500 text-[10px] font-bold rounded-full border border-emerald-500/20">
-                            Completed
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 text-nm-dim">
-                        <Clock size={12} />
-                        <Typography
-                          variant="caption"
-                          className="text-nm-dim"
-                        >
-                          {formatDate(file.lastOpened)}
-                        </Typography>
-                      </div>
-                    </div>
                   </div>
-
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="hidden sm:flex items-center gap-1.5 px-4 py-2 rounded-xl bg-nm-accent text-white text-sm font-medium">
+                    Open <ArrowUpRight size={15} />
+                  </span>
                   <button
                     onClick={(e) =>
-                      handleDeleteSingle(e, file.id, file.filePath)
+                      handleDeleteSingle(e, featured.id, featured.filePath)
                     }
-                    className="p-3 text-nm-dim hover:text-rose-500 hover:bg-rose-500/10 rounded-xl transition-all opacity-0 group-hover:opacity-100 relative z-10"
+                    className="p-2.5 text-nm-dim hover:text-rose-500 hover:bg-rose-500/10 rounded-xl transition-colors opacity-0 group-hover:opacity-100"
                     title="Remove from history"
                   >
-                    <Trash2 size={18} />
+                    <Trash2 size={17} />
                   </button>
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            )}
+
+            {rest.length > 0 && (
+              <div className="grid gap-4 grid-cols-1 min-[1000px]:grid-cols-2 min-[1500px]:grid-cols-3">
+                {rest.map((file) => {
+                  const isProject = !!file.projectPath;
+                  return (
+                    <div
+                      key={file.id}
+                      onClick={() => onSelectFile(file.filePath)}
+                      onContextMenu={(e) => openFileMenu(e, file)}
+                      className="mg-card mg-cv group cursor-pointer p-4 flex items-center gap-4 overflow-hidden"
+                    >
+                      <div className="w-11 h-14 rounded-lg bg-nm-deep border border-nm-edge flex items-center justify-center shrink-0 group-hover:border-nm-accent/30 transition-colors">
+                        {isProject ? (
+                          <FolderArchive
+                            size={18}
+                            className="text-emerald-400"
+                          />
+                        ) : (
+                          <FileText size={18} className="text-rose-400" />
+                        )}
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <Typography
+                          variant="cardTitle"
+                          className="text-nm-text group-hover:text-nm-hot transition-colors line-clamp-1 block"
+                        >
+                          {nameOf(file)}
+                        </Typography>
+                        <div className="flex items-center gap-2 mt-1.5">
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider shrink-0 ${isProject ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" : "bg-rose-500/10 text-rose-500 border border-rose-500/20"}`}
+                          >
+                            {isProject ? "MARGYN" : "PDF"}
+                          </span>
+                          {file.completed === 1 && (
+                            <span className="px-1.5 py-0.5 bg-emerald-500/10 text-emerald-500 text-[9px] font-bold rounded border border-emerald-500/20">
+                              Completed
+                            </span>
+                          )}
+                          <span className="flex items-center gap-1 text-nm-dim min-w-0">
+                            <Clock size={11} className="shrink-0" />
+                            <Typography
+                              variant="caption"
+                              className="text-nm-dim truncate"
+                            >
+                              {formatDate(file.lastOpened)}
+                            </Typography>
+                          </span>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={(e) =>
+                          handleDeleteSingle(e, file.id, file.filePath)
+                        }
+                        className="p-2 text-nm-dim hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-colors opacity-0 group-hover:opacity-100 shrink-0"
+                        title="Remove from history"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
         )}
       </div>
 
       {showConfirmClear && (
-        <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/60 transition-all duration-300">
-          <div className="bg-nm-panel border border-nm-edge p-8 rounded-3xl shadow-2xl w-full max-w-md flex flex-col items-center text-center">
-            <div className="w-16 h-16 bg-rose-500/10 rounded-full flex items-center justify-center mb-6">
-              <AlertTriangle size={32} className="text-rose-500" />
+        <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/60">
+          <div className="bg-nm-panel border border-nm-edge-strong p-8 rounded-3xl shadow-nm-float w-full max-w-md flex flex-col items-center text-center">
+            <div className="w-14 h-14 bg-rose-500/10 border border-rose-500/20 rounded-2xl flex items-center justify-center mb-6">
+              <AlertTriangle size={28} className="text-rose-500" />
             </div>
             <Typography
               variant="pageTitle"
@@ -326,7 +409,7 @@ export default function LibraryView({
               </button>
               <button
                 onClick={handleClearHistory}
-                className="flex-1 px-4 py-3 rounded-xl bg-rose-500 text-white hover:bg-rose-600 transition-colors font-medium shadow-nm-glow"
+                className="flex-1 px-4 py-3 rounded-xl bg-rose-500 text-white hover:bg-rose-600 transition-colors font-medium"
               >
                 Clear All
               </button>

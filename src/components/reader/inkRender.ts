@@ -32,40 +32,43 @@ if (typeof window !== "undefined") {
 }
 export const HIGHLIGHT_ALPHA = 0.4;
 
-export function tracePen(ctx: CanvasRenderingContext2D, p: number[]) {
-  const n = p.length >> 1;
+/**
+ * Traces a freehand pen stroke as a chain of quadratic curves whose control
+ * points are the samples and whose end points are the midpoints between
+ * consecutive samples (a uniform quadratic B-spline): smooth, no overshoot,
+ * and it needs NO look-ahead.
+ *
+ * This is the ONE definition of the pen curve. The live preview, the commit to
+ * the static canvas and every later redraw (resize, undo, reload, eraser...)
+ * all go through it, so the ink can never change shape after it was drawn.
+ * (Before, the live path used midpoint curves while redraws used Catmull-Rom,
+ * so strokes visibly "snapped" to a different shape on every repaint.)
+ *
+ * `extra` are additional trailing points (predicted samples) that are traced
+ * as if they were part of `p`, without having to concatenate the arrays.
+ */
+export function tracePen(
+  ctx: CanvasRenderingContext2D,
+  p: number[],
+  extra?: number[],
+) {
+  const na = p.length >> 1;
+  const n = na + (extra ? extra.length >> 1 : 0);
   if (!n) return;
+  const X = (i: number) => (i < na ? p[i * 2] : extra![(i - na) * 2]);
+  const Y = (i: number) => (i < na ? p[i * 2 + 1] : extra![(i - na) * 2 + 1]);
 
-  ctx.moveTo(p[0], p[1]);
+  ctx.moveTo(X(0), Y(0));
   if (n === 1) {
-    ctx.lineTo(p[0] + 0.01, p[1]);
+    ctx.lineTo(X(0) + 0.01, Y(0));
     return;
   }
-
-  // Keep the persisted / redraw path identical to the live incremental
-  // Catmull-Rom renderer in useInkCanvas.
-  for (let k = 0; k < n - 1; k++) {
-    const i0 = Math.max(0, k - 1) * 2;
-    const i1 = k * 2;
-    const i2 = (k + 1) * 2;
-    const i3 = Math.min(n - 1, k + 2) * 2;
-
-    const p0x = p[i0],
-      p0y = p[i0 + 1];
-    const p1x = p[i1],
-      p1y = p[i1 + 1];
-    const p2x = p[i2],
-      p2y = p[i2 + 1];
-    const p3x = p[i3],
-      p3y = p[i3 + 1];
-
-    const c1x = p1x + (p2x - p0x) / 6;
-    const c1y = p1y + (p2y - p0y) / 6;
-    const c2x = p2x - (p3x - p1x) / 6;
-    const c2y = p2y - (p3y - p1y) / 6;
-
-    ctx.bezierCurveTo(c1x, c1y, c2x, c2y, p2x, p2y);
+  for (let i = 1; i < n - 1; i++) {
+    const cx = X(i),
+      cy = Y(i);
+    ctx.quadraticCurveTo(cx, cy, (cx + X(i + 1)) / 2, (cy + Y(i + 1)) / 2);
   }
+  ctx.lineTo(X(n - 1), Y(n - 1));
 }
 
 /** Draws any element from its SCREEN-space flat points. */

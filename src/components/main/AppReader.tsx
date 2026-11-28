@@ -10,6 +10,8 @@ import InfiniteCanvasViewer from "../reader/InfiniteCanvasViewer"; // ✅ NEW
 import LibraryView from "../LibraryView";
 import HistoryView from "../HistoryView";
 import SettingsView from "../SettingsView";
+import SplitView from "../reader/SplitView";
+import { PaneScope } from "../reader/PaneContext";
 
 interface AppReaderProps {
   view: "reader" | "library" | "history" | "settings";
@@ -35,6 +37,16 @@ interface AppReaderProps {
   handleSelectLibraryFile: (path: string) => void;
   handleImportProject: () => void;
   onOpenNote: () => void;
+  // ── split view ──
+  splitTabs: OpenTab[];
+  splitSizes: number[];
+  onSplitSizesChange: (sizes: number[]) => void;
+  onFocusPane: (id: string) => void;
+  onPaneScaleChange: (tabId: string, filePath: string, scale: number) => void;
+  onPaneCanvasBgChange: (tabId: string, filePath: string, color: string) => void;
+  onPaneDocumentLoad: (tabId: string, pages: number) => void;
+  onPaneBlankPageAdded: (tabId: string, total: number) => void;
+  getSavedPage: (filePath: string) => number | undefined;
 }
 
 export const AppReader: React.FC<AppReaderProps> = ({
@@ -61,7 +73,72 @@ export const AppReader: React.FC<AppReaderProps> = ({
   handleSelectLibraryFile,
   handleImportProject,
   onOpenNote,
+  splitTabs,
+  splitSizes,
+  onSplitSizesChange,
+  onFocusPane,
+  onPaneScaleChange,
+  onPaneCanvasBgChange,
+  onPaneDocumentLoad,
+  onPaneBlankPageAdded,
+  getSavedPage,
 }) => {
+  const isSplit = view === "reader" && splitTabs.length > 1;
+
+  const renderPane = (tab: OpenTab) => {
+    const focused = tab.id === activeTabId;
+    return (
+      <PaneScope
+        focused={focused}
+        filePath={tab.filePath}
+        getSavedPage={getSavedPage}
+      >
+        {tab.isInfinite ? (
+          <InfiniteCanvasViewer
+            filePath={tab.filePath}
+            canvasBg={tab.canvasBg}
+            onCanvasBgChange={(c) =>
+              onPaneCanvasBgChange(tab.id, tab.filePath, c)
+            }
+            initialScale={tab.scale}
+            onScaleChange={(s) => onPaneScaleChange(tab.id, tab.filePath, s)}
+          />
+        ) : tab.isBlank ? (
+          <BlankPageViewer
+            filePath={tab.filePath}
+            initialPages={tab.totalPages || 1}
+            canvasBg={tab.canvasBg}
+            onCanvasBgChange={(c) =>
+              onPaneCanvasBgChange(tab.id, tab.filePath, c)
+            }
+            initialScale={tab.scale}
+            onScaleChange={(s) => onPaneScaleChange(tab.id, tab.filePath, s)}
+            onPageAdded={(n: number) => onPaneBlankPageAdded(tab.id, n)}
+            onDeletePage={handleDeleteBlankPage}
+            onOpenNote={onOpenNote}
+          />
+        ) : (
+          <PdfViewer
+            fileData={tab.pdfData}
+            filePath={tab.filePath}
+            initialScale={tab.scale}
+            canvasBg={tab.canvasBg}
+            onCanvasBgChange={(c) =>
+              onPaneCanvasBgChange(tab.id, tab.filePath, c)
+            }
+            onScaleChange={(s) => onPaneScaleChange(tab.id, tab.filePath, s)}
+            onTextLayerStatus={focused ? setHasText : undefined}
+            onDocumentLoad={(pages) => onPaneDocumentLoad(tab.id, pages)}
+            onDropPdf={handleDropPdf}
+            onOpenPdf={handleOpenPdf}
+            onOpenNote={onOpenNote}
+            isCompleted={tab.isCompleted}
+          />
+        )}
+      </PaneScope>
+    );
+  };
+
   return (
     <main className="flex-1 flex overflow-hidden relative">
       {view === "reader" && (
@@ -82,26 +159,37 @@ export const AppReader: React.FC<AppReaderProps> = ({
 
               <button
                 onClick={() => setIsMarginOpen(!isMarginOpen)}
-                className="absolute top-1/2 -translate-y-1/2 z-50 flex items-center justify-center w-8 h-24 bg-black/40 border-y border-r border-nm-edge text-white/70 hover:text-nm-text hover:bg-nm-raise rounded-r-xl transition-colors duration-200 shadow-xl group"
+                className="absolute top-1/2 -translate-y-1/2 z-50 flex items-center justify-center w-5 h-16 bg-nm-panel border-y border-r border-nm-edge-strong text-nm-dim hover:text-nm-hot hover:bg-nm-raise rounded-r-lg transition-colors duration-200 group"
                 style={{ left: isMarginOpen ? "calc(40% - 1px)" : "0px" }}
               >
                 {isMarginOpen ? (
                   <ChevronLeft
                     size={18}
-                    className="group-hover:-translate-x-1 transition-transform"
+                    className="group-hover:-translate-x-0.5 transition-transform"
                   />
                 ) : (
                   <ChevronRight
                     size={18}
-                    className="group-hover:translate-x-1 transition-transform"
+                    className="group-hover:translate-x-0.5 transition-transform"
                   />
                 )}
               </button>
             </>
           )}
 
-          <div className="flex-1 h-full relative overflow-hidden flex items-center justify-center">
-            {activeTab?.isInfinite ? (
+          <div className="flex-1 h-full min-w-0 relative overflow-hidden flex items-center justify-center">
+            {isSplit ? (
+              <SplitView
+                panes={splitTabs.map((t) => ({
+                  id: t.id,
+                  node: renderPane(t),
+                }))}
+                sizes={splitSizes}
+                activeId={activeTabId}
+                onSizesChange={onSplitSizesChange}
+                onFocusPane={onFocusPane}
+              />
+            ) : activeTab?.isInfinite ? (
               <InfiniteCanvasViewer
                 key={activeTabId || "empty"}
                 filePath={activeFilePath}

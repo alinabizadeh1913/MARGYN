@@ -51,9 +51,11 @@ import {
   drawMarquee,
   drawSelectionUI,
   paintStroke,
+  tracePen,
   type SelInfo,
 } from "./inkRender";
 import { highlightRects } from "./inkText";
+import { PointFilter, filterFor } from "./inkFilter";
 import type { PenCursorState } from "./useSoftPenCursor";
 import type {
   Anchor,
@@ -110,8 +112,16 @@ const isInkingNow = () =>
   typeof window !== "undefined" &&
   performance.now() - ((window as any).__margynInkTs ?? -1e9) < INK_IDLE_MS;
 const MAX_HISTORY = 100;
-const MAX_PREDICTED = 3;
+/**
+ * Predicted samples are only a hint for the last few milliseconds. Every one
+ * that is wrong makes the tip visibly wobble when it is replaced by the real
+ * sample, so keep few of them (pen/touch only - a mouse is not predicted).
+ */
+const MAX_PREDICTED = 2;
 const PREDICT_TTL_MS = 40;
+/** DOMHighResTimeStamp of an event (synthetic / fake events may not carry one). */
+const evT = (ev: { timeStamp?: number } | null | undefined) =>
+  typeof ev?.timeStamp === "number" ? ev.timeStamp : performance.now();
 
 /** Tools that need continuous hover feedback (cursor updates / overlay rings / anchor hints). */
 const HOVER_TOOLS = new Set(["select", "arrow", "eraser"]);
@@ -126,17 +136,28 @@ const globalHistoryCache = new Map<
 
 interface PenState {
   kind: "pen";
+  /** FILTERED samples of the stroke (screen space, flat x,y,x,y...) */
   pts: number[];
-  done: number;
-  curX: number;
-  curY: number;
+  /** area of the dynamic canvas covered by the last frame (what to clear next) */
   headBox: Box | null;
   predTimer: ReturnType<typeof setTimeout> | null;
   color: string;
   size: number;
   pid: number;
+  /** latest RAW pointer position (used for the final point) */
   cx: number;
   cy: number;
+  /** pointerType that started the stroke: "pen" | "mouse" | "touch" */
+  ptype: string;
+  /** noise filter fed with EVERY raw sample of this stroke */
+  flt: PointFilter;
+  /** timestamp of the newest sample fed to the filter */
+  lastT: number;
+  /** bounds of pts */
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
   /** true once raw (unaligned) pen samples are being received */
   rawSeen?: boolean;
 }
@@ -180,6 +201,8 @@ interface EraseState {
   ringBox: Box | null;
   /** PERF: set when strokes changed; the repaint happens once per pointer event. */
   dirty: boolean;
+  /** PERF: union of the (old) bounds of every stroke changed since the last repaint. */
+  dirtyBox: Box | null;
 }
 
 interface TransformState {
@@ -330,6 +353,8 @@ export function useInkCanvas({
   // ============================================================
   const previewRafRef = useRef(0);
   const lastPrevRef = useRef({ x: NaN, y: NaN, m: -1 });
+  // Invalidates a pending "clear the live copy after pen-up" (see handoffClear).
+  const handoffTok = useRef(0);
 
   // ============================================================
   // PERF: selection memo (strokes + bounds), keyed on the identity of the
@@ -560,7 +585,12 @@ export function useInkCanvas({
     return out;
   };
 
-  function redrawStatic() {
+  /**
+   * Repaints the static canvas. With `region` (CSS px) only that rectangle is
+   * cleared and repainted (clipped) - the eraser uses this so that a stroke
+   * being cut costs a few hundred pixels instead of the whole page.
+   */
+  function redrawStatic(region?: Box | null) {
     const c = staticRef.current;
     const ctx = getStaticCtx();
     if (!c || !ctx) return;
@@ -570,23 +600,44 @@ export function useInkCanvas({
     const ch = c.height / d;
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, c.width, c.height);
+    let rx0 = 0,
+      ry0 = 0,
+      rx1 = cw,
+      ry1 = ch;
+    let clipped = false;
+    if (region) {
+      rx0 = Math.max(0, Math.floor(region.x) - 2);
+      ry0 = Math.max(0, Math.floor(region.y) - 2);
+      rx1 = Math.min(cw, Math.ceil(region.x + region.w) + 2);
+      ry1 = Math.min(ch, Math.ceil(region.y + region.h) + 2);
+      if (rx1 <= rx0 || ry1 <= ry0) return;
+      clipped = true;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(rx0 * d, ry0 * d, (rx1 - rx0) * d, (ry1 - ry0) * d);
+      ctx.clip();
+      ctx.clearRect(rx0 * d, ry0 * d, (rx1 - rx0) * d, (ry1 - ry0) * d);
+    } else {
+      ctx.clearRect(0, 0, c.width, c.height);
+    }
     setStaticTransform(ctx);
 
     const hide = hiddenRef.current;
-    const M = 80;
+    const M = clipped ? 0 : 80;
 
     for (const s of linesRef.current) {
       if (hide && s.id && hide.has(s.id)) continue;
 
       const g = geom(s);
       const b = g.box;
+      const pad = clipped ? (s.size || 0) / 2 + 4 : 0;
 
-      if (b.x + b.w + M < 0 || b.x - M > cw) continue;
-      if (b.y + b.h + M < 0 || b.y - M > ch) continue;
+      if (b.x + b.w + M + pad < rx0 || b.x - M - pad > rx1) continue;
+      if (b.y + b.h + M + pad < ry0 || b.y - M - pad > ry1) continue;
 
       paintStroke(ctx, s, g.pts);
     }
+    if (clipped) ctx.restore();
   }
 
   function clearLive(b: Box | null) {
@@ -933,6 +984,11 @@ export function useInkCanvas({
         continue;
       }
       anyChange = true;
+      {
+        const pd = (s.size || 0) + 8;
+        const nb = { x: b.x - pd, y: b.y - pd, w: b.w + pd * 2, h: b.h + pd * 2 };
+        X.dirtyBox = X.dirtyBox ? unionBoxes([X.dirtyBox, nb]) : nb;
+      }
       if (!next) next = lines.slice(0, i);
       if (res === "remove") continue;
       const k = kindOf(s);
@@ -960,7 +1016,9 @@ export function useInkCanvas({
   function flushEraseDirty(X: EraseState) {
     if (!X.dirty) return;
     X.dirty = false;
-    redrawStatic();
+    const box = X.dirtyBox;
+    X.dirtyBox = null;
+    redrawStatic(box);
   }
 
   function eraserRingBox(x: number, y: number, R: number): Box {
@@ -1004,32 +1062,22 @@ export function useInkCanvas({
     return { p, endB: null as Binding | null, hint: null as BindHit | null };
   }
 
-  function penCommit(X: PenState) {
-    const p = X.pts;
-    const n = p.length >> 1;
-    if (X.done > n - 2) return;
-    const ctx = getStaticCtx();
-    if (!ctx) return;
-    setStaticTransform(ctx);
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.lineWidth = X.size;
-    ctx.strokeStyle = X.color;
-    ctx.beginPath();
-    ctx.moveTo(X.curX, X.curY);
-    let i = X.done;
-    for (; i <= n - 2; i++) {
-      const mx = (p[i * 2] + p[i * 2 + 2]) / 2;
-      const my = (p[i * 2 + 1] + p[i * 2 + 3]) / 2;
-      ctx.quadraticCurveTo(p[i * 2], p[i * 2 + 1], mx, my);
-      X.curX = mx;
-      X.curY = my;
-    }
-    ctx.stroke();
-    X.done = i;
-  }
-
-  function drawPenHead(X: PenState, pred: number[]) {
+  /**
+   * Draws the WHOLE in-progress stroke (plus the predicted tail and, for
+   * pen/mouse, the cursor artwork) on the dynamic canvas in one go.
+   *
+   * Everything visible while writing lives on ONE canvas and is rendered with
+   * the same path function (tracePen) as the final stroke, so
+   *  - there is no moving boundary between "already committed" and "live" ink
+   *    (the old design drew finished segments on the static canvas and only
+   *    the head on the dynamic one; with two independently presented
+   *    low-latency canvases that boundary flickered / shimmered),
+   *  - the tip can never differ from what is committed at pen-up,
+   *  - there are no antialiasing seams between per-frame segments.
+   * The cost is one path stroke of the points so far per frame (GPU raster),
+   * far below a millisecond for ordinary handwriting strokes.
+   */
+  function drawPenHead(X: PenState, pred: number[], withIcon = true) {
     const ctx = getDynamicCtx();
     if (!ctx) return;
     if (X.headBox) clearLive(X.headBox);
@@ -1046,10 +1094,10 @@ export function useInkCanvas({
     ctx.strokeStyle = X.color;
     ctx.fillStyle = X.color;
 
-    let x0 = Math.min(X.curX, lx),
-      x1 = Math.max(X.curX, lx),
-      y0 = Math.min(X.curY, ly),
-      y1 = Math.max(X.curY, ly);
+    let x0 = X.x0,
+      x1 = X.x1,
+      y0 = X.y0,
+      y1 = X.y1;
 
     if (n === 1 && !pred.length) {
       ctx.beginPath();
@@ -1057,22 +1105,16 @@ export function useInkCanvas({
       ctx.fill();
     } else {
       ctx.beginPath();
-      ctx.moveTo(X.curX, X.curY);
-      let ax = lx,
-        ay = ly;
+      tracePen(ctx, p, pred);
+      ctx.stroke();
       for (let i = 0; i < pred.length; i += 2) {
         const bx = pred[i],
           by = pred[i + 1];
-        ctx.quadraticCurveTo(ax, ay, (ax + bx) / 2, (ay + by) / 2);
         if (bx < x0) x0 = bx;
         if (bx > x1) x1 = bx;
         if (by < y0) y0 = by;
         if (by > y1) y1 = by;
-        ax = bx;
-        ay = by;
       }
-      ctx.lineTo(ax, ay);
-      ctx.stroke();
     }
 
     const pad = X.size / 2 + 3;
@@ -1083,27 +1125,52 @@ export function useInkCanvas({
 
     // Paint the pen icon INTO the canvas, hot-spot exactly on the ink tip (the
     // predicted tip when there is one), in the same draw call as the ink.
-    const pc = (dynamicRef.current as unknown as {
-      __penCursor?: PenCursorState;
-    } | null)?.__penCursor;
-    if (pc && pc.inStroke) {
-      const bmp = pc.getBitmap(dpr());
-      if (bmp) {
-        const tipX = pred.length ? pred[pred.length - 2] : lx;
-        const tipY = pred.length ? pred[pred.length - 1] : ly;
-        // snap to whole device pixels so the bitmap stays razor sharp
-        const dd = dpr();
-        const ox = Math.round((tipX - pc.hx) * dd) / dd;
-        const oy = Math.round((tipY - pc.hy) * dd) / dd;
-        ctx.drawImage(bmp, ox, oy, 32, 32);
-        bx0 = Math.min(bx0, Math.floor(ox) - 1);
-        by0 = Math.min(by0, Math.floor(oy) - 1);
-        bx1 = Math.max(bx1, Math.ceil(ox + 32) + 1);
-        by1 = Math.max(by1, Math.ceil(oy + 32) + 1);
+    // Used for pen AND mouse strokes: the real cursor is hidden while a stroke
+    // is in progress, so the icon can never be seen lagging behind the ink.
+    if (withIcon) {
+      const pc = (dynamicRef.current as unknown as {
+        __penCursor?: PenCursorState;
+      } | null)?.__penCursor;
+      if (pc && pc.inStroke) {
+        const bmp = pc.getBitmap(dpr());
+        if (bmp) {
+          const tipX = pred.length ? pred[pred.length - 2] : lx;
+          const tipY = pred.length ? pred[pred.length - 1] : ly;
+          // snap to whole device pixels so the bitmap stays razor sharp
+          const dd = dpr();
+          const ox = Math.round((tipX - pc.hx) * dd) / dd;
+          const oy = Math.round((tipY - pc.hy) * dd) / dd;
+          ctx.drawImage(bmp, ox, oy, 32, 32);
+          bx0 = Math.min(bx0, Math.floor(ox) - 1);
+          by0 = Math.min(by0, Math.floor(oy) - 1);
+          bx1 = Math.max(bx1, Math.ceil(ox + 32) + 1);
+          by1 = Math.max(by1, Math.ceil(oy + 32) + 1);
+        }
       }
     }
 
     X.headBox = { x: bx0, y: by0, w: bx1 - bx0, h: by1 - by0 };
+  }
+
+  /**
+   * Pen-up hand-off. The finished stroke was just painted on the static canvas;
+   * the two canvases are presented independently, so clearing the live copy in
+   * the same frame could flash a one-frame gap. The live copy is pixel-identical,
+   * so it is simply kept for two frames and removed afterwards.
+   */
+  function handoffClear(b: Box | null) {
+    if (!b) return;
+    const tok = ++handoffTok.current;
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        if (handoffTok.current === tok && !ix.current) {
+          clearLive(b);
+          lastIdleBoundsRef.current = null;
+          lastIdleSigRef.current = "";
+          scheduleIdle();
+        }
+      }),
+    );
   }
 
   function drawShapePreview(X: ShapeState) {
@@ -1369,15 +1436,26 @@ export function useInkCanvas({
     activeInk = m;
   }
 
-  function addPenPoint(X: PenState, x: number, y: number): boolean {
+  /**
+   * Feeds one RAW sample through the noise filter and appends the filtered
+   * point. The filter sees every sample (even those that end up skipped as too
+   * close) so its speed estimate stays correct.
+   */
+  function addPenPoint(X: PenState, x: number, y: number, t: number): boolean {
+    if (t > X.lastT) X.lastT = t;
+    const [fx, fy] = X.flt.filter(x, y, t);
     const p = X.pts;
     const n = p.length;
     if (n) {
-      const dx = x - p[n - 2];
-      const dy = y - p[n - 1];
+      const dx = fx - p[n - 2];
+      const dy = fy - p[n - 1];
       if (dx * dx + dy * dy < MIN_DIST2) return false;
     }
-    p.push(x, y);
+    p.push(fx, fy);
+    if (fx < X.x0) X.x0 = fx;
+    if (fx > X.x1) X.x1 = fx;
+    if (fy < X.y0) X.y0 = fy;
+    if (fy > X.y1) X.y1 = fy;
     return true;
   }
 
@@ -1443,18 +1521,19 @@ export function useInkCanvas({
     lastPrevRef.current.x = NaN;
     lastPrevRef.current.y = NaN;
     lastPrevRef.current.m = -1;
+    handoffTok.current++; // cancel a pending post-stroke clear of the previous stroke
     clearLiveAll();
 
     const { color, size } = cfg.current;
 
     switch (t) {
       case "pen": {
+        const t0 = evT(e.nativeEvent);
+        const flt = new PointFilter(filterFor(e.pointerType));
+        flt.filter(x, y, t0); // seeds the filter; the first point is kept as-is
         const X: PenState = {
           kind: "pen",
           pts: [x, y],
-          done: 1,
-          curX: x,
-          curY: y,
           headBox: null,
           predTimer: null,
           color,
@@ -1462,14 +1541,22 @@ export function useInkCanvas({
           pid: e.pointerId,
           cx: x,
           cy: y,
+          ptype: e.pointerType,
+          flt,
+          lastT: t0,
+          x0: x,
+          y0: y,
+          x1: x,
+          y1: y,
         };
         ix.current = X;
-        if (e.pointerType === "pen") {
+        if (e.pointerType === "pen" || e.pointerType === "mouse") {
           const pc = (c as unknown as { __penCursor?: PenCursorState })
             .__penCursor;
-          if (pc && pc.img) {
+          // Only take over the cursor if the artwork can really be painted.
+          if (pc && pc.img && pc.getBitmap(dpr())) {
             pc.active = () => ix.current?.kind === "pen";
-            pc.setStroke(true);
+            pc.setStroke(true, e.pointerType);
           }
         }
         drawPenHead(X, []);
@@ -1489,6 +1576,7 @@ export function useInkCanvas({
           cy: y,
           ringBox: null,
           dirty: false,
+          dirtyBox: null,
         };
         ix.current = X;
         eraseSegment(X, x, y, x, y);
@@ -1833,24 +1921,30 @@ export function useInkCanvas({
         let added = false;
         for (const ev of list) {
           const [ex, ey] = toCanvasCoords(ev.clientX, ev.clientY, r);
-          if (addPenPoint(X, ex, ey)) added = true;
+          if (addPenPoint(X, ex, ey, evT(ev))) added = true;
         }
         if (!added) return;
-
-        penCommit(X);
       }
-      // (when raw samples are flowing, points were already committed by
+      // (when raw samples are flowing, points were already added by
       //  rawPen(); this frame-aligned event only refreshes the prediction)
 
       const pred: number[] = [];
-      const pe = ne.getPredictedEvents?.();
+      // A mouse has no meaningful prediction; pen/touch only.
+      const pe = X.ptype !== "mouse" ? ne.getPredictedEvents?.() : undefined;
       if (pe && pe.length) {
         const n = X.pts.length;
         let lx = X.pts[n - 2],
           ly = X.pts[n - 1];
+        // Reject wild predictions: a jump far larger than the recent step is
+        // an extrapolation error and would show as a flick at the tip.
+        const ref =
+          n >= 4 ? Math.hypot(lx - X.pts[n - 4], ly - X.pts[n - 3]) : 0;
+        const maxJump = Math.max(12, ref * 4);
         for (let i = 0; i < pe.length && i < MAX_PREDICTED; i++) {
           const [qx, qy] = toCanvasCoords(pe[i].clientX, pe[i].clientY, r);
-          if ((qx - lx) ** 2 + (qy - ly) ** 2 < 0.25) continue;
+          const d2 = (qx - lx) ** 2 + (qy - ly) ** 2;
+          if (d2 < 0.25) continue;
+          if (d2 > maxJump * maxJump) break;
           pred.push(qx, qy);
           lx = qx;
           ly = qy;
@@ -1915,10 +2009,9 @@ export function useInkCanvas({
     let added = false;
     for (const s of list) {
       const [sx, sy] = toCanvasCoords(s.clientX, s.clientY, r);
-      if (addPenPoint(X, sx, sy)) added = true;
+      if (addPenPoint(X, sx, sy, evT(s))) added = true;
     }
     if (!added) return;
-    penCommit(X);
     drawPenHead(X, []);
   }
 
@@ -1960,35 +2053,13 @@ export function useInkCanvas({
         if (ok && finalSamples && r) {
           for (const sample of finalSamples) {
             const [sx, sy] = toCanvasCoords(sample.clientX, sample.clientY, r);
-            addPenPoint(X, sx, sy);
+            addPenPoint(X, sx, sy, evT(sample));
           }
         }
-        if (ok) addPenPoint(X, X.cx, X.cy);
+        if (ok) addPenPoint(X, X.cx, X.cy, evT(native));
 
-        penCommit(X);
-
-        const ctx = getStaticCtx()!;
         const n = X.pts.length >> 1;
         if (n >= 1) {
-          setStaticTransform(ctx);
-          ctx.strokeStyle = X.color;
-          ctx.fillStyle = X.color;
-          ctx.lineWidth = X.size;
-          ctx.lineCap = "round";
-          ctx.lineJoin = "round";
-          if (n === 1) {
-            ctx.beginPath();
-            ctx.arc(X.pts[0], X.pts[1], X.size / 2, 0, Math.PI * 2);
-            ctx.fill();
-          } else {
-            ctx.beginPath();
-            ctx.moveTo(X.curX, X.curY);
-            ctx.lineTo(X.pts[(n - 1) * 2], X.pts[(n - 1) * 2 + 1]);
-            ctx.stroke();
-          }
-          if (X.headBox) clearLive(X.headBox);
-          X.headBox = null;
-
           const stroke: Stroke = {
             id: uid(),
             points: toStoredPts(X.pts),
@@ -1996,6 +2067,15 @@ export function useInkCanvas({
             size: X.size,
             tool: "pen",
           };
+          // Same path function as the live preview -> identical pixels.
+          const sctx = getStaticCtx()!;
+          setStaticTransform(sctx);
+          paintStroke(sctx, stroke, X.pts);
+          // Keep an identical live copy for two frames (see handoffClear), but
+          // without the cursor artwork: the real cursor is back from now on.
+          drawPenHead(X, [], false);
+          handoffClear(X.headBox);
+          X.headBox = null;
           commitLines(linesRef.current.concat(stroke));
         } else if (X.headBox) {
           clearLive(X.headBox);
@@ -2011,7 +2091,6 @@ export function useInkCanvas({
           pushHistory(X.snap);
           linesRef.current = cleaned;
           scheduleSave();
-          redrawStatic();
         }
         break;
       }
@@ -2035,9 +2114,12 @@ export function useInkCanvas({
             end: g.endB,
           };
           const ctx = getStaticCtx()!;
+          // final geometry on the live canvas, then static, then drop live
+          // two frames later: no blank/flicker frame between the canvases.
+          drawShapePreview(X);
           setStaticTransform(ctx);
           paintStroke(ctx, stroke, g.p);
-          clearLiveAll();
+          handoffClear(X.previewBox);
           commitLines(linesRef.current.concat(stroke));
         } else {
           clearLiveAll();
@@ -2086,19 +2168,22 @@ export function useInkCanvas({
       case "resize": {
         ix.current = null;
         const moved = ok && Math.hypot(X.cx - X.sx, X.cy - X.sy) > 2;
+        if (moved) drawTransformPreview(X);
         hiddenRef.current = null;
-        clearLiveAll();
         if (moved) {
           commitLines(transformLines(X.ids, transformFn(X)));
         }
         redrawStatic();
+        if (moved) handoffClear(X.previewBox);
+        else clearLiveAll();
         break;
       }
 
       case "endpoint": {
         ix.current = null;
         hiddenRef.current = null;
-        clearLiveAll();
+        if (ok) drawEndpointPreview(X);
+        else clearLiveAll();
         if (ok) {
           const s = X.stroke;
           const base = geom(s).pts;
@@ -2130,6 +2215,7 @@ export function useInkCanvas({
           commitLines(linesRef.current.map((x) => (x.id === ns.id ? ns : x)));
         }
         redrawStatic();
+        if (ok) handoffClear(X.previewBox);
         break;
       }
 
@@ -2409,13 +2495,20 @@ export function useInkCanvas({
     };
 
     const handleClearPage = (e: Event) => {
-      const gid = (e as CustomEvent<{ gid?: string } | undefined>).detail?.gid;
+      const det = (e as CustomEvent<{ gid?: string; filePath?: string } | undefined>)
+        .detail;
+      // split view: only the document the event is meant for may react
+      if (det?.filePath && det.filePath !== cfg.current.filePath) return;
+      const gid = det?.gid;
       claimActive();
       clearWithHistory(gid);
     };
 
     const handleClearAll = (e: Event) => {
-      const gid = (e as CustomEvent<{ gid?: string } | undefined>).detail?.gid;
+      const det = (e as CustomEvent<{ gid?: string; filePath?: string } | undefined>)
+        .detail;
+      if (det?.filePath && det.filePath !== cfg.current.filePath) return;
+      const gid = det?.gid;
       // Pages that are not mounted can't be undone through their own
       // history any more (their DB rows are gone) -> drop stale history.
       const own = getCacheKey();
@@ -2736,7 +2829,7 @@ export function useInkCanvas({
           onClick: () =>
             window.dispatchEvent(
               new CustomEvent(`margyn-clear-page-${cfg.current.page}`, {
-                detail: { gid: newGroupId() },
+                detail: { gid: newGroupId(), filePath: cfg.current.filePath },
               }),
             ),
         },

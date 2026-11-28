@@ -188,7 +188,13 @@ const sv = (p: Pt): string => `${f(p[0])} ${f(-p[1])}`;
 
 type DPt = [number, number];
 
-/** Catmull-Rom → cubic Bézier: identical to the on-screen renderer. */
+/**
+ * Freehand pen path: quadratic B-spline through the sample midpoints, written
+ * as cubic Béziers. This is exactly what `tracePen` (inkRender.ts) draws on
+ * screen, so an exported PDF matches the canvas. (A quadratic Q(p0,c,e) is the
+ * cubic with control points p0+2/3(c-p0) and e+2/3(c-e); the page transform T
+ * is affine, so transforming the control points is exact.)
+ */
 function penSegments(pts: DPt[], T: (p: DPt) => Pt): string[] {
   const n = pts.length;
   if (!n) return [];
@@ -197,15 +203,23 @@ function penSegments(pts: DPt[], T: (p: DPt) => Pt): string[] {
     segs.push(`L ${sv(T([pts[0][0] + 0.01, pts[0][1]]))}`);
     return segs;
   }
-  for (let k = 0; k < n - 1; k++) {
-    const p0 = pts[Math.max(0, k - 1)];
-    const p1 = pts[k];
-    const p2 = pts[k + 1];
-    const p3 = pts[Math.min(n - 1, k + 2)];
-    const c1: DPt = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6];
-    const c2: DPt = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6];
-    segs.push(`C ${sv(T(c1))}, ${sv(T(c2))}, ${sv(T(p2))}`);
+  let cur: DPt = pts[0];
+  for (let i = 1; i < n - 1; i++) {
+    const c = pts[i];
+    const nx = pts[i + 1];
+    const e: DPt = [(c[0] + nx[0]) / 2, (c[1] + nx[1]) / 2];
+    const c1: DPt = [
+      cur[0] + ((c[0] - cur[0]) * 2) / 3,
+      cur[1] + ((c[1] - cur[1]) * 2) / 3,
+    ];
+    const c2: DPt = [
+      e[0] + ((c[0] - e[0]) * 2) / 3,
+      e[1] + ((c[1] - e[1]) * 2) / 3,
+    ];
+    segs.push(`C ${sv(T(c1))}, ${sv(T(c2))}, ${sv(T(e))}`);
+    cur = e;
   }
+  segs.push(`L ${sv(T(pts[n - 1]))}`);
   return segs;
 }
 
